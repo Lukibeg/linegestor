@@ -22,7 +22,7 @@ import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, History, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
-  Menu, Moon, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
+  Menu, Moon, Rocket, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
@@ -32,7 +32,7 @@ import { fundoDaJanela, useLerOQuadroAntes } from '../../pages/atendimento/comum
 import { AvisosQueChegam } from '../../pages/atendimento/AvisosQueChegam.js';
 import { useAuth } from '../../lib/auth.js';
 import { lembrarPainelDoComercial, painelLembradoDoComercial } from '../../lib/comercial.js';
-import { PAINEL_DO_SUPORTE } from '../../pages/atendimento/Suporte.js';
+import { PAINEL_DO_SUPORTE, painelDaImplantacao } from '../../pages/atendimento/Suporte.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
 
@@ -75,6 +75,8 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/suporte', label: 'Painel do Suporte', icon: Kanban, perm: 'support.read' },
+      // 2.3, o Luan: "eu quero q o painel de implantação tenha um botão dentro do menu suporte como o painel do suporte"
+      { to: '/suporte/implantacao', label: 'Painel da Implantação', icon: Rocket, perm: 'support.read' },
       { to: '/atendimento/meu-dia', label: 'Meu dia', icon: SunMedium, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/suporte/relatorios', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
@@ -117,12 +119,17 @@ const MEU_DIA: Pick<ItemDoMenu, 'to' | 'end'> = { to: '/atendimento/meu-dia' };
  * marcados na vista Relatórios do painel; o Painel do Suporte (2.0.2), nas outras.
  */
 export function parteDoSuporte(pathname: string, search: string, sigla: string | null): 'painel' | 'relatorios' | null {
-  if (!pathname.startsWith('/atendimento')) return null;
+  return parteDoPainel(pathname, search, { id: PAINEL_DO_SUPORTE, sigla });
+}
+/** A tela aberta é de um painel (pelo id ou pela sigla no ?painel=, ou pela sigla do código na ficha)? E qual parte. */
+export function parteDoPainel(pathname: string, search: string, painel: { id: string; sigla: string | null } | null): 'painel' | 'relatorios' | null {
+  if (!painel || !pathname.startsWith('/atendimento')) return null;
+  const { id, sigla } = painel;
   const tela = /^\/atendimento\/(quadro|lista|relatorio|novo)\/?$/.exec(pathname)?.[1];
   if (tela) {
     const ref = new URLSearchParams(search).get('painel');
-    const doSuporte = ref === PAINEL_DO_SUPORTE || (!!sigla && ref?.toUpperCase() === sigla);
-    return doSuporte ? (tela === 'relatorio' ? 'relatorios' : 'painel') : null;
+    const dele = ref === id || (!!sigla && ref?.toUpperCase() === sigla);
+    return dele ? (tela === 'relatorio' ? 'relatorios' : 'painel') : null;
   }
   const doCodigo = /^\/atendimento\/([A-Za-z0-9]+)-\d+\/?$/.exec(pathname)?.[1];
   return !!sigla && doCodigo?.toUpperCase() === sigla ? 'painel' : null;
@@ -223,6 +230,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // o painel do Suporte (2.0.2): na tela dele, o menu marca o Painel do Suporte (e não Painéis)
   const siglaDoSuporte = opcoes.data?.paineis.find((p) => p.id === PAINEL_DO_SUPORTE)?.sigla ?? null;
   const doSuporte = suporte && !doComercial ? parteDoSuporte(pathname, search, siglaDoSuporte) : null;
+  // o painel da implantação (2.3): na tela dele, o menu marca o Painel da Implantação
+  const implantacao = useMemo(() => painelDaImplantacao(opcoes.data?.paineis ?? []), [opcoes.data]);
+  const doImplantacao = suporte && !doComercial && !doSuporte && implantacao ? parteDoPainel(pathname, search, { id: implantacao.id, sigla: implantacao.sigla }) : null;
   // o painel de Vendas aberto fica lembrado: o Painel do Comercial e o Relatórios do menu voltam para ele
   useEffect(() => { if (doComercial) lembrarPainelDoComercial(doComercial.painelId); }, [doComercial?.painelId]);
   const ativo = useCallback<Ativo>((i) => {
@@ -230,10 +240,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (i.to === '/comercial/relatorio') return doComercial?.parte === 'relatorio';
     if (i.to === '/suporte') return doSuporte === 'painel';
     if (i.to === '/suporte/relatorios') return doSuporte === 'relatorios';
+    if (i.to === '/suporte/implantacao') return !!doImplantacao;
     // o Meu dia mora dentro de /atendimento: lá, o item marcado é o dele, e não Painéis
-    if (i.to === '/atendimento') return !doComercial && !doSuporte && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
+    if (i.to === '/atendimento') return !doComercial && !doSuporte && !doImplantacao && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
     return ehAtivo(i, pathname);
-  }, [doComercial?.parte, doSuporte, pathname]);
+  }, [doComercial?.parte, doSuporte, doImplantacao, pathname]);
   const { abertos, alternar } = useGruposAbertos(items.filter(ehGrupo), ativo);
   const sair = async () => { await logout(); nav('/entrar'); };
   // nos chamados, a tela usa a largura toda e a margem é menor: o quadro e a ficha precisam de lugar

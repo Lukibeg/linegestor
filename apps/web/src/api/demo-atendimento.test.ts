@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MENSAGEM_DO_TITULO, CARGOS_DE_FABRICA, caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
-  NIA_PADRAO, resumoDaNia,
+  NIA_PADRAO, resumoDaNia, contaDoCampo,
   type CartaoChamado,
 } from '@gestor/shared';
 import { demoApi } from './demo.js';
@@ -366,6 +366,24 @@ describe('as regras do servidor valem na prévia', () => {
     // a busca acha pelo outro contato
     expect((await api.lista({ q: 'financeiro', situacao: 'todos' })).items.map((c) => c.id)).toContain(r.id);
     expect((await api.alterar(r.id, { outrosContatos: [], outrasConversas: [] })).outrosContatos).toEqual([]);
+  }, DEMORA);
+
+  it('o e-mail dos contatos (2.3, como o servidor): o principal e os outros; minúsculo; o errado é recusado; a busca acha', async () => {
+    await entrar('operador');
+    const op = await api.opcoes();
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Teste do e-mail do contato')), contatoNome: 'Sandra', contatoEmail: 'Sandra@Clinica.com.br' });
+    const f0 = await api.chamado(r.codigo);
+    expect(f0.contato).toEqual({ nome: 'Sandra', telefone: null, email: 'sandra@clinica.com.br' });
+    const errado = await erroDe(api.alterar(r.id, { contatoEmail: 'sandra@clinica' }));
+    expect(errado.status).toBe(400);
+    const f = await api.alterar(r.id, { contatoEmail: 'sandra.lima@clinica.com.br', outrosContatos: [{ nome: 'Contabilidade', email: 'Contas@Clinica.com.br' }, { nome: 'Sandra de novo', email: 'sandra.lima@clinica.com.br' }] });
+    expect(f.contato?.email).toBe('sandra.lima@clinica.com.br');
+    expect(f.outrosContatos).toEqual([{ nome: 'Contabilidade', telefone: null, email: 'contas@clinica.com.br' }]);
+    expect(f.historico.filter((e) => e.tipo === 'campo').map((e) => e.texto)).toEqual(expect.arrayContaining([
+      'mudou E-mail do contato de "sandra@clinica.com.br" para "sandra.lima@clinica.com.br"', 'mudou Outros contatos para "Contabilidade contas@clinica.com.br"',
+    ]));
+    for (const q of ['sandra.lima@clinica', 'contas@clinica']) expect((await api.lista({ q, situacao: 'todos' })).items.map((c) => c.id)).toContain(r.id);
+    expect((await api.alterar(r.id, { contatoEmail: null })).contato?.email).toBeNull();
   }, DEMORA);
 
   it('o pai com filho aberto não resolve nem fecha', async () => {
@@ -819,14 +837,14 @@ describe('as regras do servidor valem na prévia', () => {
     const base = { painelId: sup.id, relato: 'O cliente ligou relatando o problema (chamado de teste).' };
     const f = await api.chamado((await api.criar({ ...base, titulo: 'Ligou do celular (teste)', contatoTelefone: '71 98123-4567' })).codigo);
     expect(f.cliente).toEqual({ id: aurora.id, nome: 'Clínica Aurora' });
-    expect(f.contato).toEqual({ nome: 'Roberta Dias', telefone: '5571981234567' });
+    expect(f.contato).toEqual({ nome: 'Roberta Dias', telefone: '5571981234567', email: null });
     expect((await demoApi.clients.contatos(aurora.id)).find((c) => c.nome === 'Roberta Dias')!.chamados).toBe(1);
     // o mesmo número em dois clientes: o cliente não é adivinhado; com o cliente escolhido, o nome vem do contato dele
     await demoApi.clients.salvarContato(hospital.id, null, { nome: 'Recepção do hospital', whatsapp: '(71) 96666-2222' });
     await demoApi.clients.salvarContato(aurora.id, null, { nome: 'Recepção da clínica', whatsapp: '(71) 96666-2222' });
     expect((await api.chamado((await api.criar({ ...base, titulo: 'Número dividido (teste)', contatoTelefone: '71 96666-2222' })).codigo)).cliente).toBeNull();
     const doHospital = await api.chamado((await api.criar({ ...base, titulo: 'Do hospital (teste)', clienteId: hospital.id, contatoTelefone: '71 96666-2222' })).codigo);
-    expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222' });
+    expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222', email: null });
 
     // desativar: some do Abrir chamado (o cadastro do cliente) e libera o WhatsApp
     await demoApi.clients.salvarContato(aurora.id, roberta.id, { ...roberta, ativo: false });
@@ -979,7 +997,11 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
       conversao: 66.7, ticketMedio: 74_500,
     });
     expect(r.funil.map((f) => [f.nome, f.chegaram.length, f.perdidas.length])).toEqual([
-      ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 5, 1],
+      ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 6, 1],
+      // a etapa que abre a implantação (2.3): as que já estão sendo implantadas
+      ['Em processo de Implantação', 4, 0],
+      // e a que recebe a negociação quando o card da implantação chega no fim
+      ['Implantado', 3, 0],
     ]);
     expect(r.funilGanhas).toHaveLength(3);
     // a janela dos números: as negociações por trás, com a empresa e quem cuida
@@ -1033,7 +1055,16 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     // os campos do Comercial do Helena (menos a Área de atuação), com a origem da Padaria Estrela
     const op = await api.opcoes();
     const campos = op.campos.filter((c) => c.painelId === painel(op, 'COM').id);
-    expect(campos.map((c) => c.nome)).toEqual(['CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação']);
+    expect(campos.map((c) => c.nome)).toEqual([
+      // sem os Contatos principais (2.3: "já tem essa parte de contatos na lateral")
+      'CNPJ', 'Origem de lead', 'Indicação',
+      // os que vieram do Helena (2.3), nos Detalhes da proposta
+      'Licenças Coorporativas Voz', 'Licenças Callcenter Voz', 'Canais Simultâneos', 'Faixa Numérica', 'Licenças Callcenter WhatsApp', 'Licenças Números Oficiais',
+    ]);
+    expect(campos.filter((c) => c.parte === 'Detalhes da proposta').map((c) => c.nome)).toHaveLength(6);
+    expect(campos.find((c) => c.nome === 'CNPJ')!.parte).toBeNull();
+    // a Padaria Estrela com os números da proposta
+    expect(estrela.campos[campos.find((c) => c.nome === 'Licenças Coorporativas Voz')!.id]).toBe(32);
     const origem = campos.find((c) => c.nome === 'Origem de lead')!;
     expect(estrela.campos[origem.id]).toBe(origem.opcoes.find((o) => o.nome === 'Instagram')!.id);
     const mudou = await api.alterar(estrela.id, { valoresDosProdutos: { [pbx.id]: 90_000, [tronco.id]: 27_000 }, ativacoesDosProdutos: { [pbx.id]: 120_000, [tronco.id]: 40_000 } });
@@ -1170,4 +1201,236 @@ describe('o Comercial tem permissão própria na prévia (como no servidor)', ()
     expect((await erroDe(api.quadro({ painel: 'painel-suporte' }))).status).toBe(404);
     expect(Array.isArray((await api.meuDia()).meus)).toBe(true);
   }, DEMORA);
+});
+
+describe('a implantação na prévia (2.3, como o servidor)', () => {
+  const ETAPA_DA_IMPLANTACAO = 'Em processo de Implantação';
+  const produto = (op: OpcoesAtendimento, nome: string) => op.produtos.find((p) => p.nome === nome)!.id;
+  const campoDe = (op: OpcoesAtendimento, painelId: string, nome: string, produtoId: string) => op.campos.find((c) => c.painelId === painelId && c.nome === nome && c.produtoId === produtoId)!;
+  const opcao = (c: { opcoes: Array<{ id: string; nome: string }> }, nome: string) => c.opcoes.find((o) => o.nome === nome)!.id;
+
+  it('os exemplos: o Comercial abriu os cards, o cliente novo entrou no cadastro e o Implantado ligou os produtos e os módulos', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
+    expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado']);
+    expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
+    // os 19 campos do modelo, em três partes, de dois produtos
+    const campos = op.campos.filter((c) => c.painelId === imp.id);
+    expect(campos).toHaveLength(19);
+    expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
+
+    const q = await api.quadro({ painel: imp.id });
+    const naEtapa = Object.fromEntries(q.colunas.map((c) => [c.etapa.nome, c.chamados.map((x) => x.cliente?.nome)]));
+    expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Implantado: ['Ótica Visão Clara'] });
+    // o cartão mostra a conta da parte da etapa (a Configuração do LineChat: 3 de 5)
+    const movimento = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados[0]!;
+    // 3 de 5 caixinhas + 1 de 2 módulos escolhidos na Curadoria (o checklist conta)
+    expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 4, total: 7 });
+
+    const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado')!.chamados[0]!.codigo);
+    expect(vc.origem).toBe('comercial');
+    expect(vc.daNegociacao?.codigo).toMatch(/^COM-/);
+    expect(vc.historico.some((ev) => ev.tipo === 'cadastro' && /Line Reports/.test(ev.texto))).toBe(true);
+    const negociacao = await api.chamado(vc.daNegociacao!.codigo);
+    expect(negociacao.implantacoes).toMatchObject([{ codigo: vc.codigo, etapa: 'Implantado', situacao: 'fechado', podeAbrir: true }]);
+    // o card no Implantado levou a negociação ao Implantado do Comercial; depois, o Ganho (começou a faturar)
+    expect(etapa(op, 'COM', 'Implantado').recebeImplantacao).toBe(true);
+    expect(negociacao.historico.some((ev) => ev.tipo === 'etapa' && ev.texto.includes(`a implantação ${vc.codigo} terminou`))).toBe(true);
+    expect(negociacao.resultado).toBe('ganho');
+    // o cliente novo (o CNPJ da negociação), com o LinePBX e o VoiceNet ativos desde o Implantado, e os módulos marcados
+    const cliente = await demoApi.clients.get(vc.cliente!.id);
+    expect(cliente.cnpj).toBe('45812033000174');
+    const pbx = cliente.subscriptions.find((s) => s.productCode === 'linepbx')!;
+    expect(pbx.activatedAt).toBeTruthy();
+    expect(pbx.modules.filter((m) => m.active).map((m) => m.moduleName).sort()).toEqual(['Line Reports', 'NPS']);
+    expect(cliente.subscriptions.find((s) => s.productCode === 'voicenet')!.activatedAt).toBe(pbx.activatedAt);
+    // o da curadoria: em implantação, sem a data
+    const beira = q.colunas.find((c) => c.etapa.nome === 'Curadoria')!.chamados[0]!;
+    const hotel = await demoApi.clients.get(beira.cliente!.id);
+    expect(hotel.subscriptions.map((s) => [s.productCode, s.activatedAt]).sort()).toEqual([['linechat', null], ['linepbx', null]]);
+    // o contato da negociação foi junto para o card, com o e-mail (2.3)
+    expect(beira.contato).toEqual({ nome: 'Vânia', telefone: '5571999990213', email: 'vania@hotelbeiramar.exemplo.com.br' });
+  });
+
+  it('mover a negociação: sem o CNPJ não vai (400 com o plano); com ele, cria o cliente e abre o card — uma vez só', async () => {
+    const luan = await entrar('admin');
+    const op = await api.opcoes();
+    const com = painel(op, 'COM');
+    const chat = produto(op, 'LineChat');
+    const r = await api.criar({ painelId: com.id, titulo: 'LineChat — teste da implantação', empresa: 'Padaria Pão Quente', produtos: [chat], responsavelId: luan.id });
+    const para = etapa(op, 'COM', ETAPA_DA_IMPLANTACAO);
+    const e = await erroDe(api.mover(r.id, { etapaId: para.id }));
+    expect(e.status).toBe(400);
+    expect(e.message).toBe('Para criar o cliente, falta o CNPJ.');
+    expect((e.details as unknown as { implantacao: { cliente: { tipo: string } } }).implantacao.cliente.tipo).toBe('novo');
+    // a janela: o CNPJ pela metade; o dígito verificador não é conferido; e o de um cliente que já existe (o card abre para ele)
+    expect((await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.111.111/1111' })).implantacao!.falta).toBe('O CNPJ tem 14 números: faltam 2.');
+    expect((await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.111.111/1111-11' })).implantacao!.falta).toBeNull();
+    const aurora = (await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.222.333/0001-81' })).implantacao!;
+    expect(aurora.cliente).toMatchObject({ tipo: 'cadastro', nome: 'Clínica Aurora', peloCnpj: true });
+    expect(aurora.falta).toBeNull();
+
+    const f = await api.mover(r.id, { etapaId: para.id, implantacao: { nomeFantasia: 'Padaria Pão Quente', razaoSocial: 'Pão Quente Panificadora LTDA', cnpj: '58.901.234/0001-90' } });
+    expect(f.cliente?.nome).toBe('Padaria Pão Quente');
+    expect(f.implantacoes).toHaveLength(1);
+    const card = await api.chamado(f.implantacoes[0]!.codigo);
+    expect(card).toMatchObject({ titulo: 'Implantação — Padaria Pão Quente', origem: 'comercial', etapaId: painel(op, 'IMP').etapas.find((x) => x.nome === 'Curadoria')!.id });
+    expect(card.produtos.map((p) => p.id)).toEqual([chat]);
+    expect(card.observadores.map((o) => o.id)).toContain(luan.id);
+    const cliente = await demoApi.clients.get(card.cliente!.id);
+    expect(cliente.legalName).toBe('Pão Quente Panificadora LTDA');
+    expect(cliente.subscriptions.map((s) => [s.productCode, s.activatedAt])).toEqual([['linechat', null]]);
+    // voltar e ir de novo não abre outro card
+    await api.mover(r.id, { etapaId: etapa(op, 'COM', 'Lead').id });
+    expect((await api.aoMover(r.id, { etapaId: para.id })).implantacao!.jaAberta).toEqual({ codigo: card.codigo });
+    const deNovo = await api.mover(r.id, { etapaId: para.id });
+    expect(deNovo.implantacoes).toHaveLength(1);
+  });
+
+  it('o card: as caixinhas guardam quem marcou e quando; o Implantado liga os produtos e os módulos marcados', async () => {
+    const luan = await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const chat = produto(op, 'LineChat');
+    const lista = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items;
+    const card = await api.chamado(lista.find((c) => c.cliente?.nome === 'Padaria Pão Quente')!.codigo);
+    const config = campoDe(op, imp.id, 'Configuração do ambiente', chat);
+    const modulos = campoDe(op, imp.id, 'Módulos a ativar', chat);
+    expect(modulos.opcoes.map((o) => o.nome)).toEqual(expect.arrayContaining(['Dashboard de filas', 'NPS', 'WebChat']));
+    const marcado = await api.alterar(card.id, { campos: { [config.id]: [opcao(config, 'Criação dos usuários'), opcao(config, 'Criação das equipes')], [modulos.id]: [opcao(modulos, 'WebChat')] } });
+    expect(marcado.marcas[config.id]![opcao(config, 'Criação dos usuários')]).toMatchObject({ porId: luan.id, porNome: null });
+    expect(marcado.historico.some((ev) => ev.tipo === 'campo' && /Configuração do ambiente \(LineChat\)/.test(ev.texto))).toBe(true);
+    // desmarcar uma: a marca dela sai, a outra fica
+    const menos = await api.alterar(card.id, { campos: { [config.id]: [opcao(config, 'Criação das equipes')] } });
+    expect(Object.keys(menos.marcas[config.id]!)).toEqual([opcao(config, 'Criação das equipes')]);
+
+    // a janela do Implantado: o LineChat ganha a data, o WebChat liga
+    const validado = imp.etapas.find((e) => e.nome === 'Implantado')!;
+    const plano = (await api.aoMover(card.id, { etapaId: validado.id })).cadastro!;
+    expect(plano.produtos).toEqual([{ id: chat, nome: 'LineChat', acao: 'ativa' }]);
+    expect(plano.modulos.map((m) => [m.nome, m.acao])).toEqual([['WebChat', 'liga']]);
+    expect((await api.aoMover(card.id, { etapaId: validado.id })).negociacao).toMatchObject({ de: 'Em processo de Implantação', para: 'Implantado' });
+    // sair da Curadoria pede quem fica com o card; nada mais trava
+    const fim = await api.mover(card.id, { etapaId: validado.id, responsavelId: luan.id });
+    expect(fim.situacao).toBe('fechado');
+    expect(fim.historico.some((ev) => ev.tipo === 'cadastro' && /WebChat/.test(ev.texto))).toBe(true);
+    // a negociação foi junto para o Implantado do Comercial
+    const neg = await api.chamado(fim.daNegociacao!.codigo);
+    expect(neg.etapaId).toBe(etapa(op, 'COM', 'Implantado').id);
+    expect(fim.historico.some((ev) => ev.texto === `a negociação ${neg.codigo} foi para Implantado`)).toBe(true);
+    const cliente = await demoApi.clients.get(card.cliente!.id);
+    const sub = cliente.subscriptions.find((s) => s.productCode === 'linechat')!;
+    expect(sub.activatedAt?.slice(0, 10)).toBe(diaLocal(new Date()));
+    expect(sub.modules.filter((m) => m.active).map((m) => m.moduleName)).toEqual(['WebChat']);
+  });
+
+  it('as caixinhas em pastas: o LinePBX vem em pastas; o Editar as caixinhas muda as caixinhas e as pastas (só quem cuida)', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const pbx = produto(op, 'LinePBX');
+    const conf = campoDe(op, imp.id, 'Configuração do ambiente', pbx);
+    expect([...new Set(conf.opcoes.map((o) => o.pasta))]).toEqual(['Servidor', 'Asterisk', 'LinePBX Web', 'Módulos', 'Telefones']);
+    // os exemplos marcaram pelos nomes novos (sem o "Asterisk - " na frente)
+    const visao = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Ótica Visão Clara')!;
+    expect((await api.chamado(visao.codigo)).campos[conf.id]).toHaveLength(10);
+    const novo = await api.salvarCaixinhas(conf.id, {
+      opcoes: [...conf.opcoes.map((o) => ({ id: o.id, nome: o.nome, ativa: o.ativa, pasta: o.pasta ?? null })), { nome: 'Configuração do Callback', ativa: true, pasta: 'Asterisk' }],
+    });
+    expect(novo.opcoes.at(-1)).toMatchObject({ nome: 'Configuração do Callback', pasta: 'Asterisk', ativa: true });
+    expect(novo).toMatchObject({ nome: conf.nome, parte: conf.parte, produtoId: conf.produtoId });
+    // a que não veio fica desativada; o card que a marcou continua com ela
+    const semTelefones = await api.salvarCaixinhas(conf.id, { opcoes: novo.opcoes.filter((o) => o.nome !== 'Configuração dos telefones').map((o) => ({ id: o.id, nome: o.nome, pasta: o.pasta ?? null })) });
+    const telefones = semTelefones.opcoes.find((o) => o.nome === 'Configuração dos telefones')!;
+    expect(telefones.ativa).toBe(false);
+    expect((await api.chamado(visao.codigo)).campos[conf.id]).toContain(telefones.id);
+    expect((await erroDe(api.salvarCaixinhas(campoDe(op, imp.id, 'Módulos a ativar', pbx).id, { opcoes: [{ nome: 'X' }] }))).status).toBe(400);
+    await entrar('operador');
+    expect((await erroDe(api.salvarCaixinhas(conf.id, { opcoes: [{ nome: 'X' }] }))).status).toBe(403);
+  });
+
+  it('os módulos: a Curadoria escolhe, o checklist da Configuração mostra só os escolhidos, o Implantado avisa o que falta', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const pbx = produto(op, 'LinePBX');
+    const escolha = campoDe(op, imp.id, 'Módulos a ativar', pbx);
+    const checklist = campoDe(op, imp.id, 'Ativação dos módulos', pbx);
+    expect(escolha.parte).toBe('Curadoria');
+    expect(checklist).toMatchObject({ parte: 'Configuração', escolhidosEm: escolha.id });
+    const horizonte = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Construtora Horizonte')!;
+    // o checklist conta os escolhidos: o FOP2 marcado, o Callback faltando
+    const ficha = await api.chamado(horizonte.codigo);
+    expect(contaDoCampo(checklist, ficha.campos[checklist.id], ficha.campos)).toEqual({ feitos: 1, total: 2 });
+    const plano = (await api.aoMover(horizonte.id, { etapaId: imp.etapas.find((e) => e.nome === 'Implantado')!.id })).cadastro!;
+    expect(plano.modulos.map((m) => m.nome)).toEqual(['FOP2', 'Callback']);
+    expect(plano.semMarcar).toEqual([expect.objectContaining({ nome: 'Callback', produto: 'LinePBX', campo: 'Ativação dos módulos' })]);
+  });
+
+  it('os anexos dos campos e das caixinhas: anexar, ver na ficha e no histórico, tirar (o seu, ou quem cuida)', async () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const pbx = produto(op, 'LinePBX');
+    // só os campos da Curadoria recebem ("eu quis dizer todas as opções de curadoria, de configuração n precisa n")
+    const conf = campoDe(op, imp.id, 'Configuração do ambiente', pbx);
+    const ip = campoDe(op, imp.id, 'IP do cliente', pbx);
+    expect([conf.anexos, ip.anexos, campoDe(op, imp.id, 'Módulos a ativar', pbx).anexos]).toEqual([false, true, false]);
+    const horizonte = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Construtora Horizonte')!;
+    expect((await erroDe(api.anexarNoCampo(horizonte.id, conf.id, { opcaoId: conf.opcoes[0]!.id, anexos: [{ fileName: 'x.png', conteudo: PNG }] }))).message).toMatch(/não recebe anexos/);
+    const f = await api.anexarNoCampo(horizonte.id, ip.id, { anexos: [{ fileName: 'ip.png', conteudo: PNG }] });
+    expect(f.anexosDosCampos.find((a) => a.nome === 'ip.png')).toMatchObject({ campoId: ip.id, opcaoId: null, imagem: true, podeTirar: true });
+    expect(f.historico.at(-1)!.texto).toBe('anexou ip.png em IP do cliente (LinePBX)');
+    // o do operador (no campo da Lista de ramais): ele tira o dele, não o do Luan
+    const lista = campoDe(op, imp.id, 'Lista de ramais', pbx);
+    await entrar('operador');
+    const doOp = await api.anexarNoCampo(horizonte.id, lista.id, { anexos: [{ fileName: 'do operador.png', conteudo: PNG }] });
+    const meu = doOp.anexosDosCampos.find((a) => a.nome === 'do operador.png')!;
+    const doLuan = doOp.anexosDosCampos.find((a) => a.nome === 'ip.png')!;
+    expect(meu.opcaoId).toBeNull();
+    expect(doLuan.podeTirar).toBe(false);
+    expect((await erroDe(api.tirarAnexoDoCampo(horizonte.id, doLuan.id))).status).toBe(403);
+    const sem = await api.tirarAnexoDoCampo(horizonte.id, meu.id);
+    expect(sem.anexosDosCampos.some((a) => a.id === meu.id)).toBe(false);
+    expect(sem.historico.at(-1)!.texto).toBe('tirou do operador.png de Lista de ramais (LinePBX)');
+  });
+
+  it('o painel pelo modelo e as regras dos campos (o produto dos módulos, o mesmo nome em produtos diferentes)', async () => {
+    await entrar('admin');
+    const novo = await api.salvarPainel(null, { nome: 'Implantação Filiais', sigla: 'IMF', cor: 'roxo', acesso: 'todos', tipo: 'gestao', modelo: 'implantacao', ajustes: {} });
+    expect(novo.etapas.map((e) => [e.nome, !!e.ligaNoCadastro])).toEqual([['Stand By', false], ['Curadoria', false], ['Configuração', false], ['Testes', false], ['Concluído', false], ['Implantado', true]]);
+    expect(novo.ajustes.contaPrazo).toBe(false);
+    const op = await api.opcoes();
+    expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(19);
+    const pbx = produto(op, 'LinePBX');
+    const chat = produto(op, 'LineChat');
+    // os módulos precisam do produto
+    expect((await erroDe(api.salvarCampo(novo.id, null, { nome: 'Módulos extras', tipo: 'modulos' }))).status).toBe(400);
+    // o mesmo nome, em outro produto, pode; no mesmo produto, não
+    const outro = await api.salvarCampo(novo.id, null, { nome: 'Observações', tipo: 'texto', produtoId: chat, parte: 'Curadoria' });
+    await api.salvarCampo(novo.id, null, { nome: 'Observações', tipo: 'texto', produtoId: pbx, parte: 'Curadoria' });
+    expect((await erroDe(api.salvarCampo(novo.id, null, { nome: 'Observações', tipo: 'texto', produtoId: chat }))).status).toBe(409);
+    expect(outro).toMatchObject({ parte: 'Curadoria', produtoId: chat });
+    // o produto dos módulos não muda depois de criado
+    const mods = (await api.opcoes()).campos.find((c) => c.painelId === novo.id && c.tipo === 'modulos' && c.produtoId === chat)!;
+    expect((await erroDe(api.salvarCampo(novo.id, mods.id, { nome: mods.nome, tipo: 'modulos', produtoId: pbx }))).status).toBe(400);
+    // a etapa de Vendas só abre a implantação num painel de Gestão
+    const com = painel(op, 'COM');
+    const etapas = com.etapas.map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado ?? null, abreImplantacao: e.abreImplantacao ?? null }));
+    const errado = etapas.map((e) => (e.nome === 'Qualificação' ? { ...e, abreImplantacao: com.id } : e));
+    expect((await erroDe(api.salvarEtapas(com.id, { etapas: errado, destino: {} }))).status).toBe(400);
+  });
+
+  it('o CNPJ de um cliente que está na lixeira: a negociação não cria outro (restaurar antes)', async () => {
+    const luan = await entrar('admin');
+    const op = await api.opcoes();
+    const lixo = await demoApi.clients.create({ tradeName: 'Empresa da Lixeira', legalName: 'Lixeira LTDA', cnpj: '34.567.890/0001-30' });
+    await demoApi.clients.remove(lixo.id);
+    const r = await api.criar({ painelId: painel(op, 'COM').id, titulo: 'Volta da Lixeira', empresa: 'Empresa da Lixeira', produtos: [produto(op, 'LinePBX')], responsavelId: luan.id });
+    const e = await erroDe(api.mover(r.id, { etapaId: etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).id, implantacao: { nomeFantasia: 'Empresa da Lixeira', razaoSocial: 'Lixeira LTDA', cnpj: '34567890000130' } }));
+    expect(e.message).toMatch(/está na lixeira/);
+  });
 });

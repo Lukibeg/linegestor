@@ -14,9 +14,9 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
+  AnexosDoCampoSchema, AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
   FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, LigarChamadoSchema,
-  ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PosicaoNoQuadroSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
+  AoMoverSchema, ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PosicaoNoQuadroSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
 import { BadRequest } from '../plugins/errors.js';
@@ -56,6 +56,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   /** Registra na auditoria (quando algo mudou) e devolve a ficha atualizada. */
   const fichaDepois = async (req: FastifyRequest, r: svc.Feito, acao: 'update' | 'delete' | 'restore' = 'update') => {
     if (r.resumo) await app.audit(req, { action: acao, entityType: 'ticket', entityId: r.id, summary: r.resumo, before: r.antes, after: r.depois });
+    // a implantação (2.3): o cliente criado, o card aberto e o que ligou no cadastro, cada um na sua linha
+    for (const x of r.auditoriaExtra ?? []) await app.audit(req, { action: x.action, entityType: x.entityType, entityId: x.entityId, summary: x.summary, after: x.after });
     if (r.erro) throw new BadRequest(r.erro);
     return svc.fichaDoChamado(app, ator(req), r.id);
   };
@@ -186,6 +188,15 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.post('/chamados/:id/mover', { ...trabalhar, schema: { tags, summary: 'Mover para outra etapa (escalonar e voltar de nível pedem o motivo)', params: Id, body: MoverSchema } },
     async (req) => fichaDepois(req, await svc.mover(app, ator(req), req.params.id, req.body)));
 
+  // o que a etapa faz ao chegar (2.3, a implantação): a janela mostra antes de mover
+  app.get('/chamados/:id/ao-mover', {
+    ...trabalhar,
+    schema: {
+      tags, params: Id, querystring: AoMoverSchema,
+      summary: 'O que a etapa vai fazer ao chegar (a implantação: o cliente, os produtos e o card; o Implantado: o que liga no cadastro). Não grava nada.',
+    },
+  }, async (req) => svc.oQueAEtapaFaz(app, ator(req), req.params.id, req.query));
+
   // a NIA (2.1): o botão da ficha pede à IA do n8n para preencher — põe a etiqueta de pedir, como a equipe fazia à mão
   app.post('/chamados/:id/nia', {
     ...trabalhar,
@@ -219,6 +230,15 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.delete('/chamados/:id/anotacoes/:notaId', { ...trabalhar, schema: { tags, summary: 'Apagar uma anotação (a sua, ou qualquer uma se você cuida dos chamados)', params: Id.extend({ notaId: z.string().min(1) }) } },
     async (req) => fichaDepois(req, await svc.apagarAnotacao(app, ator(req), req.params.id, req.params.notaId), 'delete'));
+
+  // 2.3: os anexos dos campos do card e das caixinhas
+  app.post('/chamados/:id/campos/:campoId/anexos', {
+    ...trabalhar, schema: { tags, summary: 'Anexar num campo do card ou numa caixinha (opcaoId): até 5 arquivos de 10 MB por vez, até 20 em cada', params: Id.extend({ campoId: z.string().min(1) }), body: AnexosDoCampoSchema },
+  }, async (req) => fichaDepois(req, await svc.anexarNoCampo(app, ator(req), req.params.id, req.params.campoId, req.body)));
+
+  app.delete('/chamados/:id/anexos/:anexoId', {
+    ...trabalhar, schema: { tags, summary: 'Tirar o anexo de um campo (o seu, ou qualquer um se você cuida dos chamados)', params: Id.extend({ anexoId: z.string().min(1) }) },
+  }, async (req) => fichaDepois(req, await svc.tirarAnexoDoCampo(app, ator(req), req.params.id, req.params.anexoId), 'delete'));
 
   app.post('/chamados/:id/ligacoes', { ...trabalhar, schema: { tags, summary: 'Ligar a outro chamado (relacionado, duplicado, repete)', params: Id, body: LigarChamadoSchema } },
     async (req) => fichaDepois(req, await svc.ligar(app, ator(req), req.params.id, req.body)));

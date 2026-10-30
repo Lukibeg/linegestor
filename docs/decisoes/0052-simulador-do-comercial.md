@@ -295,3 +295,49 @@ No documento de 23/10:
   simulação. O mesmo na lista das simulações.
 - **A mesma simulação em dois lugares** (a página e, por cima, a ficha com a simulação na janela): a página, sem
   nada por salvar, fica com o que a janela salvou — e não leva a versão antiga por cima depois.
+
+## Revisto no 2.3 (29/10/2026): o mês a mês sem as colunas
+
+Num comentário na prévia, sobre o gráfico do mês a mês: *"n quero mais esse gráfico em barras n"*. Avisado antes
+(desfaz as colunas do 2.0.2, pedidas por ele, e o conserto do 2.0.3), com a pergunta sobre a linha do acumulado, que
+fica embaixo: *"pode tirar e vc vai tirar apenas o de coluna, o de linha abaixo vai ficar"*.
+
+- **Saiu o gráfico de colunas** (o faturamento para cima, os custos para baixo e o ponto do lucro de cada mês) e,
+  com ele, o corte das colunas do 1º mês. O quadro Mês a mês fica com os totais do contrato, a **linha do
+  acumulado** (o pior momento e o mês em que a venda se paga, com a escala redonda de antes) e a tabela.
+- **O detalhe de cada mês** (cada parte do faturamento e dos custos, o lucro e o acumulado) continua no mouse sobre
+  a linha (ou no toque, no celular) e ganhou a tabela: **um clique na linha do mês abre o detalhe embaixo dela**;
+  outro clique fecha. Passar o mouse na linha da tabela marca o mês no gráfico.
+- **A tabela fica sempre aberta** (saiu o "Esconder a tabela"). No celular, a tabela corre para o lado e o detalhe
+  fica parado, na largura da tela.
+- A conta (`MesDoContrato`, o Excel) não muda.
+
+## Revisto no 2.3 (29/10/2026): a simulação preenche o card sozinha
+
+O Luan, com o print de uma simulação com o LinePBX e o LineChat: *"Quando eu colocar os valores na simulação ele já
+deve ir para o card do cliente já preenchendo nos campos de valores, mas ai no caso eu teria que preencher no
+simulador a mensalidade do line pbx e do line chat pq já é separado la no [card]"*. Avisado antes (desfaz a janela
+do **Levar para a COM-x**, que mostrava o antes e o depois e pedia o ok), com a proposta; ele: *"nesse caso,
+continua a marcada com principal"* (sobre duas simulações na mesma negociação), *"n precisa registrar as mudanças"* e
+*"de resto pode seguir"*.
+
+- **A principal da negociação** (`sales_simulations.is_main`, migração 0030): cada negociação com simulações tem
+  uma. A primeira ligada é a principal; as outras não mexem no card até o **Tornar a principal** (no alto da
+  simulação, ao lado do chip da negociação, e na ficha, em Simulações). A principal que vai para a lixeira ou
+  desliga passa o lugar para a mexida por último (sem mudar o card); a que volta da lixeira, e a cópia do
+  Duplicar, não tomam o lugar. Na migração, a principal de cada negociação é a mexida por último (a que a margem
+  das ganhas já usava); a margem das ganhas passa a usar a principal.
+- **O card se preenche sozinho**: a cada salvamento da principal (e ao marcá-la), o cenário principal vai para o card
+  — a mensalidade (com o aluguel), a ativação (com a venda dos aparelhos), o valor de cada produto (com o **Por
+  produto**: o LinePBX e o LineChat separados, como o card) e os produtos do cenário (`valoresParaANegociacao`, a
+  conta que era a do Levar). Sem linha no histórico da negociação (*"n precisa registrar as mudanças"*); a
+  simulação salva continua na auditoria, e marcar a principal também ("Marcou a simulação X como a principal da
+  COM-12"). Não muda: a negociação ganha, perdida ou na lixeira, nem a de um painel que a pessoa não vê. O que
+  alguém mudar à mão no card é trocado no próximo salvamento da principal.
+- **O botão Levar saiu**, com a janela dele. No alto da simulação, o chip **principal · preenche o card**.
+- **O Helena numa linha só** (29/10, no mesmo dia: *"aqui sobre o helena vc pode colocar só o valor total do helena n
+  precisava colocar o pacote base + os usuários abaixo, vc poderia colocar só helena"*; avisado de que mexia nos
+  "custos um a um" do 2.0.3: *"esse especifico vc pode agrupar"*): no custo do mês (Os números) e no detalhe de cada
+  mês (o Mês a mês), as linhas do LineChat (a licença, os usuários, os canais, os agentes, os contatos e a
+  transcrição) viram uma, **Helena**, com o total, no lugar da primeira. Os outros custos continuam um a um; o quadro
+  do LineChat nos Custos mensais e o Excel continuam linha a linha.

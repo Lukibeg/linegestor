@@ -251,6 +251,20 @@ export function lerLinhaDoHelena(texto: string, etapas?: ReadonlySet<string>): L
 /** O nome para comparar ("Visita/Apresentação Marcada" = "visita apresentacao marcada"). */
 export const chaveDoNome = (s: string) => paraBusca(s).replace(/[^a-z0-9]+/g, ' ').trim();
 
+/** A explicação do campo que o Trazer cria no painel (2.0.3). */
+export const DICA_DO_CAMPO_DO_HELENA = 'Trazido do Helena.';
+/**
+ * A parte da ficha dos campos que vieram do Helena num painel de Vendas (2.3, o Luan: "esses pontos aqui que vieram do
+ * helena eles são importantes, quero que eles fiquem … só pra eles, chamado detalhes da proposta, e … no painel
+ * principal"): as licenças, os canais, a faixa numérica… num cartão no meio da ficha da negociação.
+ */
+export const PARTE_DOS_CAMPOS_DO_HELENA = 'Detalhes da proposta';
+/**
+ * O campo do Comercial do Helena que o Gestor deixou de usar (2.3, o Luan: "já tem essa parte de contatos na lateral,
+ * ent n precisa dessa"): no painel de Vendas que não o tem, o Trazer não cria; no que ainda o tem (desativado), usa.
+ */
+export const CAMPO_QUE_SAIU_DO_COMERCIAL = 'Contatos principais';
+
 /** O título sem o "(Cópia)" que o Helena põe no card duplicado. */
 export function tituloDoHelena(titulo: string): string {
   return titulo.replace(/\s*\((?:c[óo]pia|copy)\)/gi, ' ').replace(/\s+/g, ' ').trim() || titulo.trim();
@@ -922,6 +936,10 @@ export function planoDosCampos(
       continue;
     }
     if (doSistema(nome)) { out.push({ ...base, acao: 'fora', tipo: 'texto', motivo: 'tem o nome de um campo do sistema' }); continue; }
+    if (!gestao && chaveDoNome(nome) === chaveDoNome(CAMPO_QUE_SAIU_DO_COMERCIAL)) {
+      out.push({ ...base, acao: 'fora', tipo: 'texto', motivo: 'o contato da negociação é o da lateral (o principal e o Mais um contato)' });
+      continue;
+    }
     if (!usado) { out.push({ ...base, acao: 'fora', tipo: 'texto', motivo: MOTIVO_SEM_USO }); continue; }
     if (livres <= 0) { out.push({ ...base, acao: 'fora', tipo: 'texto', motivo: `o painel chegou a ${MAX_CAMPOS_DO_PAINEL} campos` }); continue; }
     livres--;
@@ -1237,7 +1255,7 @@ export function camposDeFabrica(): CampoPersonalizado[] {
   return CAMPOS_DO_PAINEL_DE_VENDAS.map((c, i) => ({
     id: `fabrica:${c.nome}`, painelId: '', nome: c.nome, tipo: c.tipo, dica: c.dica, ativo: true, ordem: i,
     opcoes: c.opcoes.map((nome) => ({ id: `fabrica:${c.nome}:${nome}`, nome, ativa: true })),
-    incluirNaHora: c.tipo === 'lista' && !!c.incluirNaHora,
+    incluirNaHora: c.tipo === 'lista' && !!c.incluirNaHora, parte: null, produtoId: null,
   }));
 }
 

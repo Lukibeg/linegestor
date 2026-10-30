@@ -22,6 +22,7 @@ import {
   compararNoQuadro, compararNoQuadroDeGestao, compararNoQuadroDeVendas, compararUrgencia, MoverSchema, ordemAMao, ordemDepoisDeArrastar, painelComOrdemAMao, PosicaoNoQuadroSchema,
   AJUSTES_DO_PAINEL_DE_VENDAS, type CampoDoSistema,
   NOME_CONVERSA, sessaoDaConversa,
+  EmailDoContatoSchema, OutroContatoSchema, emailValido, outrosContatosLimpos, textoDoOutroContato,
 } from './atendimento.js';
 
 describe('o cargo do contato vem da lista (2.0.2, decisão 0053)', () => {
@@ -202,8 +203,8 @@ describe('as etapas', () => {
     expect(ETAPAS_DO_PAINEL_NOVO.map((e) => e.nome)).toEqual(['Novo', 'Em andamento', 'Resolvido', 'Fechado']);
     const ok = PainelGravarSchema.parse({ ...painel, etapas: [{ nome: ' Pedido ', tipo: 'entrada' }, { nome: 'Encerrado', tipo: 'fechado' }] });
     expect(ok.etapas).toEqual([
-      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], resultado: null, avisar: [] },
-      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: null, avisar: [] },
+      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], resultado: null, avisar: [], abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false },
+      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: null, avisar: [], abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false },
     ]);
     expect(mensagem(PainelGravarSchema.safeParse({ ...painel, etapas: [{ nome: 'Pedido', tipo: 'entrada' }, { nome: 'Fazendo', tipo: 'andamento' }] })))
       .toBe('Pelo menos uma etapa precisa fechar o chamado');
@@ -221,7 +222,7 @@ describe('as etapas', () => {
 
 describe('os campos de cada painel', () => {
   const lista: CampoPersonalizado = {
-    id: 'sis', painelId: 'dev', nome: 'Sistema', tipo: 'lista', dica: null, ativo: true, ordem: 0, incluirNaHora: false,
+    id: 'sis', painelId: 'dev', nome: 'Sistema', tipo: 'lista', dica: null, ativo: true, ordem: 0, incluirNaHora: false, parte: null, produtoId: null,
     opcoes: [{ id: 'o1', nome: 'LinePBX', ativa: true }, { id: 'o2', nome: 'LineChat', ativa: true }, { id: 'o3', nome: 'Fortics', ativa: false }],
   };
   const varios: CampoPersonalizado = { ...lista, id: 'mods', nome: 'Módulos', tipo: 'lista_varios' };
@@ -390,7 +391,7 @@ const cartao = (d: Partial<CartaoChamado> = {}, relato = 'o cliente disse que o 
     prazos: { resposta: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' }, solucao: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' } },
     pai: null, problema: null, filhos: { total: 0, abertos: 0 }, incidentes: 0, anotacoes: 0, origem: 'manual', reaberto: 0,
     criadoEm: '2026-10-13T12:00:00.000Z', atualizadoEm: '2026-10-13T12:00:00.000Z', ultimaAtividadeEm: '2026-10-13T12:00:00.000Z', resolvidoEm: null, fechadoEm: null,
-    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ordemNoQuadro: null, ...d,
+    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ordemNoQuadro: null, partes: [], ...d,
   };
   return { ...c, busca: textoDeBusca(c, [relato]) };
 };
@@ -760,5 +761,42 @@ describe('a ordem à mão no quadro (2.1; no painel de Gestão sem prazo, 2.1.3)
     expect(MoverSchema.parse({ etapaId: 'e' }).depoisDe).toBeUndefined();
     expect(MoverSchema.parse({ etapaId: 'e', depoisDe: null }).depoisDe).toBeNull();
     expect(MoverSchema.parse({ etapaId: 'e', depoisDe: 'x' }).depoisDe).toBe('x');
+  });
+});
+
+describe('o e-mail dos contatos (2.3, o Luan: "todos os contatos da plataforma … a opção de eu colocar o email dele tbm")', () => {
+  it('opcional; minúsculo; no jeito nome@empresa.com.br', () => {
+    expect(EmailDoContatoSchema.parse(undefined)).toBeNull();
+    expect(EmailDoContatoSchema.parse('  ')).toBeNull();
+    expect(EmailDoContatoSchema.parse(' Maria@Aurora.com.BR ')).toBe('maria@aurora.com.br');
+    expect(EmailDoContatoSchema.safeParse('maria@aurora').success).toBe(false);
+    expect(EmailDoContatoSchema.safeParse('maria aurora.com').error?.issues[0]?.message).toBe('E-mail inválido: use o jeito nome@empresa.com.br.');
+    expect(emailValido('a@b.co')).toBe(true);
+    expect(emailValido('a@b.c')).toBe(false);
+  });
+  it('o chamado: abrir e editar levam o e-mail; o contato pedido para abrir vale também só com o e-mail', () => {
+    const base = { painelId: 'p', titulo: 'Ramal mudo' };
+    expect(ChamadoCriarSchema.parse({ ...base, contatoEmail: 'Rosa@Estrela.com.br' }).contatoEmail).toBe('rosa@estrela.com.br');
+    expect(ChamadoCriarSchema.parse(base).contatoEmail).toBeNull();
+    expect(ChamadoCriarSchema.safeParse({ ...base, contatoEmail: 'rosa' }).success).toBe(false);
+    expect(ChamadoAlterarSchema.parse({}).contatoEmail).toBeUndefined();
+    expect(ChamadoAlterarSchema.parse({ contatoEmail: null }).contatoEmail).toBeNull();
+    const pede = { obrigatoriosAoAbrir: ['contato' as const] };
+    expect(faltaParaAbrir(dados(), pede)).toEqual(['contato']);
+    expect(faltaParaAbrir(dados({ contatoEmail: 'rosa@estrela.com.br' }), pede)).toEqual([]);
+  });
+  it('os outros contatos: o nome, o WhatsApp ou o e-mail; sem repetir (o mesmo WhatsApp ou o mesmo e-mail, também o do principal); a lista de antes não muda', () => {
+    expect(OutroContatoSchema.parse({ email: 'Joao@Norte.com.br' })).toEqual({ nome: null, telefone: null, email: 'joao@norte.com.br' });
+    expect(OutroContatoSchema.safeParse({ nome: '', telefone: null, email: '' }).error?.issues[0]?.message).toBe('Escreva o nome, o WhatsApp ou o e-mail do contato.');
+    const principal = { nome: 'Maria', telefone: '5571999990000', email: 'maria@aurora.com.br' };
+    expect(outrosContatosLimpos([
+      { nome: 'João', telefone: null, email: 'JOAO@norte.com.br' }, { nome: 'João de novo', telefone: null, email: 'joao@norte.com.br' },
+      { nome: 'Maria (e-mail)', telefone: null, email: 'maria@aurora.com.br' }, { nome: 'Rita', telefone: '5571988887777' },
+    ], principal)).toEqual([{ nome: 'João', telefone: null, email: 'joao@norte.com.br' }, { nome: 'Rita', telefone: '5571988887777' }]);
+    expect(textoDoOutroContato({ nome: 'João', telefone: '5571988887777', email: 'joao@norte.com.br' })).toBe('João (71) 98888-7777 joao@norte.com.br');
+  });
+  it('a busca acha pelo e-mail do contato', () => {
+    const c = cartao({ contato: { nome: 'Maria', telefone: null, email: 'maria@aurora.com.br' } });
+    expect(c.busca).toContain('maria@aurora.com.br');
   });
 });

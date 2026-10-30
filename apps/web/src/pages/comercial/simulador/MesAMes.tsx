@@ -5,23 +5,27 @@
  * 5.000 — 3 mil de ativação e 2 mil de mensalidade —, e a mesma coisa com os custos"; e "o primeiro mês de
  * pagamento vai ser o primeiro mês de faturamento também; quero esse gráfico junto à tabela na parte de cima".
  *
- * Em cima, os totais do contrato (o faturamento, os custos, o lucro e quando a venda se paga). No gráfico, uma
- * coluna por mês: o faturamento para cima, os custos para baixo e um ponto no lucro do mês; embaixo, a linha do
+ * Em cima, os totais do contrato (o faturamento, os custos, o lucro e quando a venda se paga). Depois, a linha do
  * acumulado (verde acima do zero, vermelho abaixo), com o pior momento e o mês em que a venda se paga. Passar o
  * mouse — ou tocar, no celular — num mês mostra o detalhe dele: cada parte do faturamento e dos custos, o lucro
- * e o acumulado. A tabela tem todos os meses (passar o mouse numa linha marca o mês no gráfico). O 1º mês é o da
- * assinatura: a ativação (ou a 1ª parcela), a 1ª mensalidade, o que é pago de uma vez e os custos do mês. As
- * colunas dele costumam ser bem maiores que as outras: passando da escala, são cortadas e dizem o valor.
+ * e o acumulado. A tabela, sempre aberta, tem todos os meses: passar o mouse numa linha marca o mês no gráfico, e
+ * um clique abre o detalhe do mês embaixo dela. O 1º mês é o da assinatura: a ativação (ou a 1ª parcela), a 1ª
+ * mensalidade, o que é pago de uma vez e os custos do mês.
+ *
+ * O gráfico de colunas (o faturamento para cima, os custos para baixo e o ponto do lucro de cada mês) saiu no 2.3
+ * (o Luan, 29/10: "n quero mais esse gráfico em barras n"; e, perguntado, "vc vai tirar apenas o de coluna, o de
+ * linha abaixo vai ficar"). O detalhe de cada mês, que vinha no mouse sobre a coluna, vem na linha do acumulado e
+ * na tabela.
  *
  * O conserto do 2.0.3 (o Luan, 21/10: "esse gráfico aqui ta meio bugado, dê uma melhorada"): a escala era o maior e o
  * menor valor dos meses ("4,9 mil", "−6 mil"), com as colunas grudadas na borda — agora vai em números redondos
  * (`escalaRedonda`), com as marcas no meio; o valor da coluna cortada ficava ao lado dela, e a coluna do mês seguinte,
  * desenhada depois, o cobria ("R$ 9," e "−R$ 1") — agora fica numa faixa só dele, acima (ou abaixo) do gráfico,
  * desenhado por último; e a marca do corte, um traço branco inclinado que passava da coluna, virou um vão reto na
- * largura da coluna.
+ * largura da coluna. (As colunas saíram no 2.3; a escala redonda continua no acumulado.)
  */
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { textoDoSePagaEm, type ContasDoCenario, type MesDoContrato } from '@gestor/shared';
 import { reaisLimpo } from './comum.js';
 
@@ -110,9 +114,6 @@ export function escalaRedonda(max: number, min: number, alvo: number, justa = fa
 /** De quantos em quantos meses o eixo escreve o número. */
 const passoDoEixo = (n: number) => (n <= 13 ? 1 : n <= 25 ? 3 : n <= 49 ? 6 : 12);
 
-/** O 1º mês corta quando passa deste tanto das outras colunas (senão, entra na escala). */
-const CORTE = 1.8;
-
 /** O detalhe de um mês: o faturamento e os custos, parte a parte, o lucro e o acumulado. */
 function DetalheDoMes({ m, pagou, deQual }: { m: MesDoContrato; pagou: number | null; deQual: (p: { produto?: string | null }) => string }) {
   return (
@@ -144,7 +145,10 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
   const deQual = (p: { produto?: string | null }) => (nomeDoProduto && p.produto ? ` · ${nomeDoProduto(p.produto)}` : '');
   const [caixa, W] = useLargura(720);
   const [mes, setMes] = useState<number | null>(null);
-  const [tabela, setTabela] = useState(true);
+  // o mês aberto na tabela (um clique na linha abre o detalhe embaixo dela; outro fecha)
+  const [aberto, setAberto] = useState<number | null>(null);
+  // o detalhe por cima do gráfico só quando o mês foi escolhido no gráfico (na tabela, ele abre embaixo da linha)
+  const [noGrafico, setNoGrafico] = useState(false);
   const meses = k.meses;
   const n = Math.max(1, meses.length);
   const totais = useMemo(() => ({
@@ -154,42 +158,18 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
   const estreito = W < 560;
   const esq = estreito ? 54 : 72;
   const dir = 12;
-  const topo = 24;
-  const H1 = estreito ? 170 : 210;
-  const meio = 34;
-  const H2 = estreito ? 120 : 150;
+  const H2 = estreito ? 150 : 190;
   const base = 26;
   const banda = Math.max(1, W - esq - dir) / n;
   const x = (i: number) => esq + (i + 0.5) * banda;
   const pagou = k.sePagaEm.tipo === 'mes' && !k.sePagaEm.depoisDoPrazo ? k.sePagaEm.mes : null;
 
-  // o faturamento (para cima) e os custos (para baixo): a escala é a dos outros meses quando o 1º passa muito deles,
-  // em números redondos (antes eram o maior e o menor valor, e as colunas encostavam na borda)
-  const fat = meses.map((m) => m.faturamento);
-  const cus = meses.map((m) => m.custos);
-  const outrosFat = n > 1 ? Math.max(0, ...fat.slice(1)) : fat[0] ?? 0;
-  const outrosCus = n > 1 ? Math.max(0, ...cus.slice(1)) : cus[0] ?? 0;
-  const cortaO1 = n > 1 && ((fat[0] ?? 0) > CORTE * Math.max(1, outrosFat) || (cus[0] ?? 0) > CORTE * Math.max(1, outrosCus));
-  const e1 = escalaRedonda(cortaO1 ? outrosFat : Math.max(outrosFat, fat[0] ?? 0), -(cortaO1 ? outrosCus : Math.max(outrosCus, cus[0] ?? 0)), estreito ? 4 : 5);
-  const { hi, lo } = e1;
-  const corta = (v: number) => v > hi || v < lo;
-  const dentro = (v: number) => Math.min(hi, Math.max(lo, v));
-  // o valor da coluna cortada vai numa faixa só dele, acima (o faturamento) ou abaixo (os custos) do gráfico: lá
-  // nenhuma coluna o cobre (antes ficava ao lado da coluna, e a do mês seguinte, desenhada depois, cobria o texto)
-  const cortaCima = meses.some((m) => corta(m.faturamento));
-  const cortaBaixo = meses.some((m) => corta(-m.custos));
-  const FAIXA_DO_CORTE = 18;
-  const ar = 6;
-  const p1 = topo + (cortaCima ? FAIXA_DO_CORTE : ar);
-  const y1 = (v: number) => p1 + ((hi - v) / (hi - lo)) * H1;
-  const fim1 = p1 + H1;
-
-  // o acumulado, também em números redondos
+  // o acumulado, em números redondos
   const serie = meses.map((m) => m.acumulado);
   const max2 = Math.max(0, ...serie);
   const min2 = Math.min(0, ...serie);
   const e2 = escalaRedonda(max2, min2, estreito ? 3 : 4, true);
-  const topo2 = fim1 + (cortaBaixo ? FAIXA_DO_CORTE : ar) + meio;
+  const topo2 = 26;
   const y2 = (v: number) => topo2 + ((e2.hi - v) / (e2.hi - e2.lo || 1)) * H2;
   const H = topo2 + H2 + base;
   const caminho = serie.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y2(v).toFixed(1)}`).join(' ');
@@ -204,10 +184,10 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
     const r = e.currentTarget.getBoundingClientRect();
     const i = Math.floor((e.clientX - r.left - esq) / banda);
     setMes(i >= 0 && i < n ? i : null);
+    setNoGrafico(true);
   };
   const fim = serie[n - 1] ?? 0;
-  const escolhido = mes != null ? meses[mes] ?? null : null;
-  const w = Math.max(1.5, banda * (n > 40 ? 0.7 : 0.6));
+  const escolhido = mes != null && noGrafico ? meses[mes] ?? null : null;
 
   return (
     <section className="card p-4 min-w-0" aria-label="O mês a mês do contrato" id="simulador-mes-a-mes">
@@ -246,50 +226,8 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
             <clipPath id="mam-acima"><rect x="0" y="0" width={W} height={Math.max(0, y2(0))} /></clipPath>
             <clipPath id="mam-abaixo"><rect x="0" y={y2(0)} width={W} height={Math.max(0, H - y2(0))} /></clipPath>
           </defs>
-          {/* o mês escolhido, nos dois gráficos */}
-          {mes != null && <rect x={x(mes) - banda / 2} y={p1 - 4} width={banda} height={topo2 + H2 - p1 + 8} fill="var(--ink)" opacity="0.06" rx="3" />}
-
-          {/* o faturamento e os custos */}
-          <text x={esq} y={13} fontSize="11.5" fontWeight="600" fill="var(--ink-2)">Faturamento e custos de cada mês (R$)</text>
-          {!estreito && (
-            <g fontSize="11" fill="var(--ink-2)">
-              <rect x={W - dir - 252} y={4} width="10" height="10" rx="2" fill="var(--accent)" /><text x={W - dir - 238} y={13}>faturamento</text>
-              <rect x={W - dir - 162} y={4} width="10" height="10" rx="2" fill="var(--signal)" /><text x={W - dir - 148} y={13}>custos</text>
-              <circle cx={W - dir - 95} cy={9} r="4" fill="var(--ok)" stroke="var(--surface)" strokeWidth="1.5" /><text x={W - dir - 87} y={13}>lucro do mês</text>
-            </g>
-          )}
-          {e1.marcas.map((v) => (
-            <line key={`a${v}`} x1={esq} x2={W - dir} y1={y1(v)} y2={y1(v)} stroke={v === 0 ? 'var(--line-strong)' : 'var(--line)'} />
-          ))}
-          {semEncostar([0, ...e1.marcas], y1).map((v) => (
-            <text key={`ra${v}`} x={esq - 6} y={y1(v) + 4} fontSize="11" fill="var(--muted)" textAnchor="end">{noEixo(v)}</text>
-          ))}
-          {meses.map((m, i) => {
-            const zero = y1(0);
-            const cimaV = dentro(m.faturamento); const baixoV = dentro(-m.custos);
-            const opacidade = mes == null || mes === i ? 1 : 0.5;
-            return (
-              <g key={m.mes} opacity={opacidade}>
-                {m.faturamento > 0 && <rect x={x(i) - w / 2} y={y1(cimaV)} width={w} height={Math.max(1, zero - y1(cimaV))} rx={Math.min(2, w / 3)} fill="var(--accent)" />}
-                {m.custos > 0 && <rect x={x(i) - w / 2} y={zero} width={w} height={Math.max(1, y1(baixoV) - zero)} rx={Math.min(2, w / 3)} fill="var(--signal)" />}
-                {/* a marca do corte: um vão reto na largura da coluna, perto da ponta */}
-                {corta(m.faturamento) && <rect x={x(i) - w / 2} y={y1(hi) + 5} width={w} height={2.5} fill="var(--surface)" />}
-                {corta(-m.custos) && <rect x={x(i) - w / 2} y={y1(lo) - 7.5} width={w} height={2.5} fill="var(--surface)" />}
-              </g>
-            );
-          })}
-          {/* o lucro de cada mês: o ponto (no 1º mês, quando passa da escala, fica na borda) */}
-          {meses.map((m, i) => (
-            <circle key={`l${m.mes}`} cx={x(i)} cy={y1(dentro(m.lucro))} r={mes === i ? 5 : n > 40 ? 2.6 : 3.6}
-              fill={m.lucro < 0 ? 'var(--bad)' : 'var(--ok)'} stroke="var(--surface)" strokeWidth="1.5" />
-          ))}
-          {/* o valor da coluna cortada, na faixa dele (por último: nada o cobre); começa na coluna e corre para a direita */}
-          {meses.map((m, i) => (
-            <g key={`c${m.mes}`} fontSize="11" fontWeight="600" opacity={mes == null || mes === i ? 1 : 0.5}>
-              {corta(m.faturamento) && <text x={x(i) - w / 2} y={p1 - 5} fill="var(--accent-ink)">{exato(m.faturamento)}</text>}
-              {corta(-m.custos) && <text x={x(i) - w / 2} y={fim1 + 13} fill="var(--signal)">{exato(-m.custos)}</text>}
-            </g>
-          ))}
+          {/* o mês escolhido */}
+          {mes != null && <rect x={x(mes) - banda / 2} y={topo2 - 4} width={banda} height={H2 + 8} fill="var(--ink)" opacity="0.06" rx="3" />}
 
           {/* o acumulado */}
           <text x={esq} y={topo2 - 12} fontSize="11.5" fontWeight="600" fill="var(--ink-2)">Acumulado (R$)</text>
@@ -328,18 +266,15 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
       </div>
       {estreito && (
         <div className="mt-2 rounded-lg border border-line px-3 py-2 text-[12.5px]" role="status" id={escolhido ? 'simulador-mes-a-mes-valor' : undefined}>
-          {escolhido ? <DetalheDoMes m={escolhido} pagou={pagou} deQual={deQual} /> : <span className="text-muted">Toque num mês para ver o detalhe: o que entrou, o que saiu e o lucro.</span>}
+          {escolhido ? <DetalheDoMes m={escolhido} pagou={pagou} deQual={deQual} /> : <span className="text-muted">Toque num mês do gráfico, ou numa linha da tabela, para ver o detalhe: o que entrou, o que saiu e o lucro.</span>}
         </div>
       )}
       <p className="text-[12px] text-muted mt-2">
         O 1º mês é o da assinatura: nele entram a ativação (ou a 1ª parcela) e a 1ª mensalidade, e saem o que é pago de uma vez (os aparelhos à vista, a comissão da venda) e os custos do mês.
-        {cortaO1 && ' As colunas dele passam da escala: são cortadas e dizem o valor.'} {estreito ? '' : 'Passe o mouse num mês para ver o detalhe.'}
+        {estreito ? '' : ' Passe o mouse num mês do gráfico, ou clique numa linha da tabela, para ver o detalhe.'}
       </p>
-      <button type="button" className="btn-ghost btn-sm mt-2 -ml-2" onClick={() => setTabela((t) => !t)} aria-expanded={tabela} id="simulador-mes-a-mes-tabela-botao">
-        {tabela ? <ChevronUp size={14} /> : <ChevronDown size={14} />} {tabela ? 'Esconder a tabela' : 'Ver a tabela mês a mês'}
-      </button>
-      {tabela && (
-        <div className="mt-1 max-h-[340px] overflow-auto border border-line rounded-lg" id="simulador-mes-a-mes-tabela">
+      {/* a tabela, sempre aberta (2.3): um clique na linha abre o detalhe do mês embaixo dela */}
+      <div className="mt-3 max-h-[420px] overflow-auto border border-line rounded-lg" id="simulador-mes-a-mes-tabela">
           <table className="w-full text-[13px]">
             <thead className="sticky top-0 bg-surface-2 text-[12px] text-muted">
               <tr>
@@ -350,16 +285,35 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
                 <th className="text-right font-semibold px-3 py-1.5">Acumulado</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody onMouseLeave={() => { if (!noGrafico) setMes(null); }}>
               {meses.map((m, i) => (
-                <tr key={m.mes} className={`border-t border-line cursor-default ${mes === i ? 'bg-accent-soft' : ''}`} data-mes={m.mes}
-                  onMouseEnter={() => setMes(i)} onClick={() => setMes(i)}>
-                  <td className="px-3 py-1.5 text-ink-2 whitespace-nowrap">{m.mes === 1 ? '1 · a assinatura' : m.mes}{m.mes === pagou && <span className="ml-1.5 text-[11.5px] font-semibold text-ok">se paga</span>}</td>
+                <Fragment key={m.mes}>
+                <tr className={`border-t border-line cursor-pointer ${mes === i || aberto === i ? 'bg-accent-soft' : 'hover:bg-surface-2'}`} data-mes={m.mes}
+                  aria-expanded={aberto === i} title={aberto === i ? 'Fechar o detalhe do mês' : 'Ver o detalhe do mês'}
+                  onMouseEnter={() => { setMes(i); setNoGrafico(false); }} onClick={() => { setMes(i); setNoGrafico(false); setAberto((a) => (a === i ? null : i)); }}>
+                  <td className="px-3 py-1.5 text-ink-2 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">
+                      {aberto === i ? <ChevronDown size={13} className="text-muted" aria-hidden /> : <ChevronRight size={13} className="text-muted" aria-hidden />}
+                      {m.mes === 1 ? '1 · a assinatura' : m.mes}
+                    </span>
+                    {m.mes === pagou && <span className="ml-1.5 text-[11.5px] font-semibold text-ok">se paga</span>}
+                  </td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{reaisLimpo(m.faturamento)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{reaisLimpo(m.custos)}</td>
                   <td className={`px-3 py-1.5 text-right tabular-nums ${m.lucro < 0 ? 'text-bad' : ''}`}>{reaisLimpo(m.lucro)}</td>
                   <td className={`px-3 py-1.5 text-right tabular-nums font-semibold ${m.acumulado < 0 ? 'text-bad' : 'text-ink'}`}>{reaisLimpo(m.acumulado)}</td>
                 </tr>
+                {aberto === i && (
+                  <tr className="bg-surface-2/60" data-detalhe-do-mes={m.mes}>
+                    <td colSpan={5} className="px-3 py-2 text-[12.5px]">
+                      {/* no celular a tabela corre para o lado: o detalhe fica parado, na largura da tela */}
+                      <div className={estreito ? 'sticky left-3' : 'max-w-[420px] ml-auto'} style={estreito ? { width: Math.max(220, W - 26) } : undefined}>
+                        <DetalheDoMes m={m} pagou={pagou} deQual={deQual} />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
             <tfoot className="sticky bottom-0 bg-surface-2">
@@ -372,8 +326,7 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
               </tr>
             </tfoot>
           </table>
-        </div>
-      )}
+      </div>
     </section>
   );
 }

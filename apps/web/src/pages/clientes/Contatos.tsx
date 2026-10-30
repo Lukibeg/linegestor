@@ -95,12 +95,12 @@ export function ContatosDoCliente({ c }: { c: ClientFull }) {
 }
 
 /**
- * Incluir ou editar um contato do cliente. `inicial`: o que já veio escrito (o nome e o WhatsApp do
- * Abrir chamado, da conversa do LineChat). Salvo, devolve o contato (o Abrir chamado já o escolhe).
+ * Incluir ou editar um contato do cliente. `inicial`: o que já veio escrito (o nome, o WhatsApp e o e-mail do
+ * Abrir chamado e da ficha, da conversa do LineChat). Salvo, devolve o contato (o Abrir chamado já o escolhe).
  */
 export function JanelaContato({ clienteId, clienteNome, contato, inicial, onFechar, onSalvo }: {
   clienteId: string; clienteNome: string; contato: ContatoDoCliente | null;
-  inicial?: { nome?: string | null; whatsapp?: string | null };
+  inicial?: { nome?: string | null; whatsapp?: string | null; email?: string | null };
   onFechar: () => void; onSalvo: (c: ContatoDoCliente) => void;
 }) {
   const toast = useToast();
@@ -111,7 +111,7 @@ export function JanelaContato({ clienteId, clienteNome, contato, inicial, onFech
   const [f, setF] = useState({
     nome: contato?.nome ?? inicial?.nome ?? '',
     whatsapp: contato?.whatsapp ? telefoneLegivel(contato.whatsapp) : inicial?.whatsapp ?? '',
-    email: contato?.email ?? '',
+    email: contato?.email ?? inicial?.email ?? '',
     cargo: contato?.cargo ?? '',
     ativo: contato?.ativo ?? true,
   });

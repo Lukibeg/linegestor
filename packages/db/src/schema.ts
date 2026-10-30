@@ -1530,6 +1530,21 @@ export const ticketStages = pgTable(
     notifyUserIds: text('notify_user_ids').array().notNull().default([]),
     /** No painel de Vendas: ganho ou perdido (a etapa final que diz como a negociação acabou); nas outras, nulo */
     outcome: text('outcome'),
+    /**
+     * No painel de Vendas (2.3): a negociação que chega aqui abre a implantação no painel com este id — cria o cliente (se
+     * ainda não é), põe os produtos no cadastro e abre o card. Nulo: nada.
+     */
+    opensPanelId: text('opens_panel_id').references((): AnyPgColumn => ticketPanels.id),
+    /**
+     * No painel de Gestão (2.3, o Implantado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos
+     * dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto".
+     */
+    activatesProducts: boolean('activates_products').notNull().default(false),
+    /**
+     * No painel de Vendas (2.3): a negociação vem para esta etapa sozinha quando o card da implantação chega na etapa que
+     * liga no cadastro (o Implantado). Uma por painel.
+     */
+    receivesImplementation: boolean('receives_implementation').notNull().default(false),
     createdAt: createdAt(),
     deletedAt: deletedAt(),
   },
@@ -1575,7 +1590,7 @@ export const ticketFields = pgTable(
     id: id(),
     panelId: text('panel_id').notNull().references(() => ticketPanels.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    /** texto | texto_longo | numero | data | sim_nao | lista | lista_varios */
+    /** texto | texto_longo | numero | data | sim_nao | lista | lista_varios | caixinhas | modulos (2.3) */
     kind: text('kind').notNull(),
     /** A explicação que aparece embaixo do campo (na ficha e no Abrir chamado) */
     help: text('help'),
@@ -1586,6 +1601,20 @@ export const ticketFields = pgTable(
      * (2.0.3, a Indicação do Comercial: "eu tenho que conseguir criar por aqui mesmo se quiser")
      */
     inlineOptions: boolean('inline_options').notNull().default(false),
+    /**
+     * A parte da ficha (2.3, a implantação: "Curadoria", "Configuração", "Testes"): com ela, o campo vai para o meio da ficha,
+     * junto dos outros da mesma parte. Nulo: na classificação (ou junto do relato, o texto longo), como sempre.
+     */
+    section: text('section'),
+    /** Só aparece quando o chamado tem este produto (2.3: o bloco do LineChat, o do LinePBX); os módulos são os dele */
+    productId: text('product_id').references(() => products.id),
+    /**
+     * O checklist dos módulos (2.3): o campo de módulos de onde vêm as opções — só os marcados lá (a Curadoria) aparecem
+     * aqui (a Configuração). Nulo: o campo é a escolha.
+     */
+    followsFieldId: text('follows_field_id').references((): AnyPgColumn => ticketFields.id, { onDelete: 'set null' }),
+    /** Recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha (os do modelo Implantação: os da Curadoria) */
+    acceptsAttachments: boolean('accepts_attachments').notNull().default(false),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
@@ -1621,13 +1650,15 @@ export const tickets = pgTable(
     contactName: text('contact_name'),
     /** O WhatsApp do contato, só dígitos com o 55 (para avisar o cliente) */
     contactPhone: text('contact_phone'),
+    /** O e-mail do contato (2.3, o Luan: "todos os contatos da plataforma quero que tenha a opção de eu colocar o email dele tbm") */
+    contactEmail: text('contact_email'),
     /** A sessão (conversa) do LineChat de onde o chamado veio (o robô, o botão) ou ligada à mão — o chamado ativo, 2.1 */
     sessionId: text('session_id'),
     /**
      * Os outros contatos do chamado (2.2, o Luan: "os cards permitem adicionar apenas um contato"): o nome e o WhatsApp de
      * cada um, além do principal (contact_name e contact_phone, que o aviso ao cliente, o robô e a NIA usam)
      */
-    otherContacts: jsonb('other_contacts').$type<Array<{ nome: string | null; telefone: string | null }>>().notNull().default([]),
+    otherContacts: jsonb('other_contacts').$type<Array<{ nome: string | null; telefone: string | null; email?: string | null }>>().notNull().default([]),
     /** As outras conversas (sessões) do LineChat ligadas ao chamado (2.2: "permitir colocar mais de uma sessão"), além da principal (session_id) */
     otherSessions: jsonb('other_sessions').$type<string[]>().notNull().default([]),
     /** manual | robo | botao | agendado | api */
@@ -1706,6 +1737,16 @@ export const tickets = pgTable(
      * apaga), e ele vai pela regra de sempre, antes dos arrumados.
      */
     boardPosition: integer('board_position'),
+    /**
+     * Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção: {campo: {opção: {porId, porNome, em}}}. O valor
+     * do campo (as marcadas) continua em `custom_fields`; desmarcar tira a marca.
+     */
+    fieldMarks: jsonb('field_marks').$type<Record<string, Record<string, { porId: string | null; porNome: string | null; em: string }>>>().notNull().default({}),
+    /**
+     * A negociação que abriu este card na implantação (2.3, a etapa que abre a implantação no painel de Vendas). Uma
+     * negociação abre um card só (fora da lixeira).
+     */
+    sourceTicketId: text('source_ticket_id').references((): AnyPgColumn => tickets.id),
     createdById: text('created_by_id').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1721,6 +1762,7 @@ export const tickets = pgTable(
     index('tickets_session_idx').on(t.sessionId),
     index('tickets_phone_idx').on(t.contactPhone),
     uniqueIndex('tickets_external_ref_uq').on(t.externalRef),
+    uniqueIndex('tickets_source_ticket_uq').on(t.sourceTicketId).where(sql`deleted_at is null`),
   ],
 );
 
@@ -1771,6 +1813,10 @@ export const ticketAttachments = pgTable(
     id: id(),
     ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
     noteId: text('note_id').references(() => ticketNotes.id, { onDelete: 'cascade' }),
+    /** o campo do card a que o anexo pertence (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs"); nulo: o da anotação */
+    fieldId: text('field_id').references(() => ticketFields.id, { onDelete: 'cascade' }),
+    /** a caixinha do campo (o id da opção, que vive no campo); nulo: o campo todo */
+    optionId: text('option_id'),
     fileName: text('file_name').notNull(),
     mimeType: text('mime_type').notNull(),
     sizeBytes: integer('size_bytes').notNull().default(0),
@@ -2084,6 +2130,11 @@ export const salesSimulations = pgTable(
     scenarios: jsonb('scenarios').notNull().default([]),
     /** O id do cenário principal: o que a lista e a negociação mostram */
     principal: text('principal').notNull(),
+    /**
+     * A principal da negociação ligada (2.3, migração 0030): a que preenche os valores do card, sozinha, a cada
+     * salvamento. Uma por negociação (a primeira ligada, até a pessoa marcar outra; sem ela, a mexida por último)
+     */
+    isMain: boolean('is_main').notNull().default(false),
     createdById: text('created_by_id').references(() => users.id),
     updatedById: text('updated_by_id').references(() => users.id),
     createdAt: createdAt(),

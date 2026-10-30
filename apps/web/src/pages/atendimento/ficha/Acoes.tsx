@@ -179,7 +179,10 @@ export function BarraDeAcoes() {
                         {faltam.length > 0 && filhos.length > 0 && ' '}
                         {filhos.length > 0 && <>Filhos em aberto: {filhos.join(', ')}.</>}
                       </span>
-                    ) : sentido === 'sobe' ? 'escalonar: pede o motivo' : sentido === 'desce' ? 'voltar de nível: pede o motivo' : undefined}>
+                    ) : sentido === 'sobe' ? 'escalonar: pede o motivo' : sentido === 'desce' ? 'voltar de nível: pede o motivo'
+                      // a implantação (2.3): o que a etapa faz ao chegar (a janela mostra antes)
+                      : painel?.tipo === 'vendas' && e.abreImplantacao ? 'abre o card da implantação (com o cliente e os produtos)'
+                        : painel?.tipo !== 'vendas' && e.ligaNoCadastro ? 'liga os produtos e os módulos no cadastro do cliente' : undefined}>
                     <span className="flex items-center gap-2">
                       <span className={atual ? 'font-semibold' : ''}>{nomeComNivel(e)}</span>
                       {sentido === 'sobe' && <ArrowUpRight size={13} className="text-muted" aria-label="sobe de nível" />}

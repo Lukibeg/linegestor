@@ -82,6 +82,8 @@ const DICA_DO_TIPO: Record<CampoPersonalizado['tipo'], (c: CampoPersonalizado) =
   sim_nao: () => 'Sim ou não.',
   lista: (c) => `Uma das opções: ${opcoesAtivas(c)}. A resposta enfeitada do menu também serve, se uma opção aparecer nela.`,
   lista_varios: (c) => `As opções, separadas por vírgula: ${opcoesAtivas(c)}.`,
+  caixinhas: (c) => `As caixinhas marcadas, separadas por ponto e vírgula: ${opcoesAtivas(c)}.`,
+  modulos: (c) => `Os módulos, separados por ponto e vírgula: ${opcoesAtivas(c)}.`,
 };
 const opcoesAtivas = (c: CampoPersonalizado) => c.opcoes.filter((o) => o.ativa).map((o) => o.nome).join(', ') || '(nenhuma ativa)';
 

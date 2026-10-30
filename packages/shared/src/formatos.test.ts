@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  cnpjFormatado, cnpjLimpo, cnpjValido,
+  cnpjEnquantoDigita, cnpjFormatado, cnpjLimpo, cnpjValido,
   didFormatado, didLimpo, didValido, gerarFaixaDids,
   macFormatado, macLimpo, macValido,
   paraCentavos, reais,
@@ -16,6 +16,13 @@ describe('CNPJ', () => {
   it('limpa e formata', () => {
     expect(cnpjLimpo('22.333.444/0001-81')).toBe('22333444000181');
     expect(cnpjFormatado('22333444000181')).toBe('22.333.444/0001-81');
+  });
+  it('formata enquanto se digita (2.3): só os números bastam', () => {
+    expect(['', '4', '45', '458', '45812', '458120', '45812033', '458120330', '458120330001', '4581203300017', '45812033000174', '458120330001749'].map(cnpjEnquantoDigita))
+      .toEqual(['', '4', '45', '45.8', '45.812', '45.812.0', '45.812.033', '45.812.033/0', '45.812.033/0001', '45.812.033/0001-7', '45.812.033/0001-74', '45.812.033/0001-74']);
+    // colado com outro formato, ou apagando o ponto do fim
+    expect(cnpjEnquantoDigita('45 812 033 0001 74')).toBe('45.812.033/0001-74');
+    expect(cnpjEnquantoDigita('45.')).toBe('45');
   });
   it('valida os dígitos verificadores', () => {
     expect(cnpjValido('22.333.444/0001-81')).toBe(true);

@@ -523,7 +523,7 @@ export type {
   TipoLigacaoChamado, ChamadoCriarEntrada, ChamadoAlterarEntrada, MoverEntrada, ChecklistEntrada, TempoEntrada, OperadoraCasoEntrada, PainelGravarEntrada,
   EtapaGravarEntrada, AssuntoGravarEntrada, AgendadoGravarEntrada, AvisosChamadosEntrada, WebhookGravarEntrada, AjustesPrazos,
   CampoObrigatorio, TipoEtapa, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, RegraAgendado,
-  EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel, CampoPersonalizado, CampoGravarEntrada, CamposDoSistemaEntrada, CampoDoSistema, TipoCampo,
+  EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel, CampoPersonalizado, CampoGravarEntrada, CaixinhasGravarEntrada, CamposDoSistemaEntrada, CampoDoSistema, TipoCampo,
   OpcaoDoCampo, OpcaoIncluirEntrada, EtiquetaNoPainel, ValorDoCampo, ValoresDosCampos, Obrigatorio, CorEtiqueta, EtiquetaComCor, EtiquetaDoCatalogo, EtiquetaGravarEntrada, EtiquetaEditarEntrada, EtiquetaEditarPeloNomeEntrada,
   ModelosDoLineChat, ModeloDoLineChat, ModeloAprovado, EnvioAoCliente, TipoArquivoDoModelo,
   RoboTela, MapaDoRobo, MapaDoRoboEntrada, PreviaDoRobo, UltimoPedidoDoRobo,

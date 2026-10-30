@@ -9,11 +9,19 @@
  * Criar, mudar, duplicar e mandar para a lixeira: quem também trabalha nas negociações (`tickets.work`, como
  * nas negociações). Os Ajustes: quem cuida dos painéis (`tickets.manage`, como os ajustes do Comercial).
  * A negociação ligada só aparece para quem vê o painel dela; ligar uma pede que a pessoa a veja.
+ *
+ * A principal da negociação (2.3, o Luan: "quando eu colocar os valores na simulação ele já deve ir para o card do
+ * cliente já preenchendo nos campos de valores"; e, de duas simulações, "continua a marcada com principal"): cada
+ * negociação com simulações tem uma principal — a primeira ligada, até a pessoa marcar outra (`tornarPrincipal`);
+ * sem ela (foi para a lixeira ou desligou), a mexida por último. A cada salvamento da principal, o cenário principal
+ * dela vai para o card (`levarParaANegociacao`: o que era o "Levar para a COM-x"), sem a linha no histórico da
+ * negociação ("n precisa registrar as mudanças"). A negociação ganha ou perdida não muda.
  */
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { clients, newId, products, salesSimulations, ticketStages, tickets, users, type Db } from '@gestor/db';
 import {
-  AjustesDoSimuladorSchema, SimulacaoGravarSchema, ajustesDoSimulador, cenarioPrincipal, mudancasDaSimulacao, mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario, semOQueSaiu,
+  AjustesDoSimuladorSchema, SimulacaoGravarSchema, ajustesDoSimulador, campoLigado, cenarioPrincipal, mesmoValorPorProduto, mudancasDaSimulacao, mudancasDosAjustes, planilhaDaSimulacao,
+  resumoDoCenario, semOQueSaiu, valoresParaANegociacao,
   type AjustesDoSimulador, type CenarioDaSimulacao, type MargemDaNegociacao, type NegociacaoDaSimulacao, type ProdutoDoSimulador, type Simulacao,
   type SimulacaoDaNegociacao, type SimulacaoGravar, type SimulacaoGravarEntrada, type SimulacaoNaLista, type SimuladorOpcoes,
 } from '@gestor/shared';
@@ -46,14 +54,15 @@ export async function opcoes(db: Db, ator: Ator): Promise<SimuladorOpcoes> {
 
 /**
  * As simulações das negociações, para o relatório do Comercial (a margem das ganhas): de cada negociação, a
- * simulação mexida por último, com o cenário principal resumido.
+ * principal (2.3; antes, a mexida por último), com o cenário principal resumido.
  */
 export async function margensDasNegociacoes(db: Db, negociacoes: string[]): Promise<{ margens: Map<string, MargemDaNegociacao>; ajustes: AjustesDoSimulador }> {
   const ajustes = await lerAjustes(db);
   const margens = new Map<string, MargemDaNegociacao>();
   if (!negociacoes.length) return { margens, ajustes };
   const linhas = await db.select().from(salesSimulations)
-    .where(and(inArray(salesSimulations.ticketId, negociacoes), isNull(salesSimulations.deletedAt))).orderBy(desc(salesSimulations.updatedAt));
+    .where(and(inArray(salesSimulations.ticketId, negociacoes), isNull(salesSimulations.deletedAt)))
+    .orderBy(desc(salesSimulations.isMain), desc(salesSimulations.updatedAt));
   for (const l of linhas) {
     if (!l.ticketId || margens.has(l.ticketId)) continue;
     const r = resumoDoCenario(cenarioPrincipal({ cenarios: cenariosDaLinha(l), principal: l.principal }), ajustes);
@@ -126,7 +135,7 @@ async function nomesDasPessoas(db: Db, ids: Array<string | null>): Promise<Map<s
 function paraTela(l: Linha, negociacoes: Map<string, NegociacaoDaSimulacao>, nomes: Map<string, string>): Simulacao {
   return {
     id: l.id, nome: l.name, negociacaoId: l.ticketId, negociacao: l.ticketId ? negociacoes.get(l.ticketId) ?? null : null,
-    cenarios: cenariosDaLinha(l), principal: l.principal,
+    cenarios: cenariosDaLinha(l), principal: l.principal, principalDaNegociacao: !!l.ticketId && l.isMain,
     criadoPor: l.createdById ? nomes.get(l.createdById) ?? null : null, criadoEm: l.createdAt.toISOString(),
     alteradoPor: l.updatedById ? nomes.get(l.updatedById) ?? null : null, alteradoEm: l.updatedAt.toISOString(),
   };
@@ -176,13 +185,82 @@ export async function planilha(db: Db, ator: Ator, id: string): Promise<{ bytes:
 export async function daNegociacao(db: Db, ator: Ator, ticketId: string): Promise<SimulacaoDaNegociacao[]> {
   if (!(await negociacoesVisiveis(db, ator, [ticketId])).has(ticketId)) return [];
   const [linhas, ajustes] = await Promise.all([
-    db.select().from(salesSimulations).where(and(eq(salesSimulations.ticketId, ticketId), isNull(salesSimulations.deletedAt))).orderBy(desc(salesSimulations.updatedAt)),
+    // a principal primeiro (2.3), depois da mexida mais recente para a mais antiga
+    db.select().from(salesSimulations).where(and(eq(salesSimulations.ticketId, ticketId), isNull(salesSimulations.deletedAt)))
+      .orderBy(desc(salesSimulations.isMain), desc(salesSimulations.updatedAt)),
     lerAjustes(db),
   ]);
   return linhas.map((l) => {
     const cenarios = cenariosDaLinha(l);
-    return { id: l.id, nome: l.name, cenarios: cenarios.length, principal: resumoDoCenario(cenarioPrincipal({ cenarios, principal: l.principal }), ajustes) };
+    return { id: l.id, nome: l.name, cenarios: cenarios.length, principal: resumoDoCenario(cenarioPrincipal({ cenarios, principal: l.principal }), ajustes), principalDaNegociacao: l.isMain };
   });
+}
+
+// =====================================================================
+//  A PRINCIPAL DA NEGOCIAÇÃO E OS VALORES NO CARD (2.3)
+// =====================================================================
+
+/**
+ * A negociação com simulações tem sempre uma principal: sem nenhuma marcada (a primeira que liga, ou a principal
+ * foi para a lixeira ou desligou), fica a mexida por último. Marcar não muda o card (só o salvamento da principal).
+ */
+async function garantirPrincipal(db: Db, ticketId: string | null | undefined): Promise<void> {
+  if (!ticketId) return;
+  const linhas = await db.select({ id: salesSimulations.id, isMain: salesSimulations.isMain }).from(salesSimulations)
+    .where(and(eq(salesSimulations.ticketId, ticketId), isNull(salesSimulations.deletedAt)))
+    .orderBy(desc(salesSimulations.updatedAt), desc(salesSimulations.createdAt));
+  if (!linhas.length || linhas.some((l) => l.isMain)) return;
+  await db.update(salesSimulations).set({ isMain: true }).where(eq(salesSimulations.id, linhas[0]!.id));
+}
+
+/**
+ * Os valores do cenário principal da simulação principal vão para o card da negociação (o que era o "Levar para a
+ * COM-x"): a mensalidade, a ativação, o valor de cada produto e os produtos. Sem a linha no histórico da negociação
+ * (o Luan: "n precisa registrar as mudanças"); a simulação salva vai para a auditoria, como sempre. Não muda: a
+ * simulação que não é a principal, a negociação ganha, perdida ou na lixeira, e a de um painel que a pessoa não vê.
+ * Devolve se o card mudou.
+ */
+async function levarParaANegociacao(db: Db, ator: Ator, simulacaoId: string): Promise<boolean> {
+  const [l] = await db.select().from(salesSimulations).where(eq(salesSimulations.id, simulacaoId)).limit(1);
+  if (!l || l.deletedAt || !l.ticketId || !l.isMain) return false;
+  const [t] = await db.select({
+    id: tickets.id, painelId: tickets.panelId, deletedAt: tickets.deletedAt, produtos: tickets.productIds,
+    valor: tickets.valueCents, valores: tickets.productValues, ativacao: tickets.setupCents, ativacoes: tickets.productSetup, resultado: ticketStages.outcome,
+  }).from(tickets).leftJoin(ticketStages, eq(ticketStages.id, tickets.stageId)).where(eq(tickets.id, l.ticketId)).limit(1);
+  if (!t || t.deletedAt || t.resultado === 'ganho' || t.resultado === 'perdido') return false;
+  const { paineis } = await carregarPaineis(db);
+  const p = paineis.find((x) => x.id === t.painelId);
+  if (!p || p.tipo !== 'vendas' || !podeVerPainel(p, ator)) return false;
+  const [ajustes, catalogo] = await Promise.all([lerAjustes(db), produtosDoCatalogo(db)]);
+  const v = valoresParaANegociacao(cenarioPrincipal({ cenarios: cenariosDaLinha(l), principal: l.principal }), ajustes, catalogo, campoLigado(p.ajustes, 'produtos'));
+  const produtos = v.produtos ?? t.produtos;
+  const mesmosProdutos = produtos.length === t.produtos.length && produtos.every((x) => t.produtos.includes(x));
+  if (v.valor === t.valor && v.ativacao === t.ativacao && mesmosProdutos
+    && mesmoValorPorProduto(v.valoresDosProdutos, t.valores) && mesmoValorPorProduto(v.ativacoesDosProdutos, t.ativacoes)) return false;
+  await db.update(tickets).set({
+    valueCents: v.valor, productValues: v.valoresDosProdutos, setupCents: v.ativacao, productSetup: v.ativacoesDosProdutos, productIds: produtos, updatedAt: new Date(),
+  }).where(eq(tickets.id, t.id));
+  return true;
+}
+
+/**
+ * Marca a simulação como a principal da negociação dela (a ficha da negociação, em Simulações, e o editor): a de
+ * antes deixa de ser, e os valores desta vão para o card na hora.
+ */
+export async function tornarPrincipal(db: Db, ator: Ator, id: string): Promise<{ simulacao: Simulacao; resumo: string }> {
+  if (!podeEditar(ator)) throw new Forbidden('Esta ação exige as permissões "sales.read" e "tickets.work"');
+  const l = await linhaOu404(db, id);
+  if (!l.ticketId) throw new BadRequest('A simulação não está ligada a uma negociação: ligue antes (o código, como COM-12).');
+  const n = (await negociacoesVisiveis(db, ator, [l.ticketId])).get(l.ticketId);
+  if (!n) throw new BadRequest('A negociação desta simulação é de um painel que você não vê.');
+  if (!l.isMain) {
+    await db.update(salesSimulations).set({ isMain: false })
+      .where(and(eq(salesSimulations.ticketId, l.ticketId), ne(salesSimulations.id, id)));
+    await db.update(salesSimulations).set({ isMain: true }).where(eq(salesSimulations.id, id));
+  }
+  const levou = await levarParaANegociacao(db, ator, id);
+  const simulacao = { ...(await ler(db, ator, id)), levouParaANegociacao: levou };
+  return { simulacao, resumo: `Marcou a simulação "${l.name}" como a principal da ${n.codigo}` };
 }
 
 // =====================================================================
@@ -201,7 +279,10 @@ export async function criar(db: Db, ator: Ator, entrada: SimulacaoGravarEntrada)
   const [l] = await db.insert(salesSimulations).values({
     id: newId(), name: s.nome, ticketId: s.negociacaoId, scenarios: s.cenarios, principal: s.principal, createdById: quem, updatedById: quem,
   }).returning();
-  const simulacao = await ler(db, ator, l!.id);
+  // a primeira da negociação é a principal, e os valores dela vão para o card (2.3)
+  await garantirPrincipal(db, s.negociacaoId);
+  const levou = await levarParaANegociacao(db, ator, l!.id);
+  const simulacao = { ...(await ler(db, ator, l!.id)), levouParaANegociacao: levou };
   const n = s.cenarios.length;
   return { simulacao, depois: s, resumo: `Criou a simulação "${s.nome}"${n > 1 ? ` (${n} cenários)` : ''}${textoDaLigacao(negociacao)}` };
 }
@@ -217,11 +298,17 @@ export async function alterar(db: Db, ator: Ator, id: string, entrada: Simulacao
   let negociacao: NegociacaoDaSimulacao | null = null;
   if (s.negociacaoId && s.negociacaoId !== atual.ticketId) negociacao = await conferirNegociacao(db, ator, s.negociacaoId);
   const antes = gravarDaLinha(atual);
+  // trocou de negociação: deixa de ser a principal da de antes (que fica com outra) e, na nova, só é se não houver outra
+  const trocou = atual.ticketId !== s.negociacaoId;
   await db.update(salesSimulations).set({
     name: s.nome, ticketId: s.negociacaoId, scenarios: s.cenarios, principal: s.principal,
+    ...(trocou ? { isMain: false } : {}),
     updatedById: ator.tipo === 'pessoa' ? ator.id : null, updatedAt: new Date(),
   }).where(eq(salesSimulations.id, id));
-  const simulacao = await ler(db, ator, id);
+  if (trocou) { await garantirPrincipal(db, atual.ticketId); await garantirPrincipal(db, s.negociacaoId); }
+  // a principal leva os valores para o card (2.3)
+  const levou = await levarParaANegociacao(db, ator, id);
+  const simulacao = { ...(await ler(db, ator, id)), levouParaANegociacao: levou };
   const mudou = mudancasDaSimulacao(antes, s);
   if (antes.negociacaoId !== s.negociacaoId) {
     mudou.push(s.negociacaoId ? `ligou à ${negociacao?.codigo ?? simulacao.negociacao?.codigo ?? 'negociação'}` : 'desligou da negociação');
@@ -236,8 +323,10 @@ export async function duplicar(db: Db, ator: Ator, id: string): Promise<Gravado>
   const nome = `${o.name} (cópia)`.slice(0, 120);
   const quem = ator.tipo === 'pessoa' ? ator.id : null;
   const [l] = await db.insert(salesSimulations).values({
-    id: newId(), name: nome, ticketId: o.ticketId, scenarios: o.scenarios, principal: o.principal, createdById: quem, updatedById: quem,
+    id: newId(), name: nome, ticketId: o.ticketId, scenarios: o.scenarios, principal: o.principal, isMain: false, createdById: quem, updatedById: quem,
   }).returning();
+  // a cópia não é a principal da negociação (2.3): a outra continua preenchendo o card
+  await garantirPrincipal(db, o.ticketId);
   const simulacao = await ler(db, ator, l!.id);
   return { simulacao, depois: gravarDaLinha(l!), resumo: `Duplicou a simulação "${o.name}" em "${nome}"` };
 }
@@ -245,7 +334,9 @@ export async function duplicar(db: Db, ator: Ator, id: string): Promise<Gravado>
 export async function mandarParaLixeira(db: Db, ator: Ator, id: string): Promise<{ id: string; resumo: string }> {
   if (!podeEditar(ator)) throw new Forbidden('Esta ação exige as permissões "sales.read" e "tickets.work"');
   const l = await linhaOu404(db, id);
-  await db.update(salesSimulations).set({ deletedAt: new Date(), updatedById: ator.tipo === 'pessoa' ? ator.id : null }).where(eq(salesSimulations.id, id));
+  await db.update(salesSimulations).set({ deletedAt: new Date(), isMain: false, updatedById: ator.tipo === 'pessoa' ? ator.id : null }).where(eq(salesSimulations.id, id));
+  // a principal foi para a lixeira: outra fica no lugar (o card continua com os valores que tem)
+  await garantirPrincipal(db, l.ticketId);
   return { id, resumo: `Mandou a simulação "${l.name}" para a lixeira` };
 }
 
@@ -253,6 +344,8 @@ export async function mandarParaLixeira(db: Db, ator: Ator, id: string): Promise
 export async function restaurar(db: Db, id: string): Promise<Linha> {
   const l = await linhaOu404(db, id, { lixeira: true });
   if (!l.deletedAt) throw new BadRequest('Essa simulação não está na lixeira.');
-  const [volta] = await db.update(salesSimulations).set({ deletedAt: null }).where(eq(salesSimulations.id, id)).returning();
+  const [volta] = await db.update(salesSimulations).set({ deletedAt: null, isMain: false }).where(eq(salesSimulations.id, id)).returning();
+  // volta sem ser a principal, a não ser que a negociação esteja sem nenhuma
+  await garantirPrincipal(db, volta!.ticketId);
   return volta!;
 }

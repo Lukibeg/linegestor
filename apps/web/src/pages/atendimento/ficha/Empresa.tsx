@@ -1,10 +1,11 @@
 /**
  * A empresa e o contato, em destaque no topo da coluna do lado (o pedido do Eider, com o nome do
  * contato que o Luan pediu): o nome grande com o link para a ficha do cliente, os produtos e as
- * operadoras do cadastro dele, quantos circuitos, DIDs e aparelhos; o contato com o WhatsApp legível
+ * operadoras do cadastro dele, quantos circuitos, DIDs e aparelhos; o contato com o WhatsApp legível, o e-mail (2.3, com o link
+ * para escrever)
  * e o link "Conversa no LineChat" (que se liga, troca e tira à mão desde o 2.1: `Conversa.tsx`) — e, desde o 2.2, os outros
  * contatos e as outras conversas, embaixo dos principais (`AMais.tsx`). Dá para
- * trocar o cliente, o nome do contato e o WhatsApp — e o
+ * trocar o cliente, o nome do contato, o WhatsApp e o e-mail — e o
  * contato sai da lista do cliente (a aba Contatos, 2.0): um clique troca; o que não está na lista se
  * salva lá com um clique.
  *
@@ -14,8 +15,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, Pencil, Phone, UserRound, UserRoundPlus } from 'lucide-react';
-import { acharContato, campoLigado, numeroWhatsApp, type ContatoDoCliente } from '@gestor/shared';
+import { Building2, Mail, Pencil, Phone, UserRound, UserRoundPlus } from 'lucide-react';
+import { acharContato, campoLigado, emailValido, numeroWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, Copiar, EscolherComBusca, Spinner } from '../../../components/ui/index.js';
 import { telefoneLegivel } from '../comum.js';
@@ -84,24 +85,26 @@ function Contato() {
   const acao = useAcao();
   const [nome, setNome] = useState('');
   const [fone, setFone] = useState('');
+  const [email, setEmail] = useState('');
   // os contatos do cliente (a aba Contatos): o deste chamado, se estiver lá (pelo WhatsApp ou pelo nome)
   const contatos = f.cliente ? cadastro?.contatos ?? [] : [];
   const doCadastro = acharContato(contatos, { nome: f.contato?.nome, telefone: f.contato?.telefone });
   const podeContatos = usePodeMexerNosContatos();
   const [salvarNaLista, setSalvarNaLista] = useState(false);
-  /** Trocar pelo contato da lista: um clique. */
+  /** Trocar pelo contato da lista: um clique (o e-mail do cadastro vem junto, 2.3). */
   const usar = async (c: ContatoDoCliente) => {
-    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { contatoNome: c.nome, contatoTelefone: c.whatsapp }), `Contato: ${c.nome}`);
+    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { contatoNome: c.nome, contatoTelefone: c.whatsapp, contatoEmail: c.email ?? null }), `Contato: ${c.nome}`);
     if (r.ok) setEditando(false);
   };
-  const abrir = () => { setNome(f.contato?.nome ?? ''); setFone(f.contato?.telefone ? telefoneLegivel(f.contato.telefone) : ''); acao.limpar(); setEditando(true); };
+  const abrir = () => { setNome(f.contato?.nome ?? ''); setFone(f.contato?.telefone ? telefoneLegivel(f.contato.telefone) : ''); setEmail(f.contato?.email ?? ''); acao.limpar(); setEditando(true); };
   const salvar = async () => {
     // a mesma conta do servidor: o número precisa virar um WhatsApp (DDD + número)
     if (fone.trim() && !numeroWhatsApp(fone)) { acao.setErro('Telefone inválido: use DDD + número, como (71) 99999-0000.'); return; }
-    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { contatoNome: nome.trim() || null, contatoTelefone: fone.trim() || null }), 'Contato salvo');
+    if (email.trim() && !emailValido(email)) { acao.setErro('E-mail inválido: use o jeito nome@empresa.com.br.'); return; }
+    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { contatoNome: nome.trim() || null, contatoTelefone: fone.trim() || null, contatoEmail: email.trim() || null }), 'Contato salvo');
     if (r.ok) setEditando(false);
   };
-  const temContato = !!(f.contato?.nome || f.contato?.telefone);
+  const temContato = !!(f.contato?.nome || f.contato?.telefone || f.contato?.email);
 
   return (
     <div id="campo-contato" className="rounded-sm scroll-mt-24 transition-shadow">
@@ -130,6 +133,7 @@ function Contato() {
           )}
           <Campo label="Nome do contato"><input className="input" autoFocus maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Maria Souza" /></Campo>
           <Campo label="WhatsApp" dica="DDD + número, como (71) 99999-0000"><input className="input font-mono" inputMode="tel" maxLength={40} value={fone} onChange={(e) => setFone(e.target.value)} placeholder="(71) 99999-0000" /></Campo>
+          <Campo label="E-mail" dica="Opcional"><input className="input" type="email" inputMode="email" spellCheck={false} maxLength={200} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@empresa.com.br" /></Campo>
           <div className="flex gap-2">
             <button type="submit" className="btn-primary btn-sm" disabled={acao.ocupado}>{acao.ocupado ? <Spinner className="text-white" /> : 'Salvar'}</button>
             <button type="button" className="btn-secondary btn-sm" onClick={() => setEditando(false)}>Cancelar</button>
@@ -150,6 +154,14 @@ function Contato() {
               <Copiar texto={f.contato.telefone} titulo="Copiar o número" />
             </div>
           )}
+          {/* o e-mail (2.3): um clique abre o e-mail para escrever ao contato */}
+          {f.contato?.email && (
+            <div className="flex items-center gap-1 text-[14px] text-ink-2 min-w-0" id="ficha-contato-email">
+              <Mail size={13} className="text-muted shrink-0" aria-hidden />
+              <a href={`mailto:${f.contato.email}`} className="link truncate" title={`Escrever para ${f.contato.email}`}>{f.contato.email}</a>
+              <Copiar texto={f.contato.email} titulo="Copiar o e-mail" />
+            </div>
+          )}
         </div>
       ) : <p className="text-[13px] text-muted">Sem contato.</p>}
       {/* o contato escrito à mão (ou da conversa) que não está na lista do cliente: guardar lá com um clique */}
@@ -160,12 +172,12 @@ function Contato() {
       )}
       {salvarNaLista && f.cliente && (
         <JanelaContato clienteId={f.cliente.id} clienteNome={f.cliente.nome} contato={null}
-          inicial={{ nome: f.contato?.nome ?? '', whatsapp: f.contato?.telefone ? telefoneLegivel(f.contato.telefone) : '' }}
+          inicial={{ nome: f.contato?.nome ?? '', whatsapp: f.contato?.telefone ? telefoneLegivel(f.contato.telefone) : '', email: f.contato?.email ?? '' }}
           onFechar={() => setSalvarNaLista(false)}
           onSalvo={(c) => {
             setSalvarNaLista(false);
-            // o nome (ou o WhatsApp) corrigido na janela vale também para o chamado
-            if (c.nome !== f.contato?.nome || (c.whatsapp ?? null) !== (f.contato?.telefone ?? null)) void usar(c);
+            // o nome (o WhatsApp ou o e-mail) corrigido na janela vale também para o chamado
+            if (c.nome !== f.contato?.nome || (c.whatsapp ?? null) !== (f.contato?.telefone ?? null) || (c.email ?? null) !== (f.contato?.email ?? null)) void usar(c);
           }} />
       )}
       {/* os outros contatos (2.2): embaixo do principal, com o X; "Mais um contato" inclui */}

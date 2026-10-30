@@ -18,7 +18,7 @@
  * arquivo): as mesmas regras, sem o `Feito` (quem chama escreve a própria auditoria).
  */
 import type { FastifyInstance } from 'fastify';
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketEvents, ticketLinks, ticketNotes, ticketPanels,
   ticketTimeEntries, tickets, users,
@@ -36,7 +36,7 @@ import {
   NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
-  type ValoresDosCampos,
+  type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO,
 } from '@gestor/shared';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
 import { lerConteudo } from '../projects.js';
@@ -50,6 +50,7 @@ import {
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
+import { abrirAImplantacao, aoMover, ligarNoCadastro, negociacaoNoFim, type AoMover, type AuditoriaExtra, type FimNaNegociacao } from './implantacao.js';
 import { mandarWhatsApp } from './whatsapp.js';
 
 export { fichaDoChamado } from './leitura.js';
@@ -65,6 +66,8 @@ export type Feito = {
   depois?: unknown;
   /** a ação ficou registrada, mas não deu certo (o WhatsApp recusou): a rota audita e devolve 400 com isto */
   erro?: string;
+  /** as outras linhas da auditoria (2.3, a implantação: o cliente criado, o card aberto, o que ligou no cadastro) */
+  auditoriaExtra?: AuditoriaExtra[];
 };
 
 type SetChamado = Partial<typeof tickets.$inferInsert>;
@@ -110,6 +113,7 @@ const etapaCurta = (e: EtapaPainel | null) => (e ? { id: e.id, nome: e.nome, niv
 const NOME_TITULO = 'Título';
 const NOME_CONTORNO = 'Solução de contorno';
 const NOME_TELEFONE = 'WhatsApp do contato';
+const NOME_EMAIL = 'E-mail do contato';
 // o nome que o histórico usa para a troca de etiquetas (o resumo da NIA, 2.1, procura por ele)
 const NOME_ETIQUETAS = CAMPO_DAS_ETIQUETAS;
 const NOME_OBSERVADORES = 'Observadores';
@@ -277,8 +281,10 @@ export async function criarChamado(
   let telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
   let clienteId = d.clienteId ?? null;
   let contatoNome = d.contatoNome ?? null;
+  // o e-mail do contato (2.3): o escrito, ou o do contato do cadastro com o mesmo WhatsApp
+  let contatoEmail = d.contatoEmail?.trim().toLowerCase() || null;
   if (telefone) {
-    const cadastrados = await db.select({ clientId: clientContacts.clientId, nome: clientContacts.name }).from(clientContacts)
+    const cadastrados = await db.select({ clientId: clientContacts.clientId, nome: clientContacts.name, email: clientContacts.email }).from(clientContacts)
       .innerJoin(clients, eq(clients.id, clientContacts.clientId))
       .where(and(eq(clientContacts.phone, telefone), eq(clientContacts.active, true), isNull(clients.deletedAt)));
     // o mesmo número em dois clientes: o cliente não é adivinhado (vale o aprendido, ou a pessoa escolhe)
@@ -286,6 +292,7 @@ export async function criarChamado(
     if (doCadastro) {
       if (!clienteId) clienteId = doCadastro.clientId;
       if (!contatoNome) contatoNome = doCadastro.nome;
+      if (!contatoEmail && doCadastro.email) contatoEmail = doCadastro.email.toLowerCase();
     }
     const [conhecido] = await db.select().from(ticketContacts).where(eq(ticketContacts.phone, telefone)).limit(1);
     if (conhecido) {
@@ -339,7 +346,7 @@ export async function criarChamado(
 
   // 3. o que o painel pede para abrir
   const dados: DadosObrigatorios = {
-    tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
+    tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, contatoEmail, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
     assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
     produtos, operadoras, responsavelId: d.responsavelId ?? null,
     solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, ativacao, empresa,
@@ -391,6 +398,7 @@ export async function criarChamado(
     await tx.insert(tickets).values({
       id, panelId: painel.id, stageId: etapa.id, number: numero, code: codigo, kind: tipoChamado, title: titulo,
       customerReport: dados.relato, description: dados.descricao, clientId: clienteId, contactName: contatoNome, contactPhone: telefone,
+      contactEmail: usa('cliente') ? contatoEmail : null,
       sessionId: sessaoId, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
       productIds: produtos, carrierIds: operadoras, tags: etiquetas, customFields: campos,
@@ -466,7 +474,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
     // a negociação não tem prioridade; o painel de Gestão pode não ter (2.1.2), nem o cliente, o relato, a solução e a causa
     ...(painel.tipo === 'vendas' || !usa('prioridade') ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
-    ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined }),
+    ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined, contatoEmail: undefined }),
     ...(usa('relato') ? {} : { relato: undefined }),
     // o problema (ITIL) sempre tem a solução e a causa
     ...(usa('solucao') || t.kind === 'problema' ? {} : { solucao: undefined, causa: undefined }),
@@ -509,6 +517,11 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     const fone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone : null;
     if (fone !== t.contactPhone) { set.contactPhone = fone; campo('contatoTelefone', NOME_TELEFONE, t.contactPhone, fone, t.contactPhone); }
   }
+  // o e-mail do contato (2.3)
+  if (d.contatoEmail !== undefined) {
+    const email = d.contatoEmail?.trim().toLowerCase() || null;
+    if (email !== (t.contactEmail ?? null)) { set.contactEmail = email; campo('contatoEmail', NOME_EMAIL, t.contactEmail, email, t.contactEmail); }
+  }
   // a conversa do LineChat (2.1, o chamado ativo): o link colado ou o código da sessão; vazio tira. Com
   // ela, a ficha mostra o link e a NIA (e o Preencher com IA) lê o que foi dito
   if (d.sessaoId !== undefined) {
@@ -519,7 +532,10 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   // os outros contatos e as outras conversas (2.2): a lista inteira toma o lugar da de antes. Sem os vazios, sem
   // repetir e sem o principal (o contato e a conversa de cima continuam os do aviso ao cliente, do robô e da NIA)
   if (d.outrosContatos !== undefined) {
-    const principal = { nome: set.contactName !== undefined ? set.contactName : t.contactName, telefone: set.contactPhone !== undefined ? set.contactPhone : t.contactPhone };
+    const principal = {
+      nome: set.contactName !== undefined ? set.contactName : t.contactName, telefone: set.contactPhone !== undefined ? set.contactPhone : t.contactPhone,
+      email: set.contactEmail !== undefined ? set.contactEmail : t.contactEmail,
+    };
     const novos = outrosContatosLimpos(d.outrosContatos, principal);
     const velhos = t.otherContacts ?? [];
     if (JSON.stringify(novos) !== JSON.stringify(velhos)) {
@@ -674,15 +690,28 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     const novos: ValoresDosCampos = { ...atuais };
     let mexeu = false;
     await incluirOpcoesEscritas(db, ctx, painel, d.campos);
+    let marcas = (t.fieldMarks as MarcasDosCampos | null) ?? {};
+    let mexeuNasMarcas = false;
     for (const { campo: c, valor } of lerCampos(ctx, painel, d.campos, atuais)) {
       const antes = atuais[c.id] ?? null;
       if (mesmoValorDoCampo(antes, valor)) continue;
       mexeu = true;
       if (valor === null) delete novos[c.id]; else novos[c.id] = valor;
-      if (c.tipo === 'texto_longo') longo(chaveDoCampo(c.id), c.nome, antes);
-      else campo(chaveDoCampo(c.id), c.nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
+      // o campo de um produto leva o nome dele no histórico ("Testes realizados (LinePBX)", 2.3)
+      const nome = nomeCompletoDoCampo(c, ctx.produtos);
+      if (c.tipo === 'texto_longo') longo(chaveDoCampo(c.id), nome, antes);
+      else if (ehCaixinhas(c.tipo)) {
+        // as caixinhas (2.3): quem marcou e quando; o histórico diz o que foi marcado e desmarcado
+        const r = marcasDepois(marcas, c, antes, valor, { porId: pessoaDoAtor(ator), porNome: integracaoDoAtor(ator) }, agora.toISOString());
+        marcas = r.marcas;
+        mexeuNasMarcas = true;
+        const nomes = (ids: string[]) => ids.map((id) => c.opcoes.find((o) => o.id === id)?.nome ?? '(opção que saiu)');
+        eventos.push(['campo', { campo: nome, marcou: nomes(r.marcou), desmarcou: nomes(r.desmarcou) }]);
+        mudou(chaveDoCampo(c.id), nome, antes);
+      } else campo(chaveDoCampo(c.id), nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
     }
     if (mexeu) set.customFields = novos;
+    if (mexeuNasMarcas) set.fieldMarks = marcas;
   }
 
   // os textos longos: o histórico diz só que mudou (o texto está no chamado; a auditoria guarda o de antes)
@@ -905,7 +934,10 @@ function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desc
  */
 export async function mover(
   app: FastifyInstance, ator: Ator, ref: string,
-  d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null },
+  d: {
+    etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null;
+    implantacao?: { clienteId?: string | null; nomeFantasia?: string | null; razaoSocial?: string | null; cnpj?: string | null };
+  },
 ): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
@@ -917,15 +949,60 @@ export async function mover(
   if (responsavelId) conferirPessoa(e.ctx, responsavelId);
   const venda = conferirResultado(e, para, d);
   const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda, ator });
-  const m = await app.db.transaction(async (tx) => {
+  // o que a etapa faz ao chegar (2.3): abrir a implantação (a negociação) ou ligar no cadastro (o card do Implantado). O
+  // cliente novo precisa do CNPJ (o cadastro exige): sem ele, a negociação não vai, e a tela abre a janela para pedir
+  const vai = await aoMover(app.db, e.ctx, e.t, e.painel, para, d.implantacao);
+  if (vai.implantacao?.falta) throw new BadRequest(vai.implantacao.falta, { implantacao: vai.implantacao });
+  // o fim da implantação (2.3): a negociação de onde o card veio vai para o Implantado do Comercial
+  const fim = vai.negociacao ? await negociacaoNoFim(app.db, e.ctx, e.t, e.painel, para) : null;
+  const r = await app.db.transaction(async (tx) => {
     const feito = await gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda });
     // arrastado para um lugar da coluna (2.1): a etapa se arruma com ele ali (se o de cima saiu da etapa
     // enquanto a pessoa arrastava, ele fica no alto, como quem chega sem lugar)
     if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) await arrumarNaEtapa(tx, e.painel, para.id, e.t.id, d.depoisDe);
-    return feito;
+    const implantacao = vai.implantacao ? await abrirAImplantacao(tx, e, ator, vai.implantacao) : null;
+    const cadastro = vai.cadastro ? await ligarNoCadastro(tx, e, ator, vai.cadastro) : null;
+    const naNegociacao = fim ? await levarANegociacao(tx, e, ator, fim) : null;
+    return { feito, implantacao, cadastro, naNegociacao };
   });
+  const m = r.feito;
   await depoisDoMovimento(app, ator, e.t, m);
-  return { ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) };
+  if (r.implantacao) emitir(app, 'chamado.criado', r.implantacao.id);
+  if (fim && r.naNegociacao) await depoisDoMovimento(app, ator, fim.linha, r.naNegociacao);
+  const extra = [
+    r.implantacao ? `; abriu a implantação ${r.implantacao.codigo}${r.implantacao.clienteNovo ? ` e criou o cliente ${r.implantacao.clienteNovo.nome}` : ''}` : '',
+    r.cadastro && (r.cadastro.produtos.length || r.cadastro.modulos.length) ? `; ligou no cadastro ${[...r.cadastro.produtos, ...r.cadastro.modulos].join(', ')}` : '',
+    fim ? `; a negociação ${fim.linha.code} foi para ${fim.para.nome}` : '',
+  ].join('');
+  return {
+    ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) + extra,
+    auditoriaExtra: [
+      ...(r.implantacao?.auditoria ?? []), ...(r.cadastro?.auditoria ?? []),
+      ...(fim ? [{ action: 'update' as const, entityType: 'ticket', entityId: fim.linha.id, summary: `Moveu ${fim.linha.code} de ${fim.de.nome} para ${fim.para.nome}: a implantação ${e.t.code} terminou` }] : []),
+    ],
+  };
+}
+
+/**
+ * A negociação vai para a etapa que recebe a implantação terminada, dentro da transação do mover do card: o movimento
+ * de sempre (o histórico diz o porquê), sem as regras de entrar na etapa — quem moveu foi o card, e nada trava.
+ */
+async function levarANegociacao(tx: Db, e: Estado, ator: Ator, fim: FimNaNegociacao): Promise<Movimento> {
+  const daNegociacao: Estado = { ctx: e.ctx, t: fim.linha, painel: fim.painel, etapa: fim.de, agora: e.agora, quando: e.quando };
+  const m = await gravarMovimento(tx, daNegociacao, ator, fim.para, { motivo: `a implantação ${e.t.code} terminou`, sentido: null });
+  await registrarEvento(tx, e.t.id, 'implantacao', ator, { acao: 'negociacao', codigo: fim.linha.code, etapa: fim.para.nome }, e.quando());
+  return m;
+}
+
+/**
+ * O que a etapa vai fazer, para a janela da tela antes de mover (2.3): o plano da implantação (o cliente, os produtos, o
+ * card) e o do cadastro (os produtos com a data, os módulos). Não grava nada.
+ */
+export async function oQueAEtapaFaz(app: FastifyInstance, ator: Ator, ref: string, d: { etapaId: string; clienteId?: string | null; cnpj?: string | null; nomeFantasia?: string | null; razaoSocial?: string | null }): Promise<AoMover> {
+  const e = await carregar(app, ator, ref);
+  const para = e.painel.etapas.find((x) => x.id === d.etapaId);
+  if (!para) throw new BadRequest('Essa etapa não é do painel deste chamado.');
+  return aoMover(app.db, e.ctx, e.t, e.painel, para, { clienteId: d.clienteId, cnpj: d.cnpj, nomeFantasia: d.nomeFantasia, razaoSocial: d.razaoSocial });
 }
 
 // =====================================================================
@@ -1244,6 +1321,95 @@ export async function apagarAnotacao(app: FastifyInstance, ator: Ator, ref: stri
     ...nada(t),
     resumo: `Apagou uma anotação${autor && !minha ? ` de ${autor}` : ''} em ${t.code}`,
     antes: { texto: n.body, escritaEm: n.createdAt.toISOString(), por: autor },
+  };
+}
+
+// =====================================================================
+//  OS ANEXOS DOS CAMPOS (2.3)
+// =====================================================================
+
+/**
+ * O campo do card que recebe o anexo (do painel do card, ativo e de um produto que o card tem) e a caixinha, se veio. O
+ * nome é o que a ficha mostra fora dela (com o produto entre parênteses: "Configuração do ambiente (LinePBX)").
+ */
+function campoParaAnexo(e: Estado, campoId: string, opcaoId: string | null) {
+  const c = camposDoPainel(e.ctx, e.painel.id).find((x) => x.id === campoId);
+  if (!c) throw new NotFound('Campo');
+  if (!c.ativo) throw new BadRequest(`O campo ${c.nome} está desativado.`);
+  // só o campo que recebe anexos (2.3: no modelo Implantação, os da Curadoria)
+  if (!c.anexos) throw new BadRequest(`O campo ${c.nome} não recebe anexos. Quem cuida dos chamados liga em Painéis › Ajustes › Campos › Recebe anexos.`);
+  if (c.produtoId && !e.t.productIds.includes(c.produtoId)) throw new BadRequest(`O campo ${c.nome} é de um produto que ${e.painel.tipo === 'vendas' ? 'a negociação' : 'o chamado'} não tem.`);
+  const opcao = opcaoId ? c.opcoes.find((o) => o.id === opcaoId) ?? null : null;
+  if (opcaoId && (!opcao || !ehCaixinhas(c.tipo))) throw new BadRequest('A caixinha não é deste campo. Recarregue a tela e tente de novo.');
+  // o campo das caixinhas que recebe anexos recebe na caixinha, não no campo todo
+  if (!opcao && ehCaixinhas(c.tipo)) throw new BadRequest('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
+  return { c, opcao, nome: nomeCompletoDoCampo(c, e.ctx.produtos) };
+}
+
+/**
+ * Anexar num campo do card ou numa caixinha (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs que
+ * vão ter pré visualização"): até 5 arquivos de 10 MB por vez, até 20 em cada campo (ou caixinha). O histórico conta.
+ */
+export async function anexarNoCampo(app: FastifyInstance, ator: Ator, ref: string, campoId: string, d: { opcaoId: string | null; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<Feito> {
+  exigirTrabalhar(ator);
+  if (!d.anexos.length) throw new BadRequest('Escolha o arquivo.');
+  if (d.anexos.length > 5) throw new BadRequest('Até 5 arquivos de uma vez.');
+  const guardar = d.anexos.map(anexoParaGuardar);
+  const e = await carregar(app, ator, ref);
+  const { t, agora } = e;
+  const { c, opcao, nome } = campoParaAnexo(e, campoId, d.opcaoId);
+  const onde = `${nome}${opcao ? ` › ${opcao.nome}` : ''}`;
+  const pessoa = pessoaDoAtor(ator);
+  await app.db.transaction(async (tx) => {
+    // a linha do chamado fica travada: dois envios ao mesmo tempo não passam do limite juntos
+    await tx.select({ id: tickets.id }).from(tickets).where(eq(tickets.id, t.id)).for('update');
+    const [ja] = await tx.select({ n: count() }).from(ticketAttachments).where(and(
+      eq(ticketAttachments.ticketId, t.id), eq(ticketAttachments.fieldId, c.id), opcao ? eq(ticketAttachments.optionId, opcao.id) : isNull(ticketAttachments.optionId),
+      isNull(ticketAttachments.deletedAt),
+    ));
+    const n = Number(ja?.n ?? 0);
+    if (n + guardar.length > MAX_ANEXOS_DO_CAMPO) {
+      throw new BadRequest(`${opcao ? `A caixinha ${opcao.nome}` : `O campo ${nome}`} já tem ${plural(n, 'anexo', 'anexos')}: cabem até ${MAX_ANEXOS_DO_CAMPO}. Tire um antes de anexar outro.`);
+    }
+    // um milésimo entre um anexo e o outro: a ficha mostra na ordem em que foram escolhidos
+    await tx.insert(ticketAttachments).values(guardar.map((a, i) => ({
+      id: newId(), ticketId: t.id, noteId: null, fieldId: c.id, optionId: opcao?.id ?? null, ...a, uploadedById: pessoa, createdAt: new Date(agora.getTime() + i),
+    })));
+    await registrarEvento(tx, t.id, 'anexo', ator, { acao: 'anexou', campo: nome, opcao: opcao?.nome ?? null, arquivos: guardar.map((a) => a.fileName) }, e.quando());
+    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+  });
+  await camposAosObservadores(app, ator, t, [nome]);
+  return {
+    ...nada(t),
+    resumo: `Anexou ${guardar.length === 1 ? guardar[0]!.fileName : plural(guardar.length, 'arquivo', 'arquivos')} em ${onde} (${t.code})`,
+    depois: { campo: nome, opcao: opcao?.nome ?? null, anexos: guardar.map((a) => a.fileName) },
+  };
+}
+
+/** Tirar o anexo de um campo: o seu, ou qualquer um se cuida dos chamados (a auditoria guarda o nome do arquivo e quem anexou). */
+export async function tirarAnexoDoCampo(app: FastifyInstance, ator: Ator, ref: string, anexoId: string): Promise<Feito> {
+  exigirTrabalhar(ator);
+  const e = await carregar(app, ator, ref);
+  const { t, agora } = e;
+  const [a] = await app.db.select({ id: ticketAttachments.id, fileName: ticketAttachments.fileName, fieldId: ticketAttachments.fieldId, optionId: ticketAttachments.optionId, uploadedById: ticketAttachments.uploadedById, createdAt: ticketAttachments.createdAt })
+    .from(ticketAttachments)
+    .where(and(eq(ticketAttachments.id, anexoId), eq(ticketAttachments.ticketId, t.id), isNotNull(ticketAttachments.fieldId), isNull(ticketAttachments.deletedAt))).limit(1);
+  if (!a) throw new NotFound('Anexo');
+  const meu = ator.tipo === 'pessoa' && a.uploadedById === ator.id;
+  if (!meu && !podeCuidar(ator)) throw new Forbidden('Só quem anexou (ou quem cuida dos chamados) pode tirar este anexo.');
+  const c = camposDoPainel(e.ctx, e.painel.id).find((x) => x.id === a.fieldId);
+  const nome = c ? nomeCompletoDoCampo(c, e.ctx.produtos) : 'um campo';
+  const opcao = c && a.optionId ? c.opcoes.find((o) => o.id === a.optionId)?.nome ?? null : null;
+  await app.db.transaction(async (tx) => {
+    await tx.update(ticketAttachments).set({ deletedAt: agora }).where(eq(ticketAttachments.id, a.id));
+    await registrarEvento(tx, t.id, 'anexo', ator, { acao: 'tirou', campo: nome, opcao, arquivos: [a.fileName] }, e.quando());
+    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+  });
+  const autor = a.uploadedById ? pessoaCurta(e.ctx, a.uploadedById)?.nome ?? null : null;
+  return {
+    ...nada(t),
+    resumo: `Tirou o anexo ${a.fileName} de ${nome}${opcao ? ` › ${opcao}` : ''} (${t.code})`,
+    antes: { arquivo: a.fileName, anexadoEm: a.createdAt.toISOString(), por: autor },
   };
 }
 

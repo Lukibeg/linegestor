@@ -5,6 +5,7 @@ import { api, logoSrc } from '../../api/index.js';
 import type { ClientFull } from '../../api/types.js';
 import { Campo, CampoLogo, mensagemErro, Modal, Spinner, Toggle, useToast } from '../../components/ui/index.js';
 import { cnpjFormatado, cnpjValido } from '../../lib/format.js';
+import { cnpjLimpo } from '@gestor/shared';
 
 export function ClienteForm({ open, onClose, onSaved, cliente }: { open: boolean; onClose: () => void; onSaved: (c: ClientFull) => void; cliente?: ClientFull }) {
   const [f, setF] = useState({ tradeName: '', legalName: '', cnpj: '', notes: '', archived: false });
@@ -22,13 +23,15 @@ export function ClienteForm({ open, onClose, onSaved, cliente }: { open: boolean
       : { tradeName: '', legalName: '', cnpj: '', notes: '', archived: false });
   }, [open, cliente]);
 
-  const cnpjOk = !f.cnpj || cnpjValido(f.cnpj);
+  // o CNPJ é conferido quando muda: o cliente criado pela implantação (2.3, que não confere o dígito) edita o resto sem travar
+  const cnpjMudou = !cliente || cnpjLimpo(f.cnpj) !== cliente.cnpj;
+  const cnpjOk = !f.cnpj || !cnpjMudou || cnpjValido(f.cnpj);
   const logoAtual = logoNova === null ? logoSrc(cliente?.logoUrl ?? null) : logoNova || null;
 
   const save = async () => {
     setBusy(true); setErr('');
     try {
-      const body = { tradeName: f.tradeName, legalName: f.legalName, cnpj: f.cnpj, notes: f.notes || null, archived: f.archived };
+      const body = { tradeName: f.tradeName, legalName: f.legalName, ...(cnpjMudou ? { cnpj: f.cnpj } : {}), notes: f.notes || null, archived: f.archived };
       let r = cliente ? await api.clients.update(cliente.id, body) : await api.clients.create(body);
       // a logo é gravada depois, porque um cliente novo só tem endereço próprio depois de criado
       if (logoNova) r = await api.clients.saveLogo(r.id, logoNova);

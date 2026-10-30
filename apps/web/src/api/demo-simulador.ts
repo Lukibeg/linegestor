@@ -18,10 +18,14 @@
  * O LineChat (2.0.3): as simulações com o LineChat mostram o quadro das quatro quantidades nos Custos mensais. A
  * Clínica Vida é o quadro limpo; o Hotel e a Academia são como as de antes de 21/10, com os contatos ativos acima
  * de 5.000 (que aparecem no quadro porque custam algo).
+ *
+ * A principal da negociação (2.3, como o servidor): cada negociação com simulações tem uma, e a cada salvamento dela
+ * o cenário principal vai para o card (`levarDaSimulacao`), sem a linha no histórico. As de exemplo são todas a
+ * principal da sua negociação (uma por negociação).
  */
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, cenarioNovo, cenarioPrincipal, linhaDaTabela, mudancasDaSimulacao,
-  mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario,
+  mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario, valoresParaANegociacao,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario, type MargemDaNegociacao, type ModeloDeSimulacao, type NegociacaoDaSimulacao,
   type Simulacao, type SimulacaoGravar,
 } from '@gestor/shared';
@@ -43,6 +47,8 @@ export type ContextoSimuladorDemo = {
 /** A simulação como o servidor guarda (a tabela `sales_simulations`). */
 type SimulacaoRow = {
   id: string; nome: string; negociacaoId: string | null; cenarios: CenarioDaSimulacao[]; principal: string;
+  /** a principal da negociação ligada (2.3): a que preenche o card */
+  principalDaNegociacao: boolean;
   criadoPorId: string | null; alteradoPorId: string | null; criadoEm: string; alteradoEm: string; deletedAt: string | null;
 };
 
@@ -99,11 +105,12 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     semear();
   }
 
-  // a margem das ganhas no relatório do Comercial: de cada negociação, a simulação mexida por último
+  // a margem das ganhas no relatório do Comercial: de cada negociação, a principal (2.3; antes, a mexida por último)
   fonteDasMargensDemo(() => {
     preparar();
     const margens = new Map<string, MargemDaNegociacao>();
-    for (const r of [...X.simulacoes].filter((s) => !s.deletedAt && s.negociacaoId).sort((p, q) => q.alteradoEm.localeCompare(p.alteradoEm))) {
+    for (const r of [...X.simulacoes].filter((s) => !s.deletedAt && s.negociacaoId)
+      .sort((p, q) => Number(q.principalDaNegociacao) - Number(p.principalDaNegociacao) || q.alteradoEm.localeCompare(p.alteradoEm))) {
       if (margens.has(r.negociacaoId!)) continue;
       const k = resumoDoCenario(cenarioPrincipal(r), X.ajustes);
       margens.set(r.negociacaoId!, { simulacaoId: r.id, simulacao: r.nome, mensalTotal: k.mensalTotal, sobraMensal: k.sobraMensal });
@@ -136,11 +143,23 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
   function paraTela(r: SimulacaoRow, a: AtorDemo): Simulacao {
     return {
       id: r.id, nome: r.nome, negociacaoId: r.negociacaoId, negociacao: r.negociacaoId ? negociacaoVisivel(r.negociacaoId, a) : null,
-      cenarios: copia(r.cenarios), principal: r.principal,
+      cenarios: copia(r.cenarios), principal: r.principal, principalDaNegociacao: !!r.negociacaoId && r.principalDaNegociacao,
       criadoPor: nomeDe(r.criadoPorId), criadoEm: r.criadoEm, alteradoPor: nomeDe(r.alteradoPorId), alteradoEm: r.alteradoEm,
     };
   }
   const gravarDaLinha = (r: SimulacaoRow): SimulacaoGravar => ({ nome: r.nome, negociacaoId: r.negociacaoId, cenarios: copia(r.cenarios), principal: r.principal });
+  /** A negociação com simulações tem sempre uma principal: sem nenhuma, a mexida por último (como o servidor). */
+  function garantirPrincipal(negociacaoId: string | null) {
+    if (!negociacaoId) return;
+    const delas = X.simulacoes.filter((r) => r.negociacaoId === negociacaoId && !r.deletedAt);
+    if (!delas.length || delas.some((r) => r.principalDaNegociacao)) return;
+    delas.sort((p, q) => q.alteradoEm.localeCompare(p.alteradoEm) || q.criadoEm.localeCompare(p.criadoEm))[0]!.principalDaNegociacao = true;
+  }
+  /** O cenário principal da principal vai para o card da negociação (como o servidor): devolve se o card mudou. */
+  function levarParaANegociacao(r: SimulacaoRow, a: AtorDemo): boolean {
+    if (r.deletedAt || !r.negociacaoId || !r.principalDaNegociacao || !negociacaoVisivel(r.negociacaoId, a)) return false;
+    return x().levarDaSimulacao(r.negociacaoId, (usaProdutos) => valoresParaANegociacao(cenarioPrincipal(r), X.ajustes, produtos(), usaProdutos));
+  }
   function linhaOu404(id: string): SimulacaoRow {
     const r = X.simulacoes.find((s) => s.id === id && !s.deletedAt);
     if (!r) throw erro(404, 'Simulação não encontrado');
@@ -167,8 +186,9 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       ({ ...c, linhas: [...c.linhas, { ...linhaDaTabela(a.custos.find((y) => y.id === 'helena-contatos')!, { id: `${c.id}-contatos`, qtd }), produto: 'linechat' }] });
     const negociacao = (titulo: string) => x().chamados().find((t) => t.titulo === titulo && x().paineis().find((p) => p.id === t.painelId)?.tipo === 'vendas')?.id ?? null;
     const dias = (n: number, hora = 10) => { const d = new Date(agora()); d.setDate(d.getDate() - n); d.setHours(hora, 15, 0, 0); return d.toISOString(); };
-    const nova = (r: Omit<SimulacaoRow, 'id' | 'deletedAt' | 'alteradoPorId' | 'alteradoEm'> & { alteradoEm?: string }) => {
-      X.simulacoes.push({ ...r, id: ctx.id(), alteradoPorId: r.criadoPorId, alteradoEm: r.alteradoEm ?? r.criadoEm, deletedAt: null });
+    const nova = (r: Omit<SimulacaoRow, 'id' | 'deletedAt' | 'alteradoPorId' | 'alteradoEm' | 'principalDaNegociacao'> & { alteradoEm?: string }) => {
+      // uma simulação por negociação nos exemplos: cada uma é a principal da sua
+      X.simulacoes.push({ ...r, id: ctx.id(), principalDaNegociacao: !!r.negociacaoId, alteradoPorId: r.criadoPorId, alteradoEm: r.alteradoEm ?? r.criadoEm, deletedAt: null });
     };
 
     // a Padaria Estrela: 40 ramais (40 telefones e a nuvem de 40); a mesma venda em três versões
@@ -184,8 +204,8 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       ],
     });
     // o Hotel Beira Mar: o PABX e o LineChat; 20 telefones e a nuvem de 30 ramais, os telefones comprados em 10 vezes (o custo se
-    // dilui); a ativação em 3 vezes. A conta refeita pede R$ 1.690 (a negociação ainda está com R$ 1.580): o
-    // Levar para a negociação mostra a troca
+    // dilui); a ativação em 3 vezes. A conta refeita pede R$ 1.690 (a negociação ainda está com R$ 1.580): no
+    // primeiro salvamento (2.3), o card fica com o valor de cada produto
     nova({
       nome: 'Hotel Beira Mar — URA, filas e LineChat', negociacaoId: negociacao('Atendimento com URA e filas'), principal: 'a',
       criadoPorId: pessoa('diego'), criadoEm: dias(12), alteradoEm: dias(4, 11),
@@ -264,7 +284,8 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       ctx.requirePerm('sales.read'); preparar();
       if (!negociacaoVisivel(negociacaoId, x().eu())) return [];
       return X.simulacoes.filter((r) => r.negociacaoId === negociacaoId && !r.deletedAt).sort((p, q) => q.alteradoEm.localeCompare(p.alteradoEm))
-        .map((r) => ({ id: r.id, nome: r.nome, cenarios: r.cenarios.length, principal: resumoDoCenario(cenarioPrincipal(r), X.ajustes) }));
+        .sort((p, q) => Number(q.principalDaNegociacao) - Number(p.principalDaNegociacao))
+        .map((r) => ({ id: r.id, nome: r.nome, cenarios: r.cenarios.length, principal: resumoDoCenario(cenarioPrincipal(r), X.ajustes), principalDaNegociacao: r.principalDaNegociacao }));
     },
     async criar(d) {
       await ctx.wait(200);
@@ -274,11 +295,17 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       const n = s.negociacaoId ? conferirNegociacao(s.negociacaoId, a) : null;
       const quem = a.tipo === 'pessoa' ? a.id : null;
       const quando = agora().toISOString();
-      const r: SimulacaoRow = { id: ctx.id(), nome: s.nome, negociacaoId: s.negociacaoId, cenarios: copia(s.cenarios), principal: s.principal, criadoPorId: quem, alteradoPorId: quem, criadoEm: quando, alteradoEm: quando, deletedAt: null };
+      const r: SimulacaoRow = {
+        id: ctx.id(), nome: s.nome, negociacaoId: s.negociacaoId, cenarios: copia(s.cenarios), principal: s.principal, principalDaNegociacao: false,
+        criadoPorId: quem, alteradoPorId: quem, criadoEm: quando, alteradoEm: quando, deletedAt: null,
+      };
       X.simulacoes.push(r);
+      // a primeira da negociação é a principal, e os valores dela vão para o card (2.3)
+      garantirPrincipal(s.negociacaoId);
+      const levou = levarParaANegociacao(r, a);
       const k = s.cenarios.length;
       ctx.audit('create', 'sales_simulation', `Criou a simulação "${s.nome}"${k > 1 ? ` (${k} cenários)` : ''}${n ? ` (ligada à ${n.codigo})` : ''}`, r.id, { after: s });
-      return paraTela(r, a);
+      return { ...paraTela(r, a), levouParaANegociacao: levou };
     },
     async alterar(id, d) {
       await ctx.wait(200);
@@ -289,8 +316,15 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       // a negociação que a pessoa não vê fica como estava (ela manda o mesmo id que leu); a nova, ela tem de ver
       const n = s.negociacaoId && s.negociacaoId !== r.negociacaoId ? conferirNegociacao(s.negociacaoId, a) : null;
       const antes = gravarDaLinha(r);
-      Object.assign(r, { nome: s.nome, negociacaoId: s.negociacaoId, cenarios: copia(s.cenarios), principal: s.principal, alteradoPorId: a.tipo === 'pessoa' ? a.id : null, alteradoEm: agora().toISOString() });
-      const tela = paraTela(r, a);
+      // trocou de negociação: deixa de ser a principal da de antes e, na nova, só é se não houver outra (2.3)
+      const trocou = r.negociacaoId !== s.negociacaoId;
+      Object.assign(r, {
+        nome: s.nome, negociacaoId: s.negociacaoId, cenarios: copia(s.cenarios), principal: s.principal, ...(trocou ? { principalDaNegociacao: false } : {}),
+        alteradoPorId: a.tipo === 'pessoa' ? a.id : null, alteradoEm: agora().toISOString(),
+      });
+      if (trocou) { garantirPrincipal(antes.negociacaoId); garantirPrincipal(s.negociacaoId); }
+      const levou = levarParaANegociacao(r, a);
+      const tela = { ...paraTela(r, a), levouParaANegociacao: levou };
       const mudou = mudancasDaSimulacao(antes, s);
       if (antes.negociacaoId !== s.negociacaoId) mudou.push(s.negociacaoId ? `ligou à ${n?.codigo ?? tela.negociacao?.codigo ?? 'negociação'}` : 'desligou da negociação');
       ctx.audit('update', 'sales_simulation', mudou.length ? `Mudou a simulação "${s.nome}": ${mudou.join('; ')}` : `Salvou a simulação "${s.nome}" (sem mudança)`, id, { before: antes, after: s });
@@ -304,10 +338,24 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       const nome = `${o.nome} (cópia)`.slice(0, 120);
       const quem = a.tipo === 'pessoa' ? a.id : null;
       const quando = agora().toISOString();
-      const r: SimulacaoRow = { ...copia(o), id: ctx.id(), nome, criadoPorId: quem, alteradoPorId: quem, criadoEm: quando, alteradoEm: quando, deletedAt: null };
+      // a cópia não é a principal da negociação (2.3)
+      const r: SimulacaoRow = { ...copia(o), id: ctx.id(), nome, principalDaNegociacao: false, criadoPorId: quem, alteradoPorId: quem, criadoEm: quando, alteradoEm: quando, deletedAt: null };
       X.simulacoes.push(r);
       ctx.audit('create', 'sales_simulation', `Duplicou a simulação "${o.nome}" em "${nome}"`, r.id, { after: gravarDaLinha(r) });
       return paraTela(r, a);
+    },
+    async tornarPrincipal(id) {
+      await ctx.wait(150);
+      ctx.requirePerm('sales.read'); ctx.requirePerm('tickets.work'); preparar();
+      const a = x().eu();
+      const r = linhaOu404(id);
+      if (!r.negociacaoId) throw bad('A simulação não está ligada a uma negociação: ligue antes (o código, como COM-12).');
+      const n = negociacaoVisivel(r.negociacaoId, a);
+      if (!n) throw bad('A negociação desta simulação é de um painel que você não vê.');
+      for (const o of X.simulacoes) if (o.negociacaoId === r.negociacaoId) o.principalDaNegociacao = o.id === r.id;
+      const levou = levarParaANegociacao(r, a);
+      ctx.audit('update', 'sales_simulation', `Marcou a simulação "${r.nome}" como a principal da ${n.codigo}`, id);
+      return { ...paraTela(r, a), levouParaANegociacao: levou };
     },
     async remover(id) {
       await ctx.wait(120);
@@ -316,6 +364,9 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       const r = linhaOu404(id);
       r.deletedAt = agora().toISOString();
       r.alteradoPorId = a.tipo === 'pessoa' ? a.id : null;
+      // a principal foi para a lixeira: outra fica no lugar (o card continua com os valores que tem)
+      r.principalDaNegociacao = false;
+      garantirPrincipal(r.negociacaoId);
       ctx.audit('delete', 'sales_simulation', `Mandou a simulação "${r.nome}" para a lixeira`, id);
       return { ok: true };
     },
@@ -345,6 +396,8 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       const r = X.simulacoes.find((s) => s.id === id && s.deletedAt);
       if (!r) throw erro(404, 'Simulação não encontrado');
       r.deletedAt = null;
+      r.principalDaNegociacao = false;
+      garantirPrincipal(r.negociacaoId);
       ctx.audit('restore', 'sales_simulation', `Restaurou a simulação "${r.nome}" do Comercial da lixeira`, id);
       return { ok: true };
     },

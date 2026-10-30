@@ -215,7 +215,7 @@ export type CenarioDaSimulacao = {
   linhas: LinhaDoCenario[];
   /**
    * Os produtos do catálogo que a venda leva (os códigos: linepbx, linechat…): vêm do modelo ou da
-   * negociação, e o "Levar para a negociação" põe estes produtos nela.
+   * negociação, e a principal da negociação põe estes produtos no card (2.3; antes, o "Levar para a negociação").
    */
   produtos: string[];
   /**
@@ -454,6 +454,13 @@ export type Simulacao = {
   cenarios: CenarioDaSimulacao[];
   /** o id do cenário principal: o que a lista e a negociação mostram */
   principal: string;
+  /**
+   * a principal da negociação ligada (2.3): a que preenche os valores do card dela, sozinha, a cada salvamento.
+   * Uma negociação com simulações tem sempre uma principal (a primeira ligada, até a pessoa marcar outra)
+   */
+  principalDaNegociacao: boolean;
+  /** no salvamento (2.3): os valores do cenário principal foram para o card da negociação (mudaram lá) */
+  levouParaANegociacao?: boolean;
   criadoPor: string | null;
   criadoEm: string;
   alteradoPor: string | null;
@@ -493,8 +500,8 @@ export type SimulacaoNaLista = {
   alteradoEm: string;
 };
 
-/** Uma simulação ligada a uma negociação (a ficha da negociação). */
-export type SimulacaoDaNegociacao = { id: string; nome: string; cenarios: number; principal: ResumoDoCenario };
+/** Uma simulação ligada a uma negociação (a ficha da negociação). `principalDaNegociacao`: a que preenche o card (2.3). */
+export type SimulacaoDaNegociacao = { id: string; nome: string; cenarios: number; principal: ResumoDoCenario; principalDaNegociacao: boolean };
 
 /** O que a tela do Simulador precisa saber antes de tudo. */
 export type SimuladorOpcoes = {
@@ -859,7 +866,7 @@ export function comPrecoPorProduto<C extends Pick<CenarioDaSimulacao, 'produtos'
 }
 
 /**
- * O que o cliente paga em cada produto (o preço por produto e o "Levar para a negociação"): o preço do produto e,
+ * O que o cliente paga em cada produto (o preço por produto e o que vai para o card da negociação): o preço do produto e,
  * dos aparelhos vendidos ou alugados, o que entra no produto deles — o do modelo de onde a linha veio; a linha
  * sem produto (ou de um produto que saiu), no primeiro. As somas são o que o cliente paga no cenário.
  */
@@ -874,6 +881,40 @@ export function pagamentoPorProduto(c: CenarioDaSimulacao, k: Pick<ContasDoCenar
     if (l.modalidade === 'venda') alvo.venda += receita; else alvo.aluguel += receita;
   });
   return r;
+}
+
+/** O que a simulação principal põe no card da negociação (2.3): a mensalidade, a ativação, cada produto e os produtos. */
+export type ValoresParaANegociacao = {
+  /** a mensalidade (com o aluguel dos aparelhos); nula quando é zero e não há valor por produto */
+  valor: number | null;
+  /** o valor de cada produto (pelo id do produto do catálogo): vazio quando o cenário tem um preço só */
+  valoresDosProdutos: Record<string, number>;
+  /** a ativação (com os aparelhos vendidos); nula quando é zero e não há valor por produto */
+  ativacao: number | null;
+  ativacoesDosProdutos: Record<string, number>;
+  /** os produtos do cenário (os ids do catálogo); nulo: os da negociação ficam (o cenário sem produto, ou o painel sem produtos) */
+  produtos: string[] | null;
+};
+
+/**
+ * O que vai para a negociação (o que era o "Levar para a COM-x"; desde o 2.3, sozinho, a cada salvamento da
+ * principal): o que o cliente paga no cenário principal — a mensalidade (com o aluguel), a ativação (com a venda
+ * dos aparelhos) e, com o preço por produto, o de cada produto (o aparelho vendido ou alugado no produto dele);
+ * os produtos do cenário entram no lugar dos da negociação. `usaProdutos`: o painel da negociação tem o campo
+ * Produtos (sem ele, só o valor único). O cenário com um produto fora do catálogo leva um valor só.
+ */
+export function valoresParaANegociacao(c: CenarioDaSimulacao, faixas: FaixasDoSinal, catalogo: readonly ProdutoDoSimulador[], usaProdutos = true): ValoresParaANegociacao {
+  const k = contasDoCenario(c, faixas);
+  const idDe = (cod: string) => catalogo.find((p) => p.codigo === cod)?.id;
+  const ids = usaProdutos ? c.produtos.map(idDe).filter((x): x is string => !!x) : [];
+  const pagamento = usaProdutos && ids.length && ids.length === c.produtos.length ? pagamentoPorProduto(c, k) : null;
+  const valoresDosProdutos = pagamento ? Object.fromEntries(pagamento.map((x) => [idDe(x.produto)!, x.mensalidade + x.aluguel])) : {};
+  const ativacoesDosProdutos = pagamento && pagamento.some((x) => x.ativacao + x.venda > 0) ? Object.fromEntries(pagamento.map((x) => [idDe(x.produto)!, x.ativacao + x.venda])) : {};
+  return {
+    valor: pagamento ? k.mensalTotal : k.mensalTotal || null, valoresDosProdutos,
+    ativacao: Object.keys(ativacoesDosProdutos).length ? k.entradaTotal : k.entradaTotal || null, ativacoesDosProdutos,
+    produtos: ids.length ? ids : null,
+  };
 }
 
 /**
@@ -1077,6 +1118,30 @@ export function repartir(total: number, exatos: readonly number[]): number[] {
   return r;
 }
 
+/** O nome da linha que junta os custos do Helena no custo do mês e no mês a mês (2.3). */
+export const NOME_DOS_CUSTOS_DO_HELENA = 'Helena';
+
+/**
+ * As linhas por mês como a tela mostra: cada uma com o nome dela, e as do Helena (a licença, os usuários, os canais,
+ * os agentes, os contatos e a transcrição) numa só, "Helena", com o total, no lugar da primeira (o Luan, 29/10: "vc
+ * pode colocar só o valor total do helena n precisava colocar o pacote base + os usuários abaixo"). O quadro do
+ * LineChat nos custos e o Excel continuam linha a linha.
+ */
+function juntarOHelena<T extends { nome: string; custo: number; produto: string | null; helena: boolean }>(linhas: readonly T[]): Array<Pick<T, 'nome' | 'custo' | 'produto'>> {
+  const doHelena = linhas.filter((m) => m.helena);
+  if (!doHelena.length) return linhas.map(({ nome, custo, produto }) => ({ nome, custo, produto }));
+  const total = doHelena.reduce((s, m) => s + m.custo, 0);
+  const fora: Array<Pick<T, 'nome' | 'custo' | 'produto'>> = [];
+  let pos = false;
+  for (const m of linhas) {
+    if (!m.helena) { fora.push({ nome: m.nome, custo: m.custo, produto: m.produto }); continue; }
+    if (pos) continue;
+    pos = true;
+    fora.push({ nome: NOME_DOS_CUSTOS_DO_HELENA, custo: total, produto: m.produto });
+  }
+  return fora;
+}
+
 export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): ContasDoCenario {
   const imposto = c.imposto / 100;
   let aluguel = 0; let vendaDeAparelhos = 0; let custoUnico = 0; let custoMensalFixo = 0; let pctMensalidade = 0; let pctAtivacao = 0;
@@ -1087,8 +1152,9 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   const deUmaVez: Array<{ nome: string; total: number; vezes: number; produto: string | null }> = [];
   const dePercentual: Array<{ nome: string; pct: number; sobre: 'mensal' | 'entrada' }> = [];
   // os custos por mês, cada linha com o nome dela (o Luan, 21/10: "eu quero q ele sempre coloque detalhado todos os
-  // custos n agrupe" — antes o mês a mês e o custo do mês juntavam tudo em "Custos mensais")
-  const mensais: Array<{ nome: string; custo: number; produto: string | null }> = [];
+  // custos n agrupe" — antes o mês a mês e o custo do mês juntavam tudo em "Custos mensais"); as do Helena, numa só
+  // (2.3, o Luan: "vc pode colocar só o valor total do helena … esse especifico vc pode agrupar")
+  const mensais: Array<{ nome: string; custo: number; produto: string | null; helena: boolean }> = [];
   // as linhas de percentual só têm o custo depois de saber a mensalidade e a ativação (fica para o fim)
   const conta: Array<Omit<LinhaNaConta, 'custo'> & { custo: number; sobre: 'mensal' | 'entrada' | null; pct: number }> = [];
   for (const l of c.linhas) {
@@ -1116,7 +1182,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
     } else if (l.tipo === 'mensal') {
       const custo = faixas ? custoPorFaixas(qtd, faixas) : qtd * valor;
       custoMensalFixo += custo;
-      if (custo) mensais.push({ nome: l.nome || 'Custo sem nome', custo, produto: l.produto ?? null });
+      if (custo) mensais.push({ nome: l.nome || 'Custo sem nome', custo, produto: l.produto ?? null, helena: ehLinhaDoLineChat(l) });
       conta.push({ id: l.id, qtd, custo, quando: 'por-mes', receita: 0, falta, sobre: null, pct: 0, parcelas: 1 });
     } else if (l.tipo === 'pct_mensalidade') {
       pctMensalidade += valor / 100;
@@ -1172,6 +1238,8 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   else if (sobra > 0) sePagaEm = { tipo: 'mes', mes: prazo + Math.ceil(-serie[prazo - 1]! / sobra), depoisDoPrazo: true };
   else sePagaEm = { tipo: 'nunca' };
 
+  // o que o custo do mês e o mês a mês mostram: cada linha por mês, e as do Helena juntas no lugar da primeira delas
+  const mensaisNaTela = juntarOHelena(mensais);
   // cada mês, com o que entra e o que sai: o lucro é o que o acumulado andou (os números fecham com ele), e os
   // custos são o faturamento menos o lucro, repartidos nas partes
   const comprasDaLinha = deUmaVez.map((u) => (u.vezes > 1 ? dividirEmParcelas(Math.round(u.total), u.vezes) : null));
@@ -1193,7 +1261,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
       if (partes) { if (i < partes.length && partes[i]) sai.push({ rotulo: `${u.nome} (parcela ${i + 1} de ${partes.length})`, exato: partes[i]!, produto: u.produto }); }
       else if (i === 0 && u.total) sai.push({ rotulo: u.nome, exato: u.total, produto: u.produto });
     });
-    for (const m of mensais) sai.push({ rotulo: m.nome, exato: m.custo, produto: m.produto });
+    for (const m of mensaisNaTela) sai.push({ rotulo: m.nome, exato: m.custo, produto: m.produto });
     if (imposto && mensalTotal + parcela) sai.push({ rotulo: 'Imposto', exato: imposto * (mensalTotal + parcela) });
     for (const p of dePercentual) {
       const base = p.sobre === 'mensal' ? mensalTotal : parcela;
@@ -1212,7 +1280,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   const margem = mensalTotal > 0 ? sobraMensal / mensalTotal : null;
   // o custo do mês, parte a parte (cada linha por mês, o imposto e cada comissão), somando o custo do mês ao centavo
   const partes: Array<{ rotulo: string; exato: number; produto?: string | null }> = [
-    ...mensais.map((m) => ({ rotulo: m.nome, exato: m.custo, produto: m.produto })),
+    ...mensaisNaTela.map((m) => ({ rotulo: m.nome, exato: m.custo, produto: m.produto })),
     ...(impostoMensal ? [{ rotulo: 'Imposto', exato: impostoMensal }] : []),
     ...dePercentual.filter((p) => p.sobre === 'mensal' && p.pct && mensalTotal).map((p) => ({ rotulo: p.nome, exato: p.pct * mensalTotal })),
   ];

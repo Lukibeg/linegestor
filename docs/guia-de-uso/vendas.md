@@ -28,8 +28,9 @@ Suporte) fica com um papel sem o **Ver os chamados**.
    Perdido. Mude os nomes e inclua etapas como quiser; o Ganho e o Perdido mudam de nome, mas não saem.
 6. Em **As regras**, confira os **motivos de perda** (a lista que aparece ao marcar como perdida) e
    ponha a **meta do mês**, em R$ de mensalidades (vazia: sem meta).
-7. O painel já vem com os campos do Comercial: **CNPJ**, **Contatos principais**, **Origem de lead** e
-   **Indicação** (uma lista que cresce na própria negociação: escreva quem indicou e clique em **Incluir**).
+7. O painel já vem com os campos do Comercial: **CNPJ**, **Origem de lead** e **Indicação** (uma lista que
+   cresce na própria negociação: escreva quem indicou e clique em **Incluir**). Os contatos ficam na lateral da
+   negociação (o principal e o **Mais um contato**); os **Contatos principais** saíram no 2.3.
    Para mudar o nome, as opções das listas ou a ordem, ou para incluir outro campo: **Ajustes › Campos**, no
    painel do Comercial.
 
@@ -58,16 +59,15 @@ Suporte) fica com um papel sem o **Ver os chamados**.
 
 - **A empresa**: **Ainda não é cliente** (já vem marcado: escreva o nome) ou **Já é cliente** (escolha no
   cadastro). Quando ela entrar no cadastro de clientes, o **Virou cliente?** da ficha liga a negociação a ela.
-- O **contato** e o WhatsApp.
+- O **contato**, o WhatsApp e o e-mail (2.3).
 - **O que está sendo negociado** (opcional: uma frase, como "PABX em nuvem com 40 ramais"). Em branco, a
   negociação fica com o nome da empresa — e acompanha a empresa se ela mudar. No quadro, o cartão mostra a
   empresa em destaque e, embaixo, esta frase.
 - O **valor** (pode vir depois: a **Proposta enviada** pede a mensalidade) — **Um valor só** ou **Por
   produto** (veja abaixo), com a **mensalidade** e a **ativação**.
 - **Sobre a negociação**: o que o cliente precisa, quem decide, a concorrência.
-- **Do painel Comercial**: o CNPJ, os contatos principais, a origem de lead e quem indicou — a **Indicação**
-  é uma lista: quem não está nela entra pelo **Incluir** (na ficha, ficam em Detalhes; os contatos, junto do
-  Sobre a negociação).
+- **Do painel Comercial**: o CNPJ, a origem de lead e quem indicou — a **Indicação** é uma lista: quem não está
+  nela entra pelo **Incluir** (na ficha, ficam em Detalhes).
 - Os produtos e quem cuida.
 
 A negociação nasce no **Lead**.
@@ -105,8 +105,8 @@ embaixo). A imagem também abre grande; Word e Excel continuam baixando.
 
 Para fazer a conta da venda antes de mandar a proposta (os custos, a margem, quando se paga), use o
 **Simulador** (Comercial › Simulador): na ficha, a parte **Simulações** tem o **Simular**, que abre uma
-simulação já ligada à negociação, e a simulação tem o **Levar para a COM-x**, que traz a mensalidade, a
-ativação e os produtos para a negociação. Veja o guia do [Simulador](simulador.md).
+simulação já ligada à negociação. Desde o 2.3, a simulação principal da negociação preenche sozinha a mensalidade,
+a ativação (e o valor de cada produto) e os produtos do card a cada salvamento. Veja o guia do [Simulador](simulador.md).
 
 ## 5. Ganhou ou perdeu
 
@@ -193,6 +193,11 @@ relatório do Comercial já mostra os meses de antes da virada. A chave de API d
      a empresa que ainda não é cliente), os produtos, as etiquetas e os motivos de perda;
    - os avisos (o "(Cópia)" que sai do título, a mensalidade por produto que não soma o Valor atribuído…).
 6. **Trazer N negociações** e confirme. No fim, **Abrir o painel** e **Ver o relatório**.
+
+**Os campos que vêm do Helena (2.3)** — as licenças, os canais simultâneos, a faixa numérica… — ficam no cartão
+**Detalhes da proposta**, no meio da ficha da negociação, com os números lado a lado. Os que já tinham vindo antes
+da 2.3 vão para lá na atualização. Para tirar um campo do cartão, ou levar outro para ele: Painéis › Ajustes › Campos ›
+o campo › **Parte da ficha** (vazia: volta para o Detalhes do lado).
 
 **O que fica igual ao Helena:** a mensalidade é o **Valor atribuído** do card (o número que o relatório de lá
 soma); o valor por produto entra quando os "Valor Mensalidade" de cada produto somam o Valor atribuído. A

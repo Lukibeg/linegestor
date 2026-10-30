@@ -11,7 +11,7 @@ import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, ThumbsDown, TriangleAlert, Trophy, X } from 'lucide-react';
 import {
-  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, etiquetasDoPainel, paraBusca, reaisInteiros, telefoneLegivel, textoDoPrazo,
+  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, etiquetasDoPainel, paraBusca, parteDaEtapa, reaisInteiros, telefoneLegivel, textoDoPrazo,
   type CartaoChamado, type CorEtiqueta, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type ResultadoDaVenda,
   type TipoEspera, caminhoDoAssunto, emOrdemDeArvore, type Assunto,
 } from '@gestor/shared';
@@ -497,10 +497,11 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
       {(c.cliente || c.contato) && (
         <div className="min-w-0">
           {c.cliente ? <div className="font-semibold text-ink-2 truncate">{c.cliente.nome}</div> : <div className="text-signal text-[12px] font-medium">sem cliente</div>}
-          {c.contato && (c.contato.nome || c.contato.telefone) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? telefoneLegivel(c.contato.telefone)}</div>}
+          {c.contato && (c.contato.nome || c.contato.telefone || c.contato.email) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? (c.contato.telefone ? telefoneLegivel(c.contato.telefone) : c.contato.email)}</div>}
         </div>
       )}
       {c.assunto && <div className="text-[12px] text-muted truncate" title={c.assunto.caminho}>{c.assunto.caminho}</div>}
+      <ProgressoNoCartao c={c} />
       <div className="flex items-center gap-1.5 flex-wrap">
         <ChipEspera e={c.espera} />
         {mostrarEtapa && nomeDaEtapa && <Chip tone="neutral">{nomeDaEtapa}</Chip>}
@@ -512,6 +513,27 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
         <span className="ml-auto">{c.responsavel ? <Avatar nome={c.responsavel.nome} /> : <span className="text-[11.5px] text-muted italic">sem dono</span>}</span>
       </div>
       {c.etiquetas.length > 0 && <Etiquetas lista={c.etiquetas} painelId={c.painelId} />}
+    </div>
+  );
+}
+
+/**
+ * A conta da parte da etapa (2.3, a implantação): no card que está na Configuração, quanto da Configuração já foi feito
+ * ("Configuração · 3 de 15"). Sem uma parte com o nome da etapa, nada.
+ */
+function ProgressoNoCartao({ c }: { c: CartaoChamado }) {
+  const opcoes = useOpcoes();
+  if (!c.partes?.length) return null;
+  const etapa = painelDe(opcoes.data, c.painelId)?.etapas.find((e) => e.id === c.etapaId);
+  const p = parteDaEtapa(c.partes, etapa?.nome);
+  if (!p) return null;
+  const pct = Math.round((p.feitos / p.total) * 100);
+  return (
+    <div className="flex items-center gap-2 text-[11.5px] text-muted tnum" title={`${p.parte}: ${p.feitos} de ${p.total} feitos`} data-progresso>
+      <span className="flex-1 h-1.5 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
+        <span className={`block h-full rounded-full ${p.feitos === p.total ? 'bg-ok' : 'bg-accent'}`} style={{ width: `${pct}%` }} />
+      </span>
+      <span className="shrink-0">{p.feitos} de {p.total}</span>
     </div>
   );
 }
@@ -538,7 +560,7 @@ function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: {
         </LinkDoChamado>
         {empresa && paraBusca(c.titulo) !== paraBusca(empresa) && <div className="text-[12.5px] text-ink-2 truncate mt-0.5" title={c.titulo} data-titulo>{c.titulo}</div>}
         {!empresa && <div className="text-signal text-[12px] font-medium">sem empresa</div>}
-        {c.contato && (c.contato.nome || c.contato.telefone) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? telefoneLegivel(c.contato.telefone)}</div>}
+        {c.contato && (c.contato.nome || c.contato.telefone || c.contato.email) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? (c.contato.telefone ? telefoneLegivel(c.contato.telefone) : c.contato.email)}</div>}
       </div>
       {/* o valor do cartão é a mensalidade (o que conta); a ativação fica na ficha */}
       <div className={c.valor === null ? 'text-[12px] text-muted' : 'font-display font-semibold text-[15px] tnum text-ink'} data-valor>

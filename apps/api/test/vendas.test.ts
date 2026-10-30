@@ -115,12 +115,13 @@ describe('o painel de Vendas', () => {
     expect(await auditoriaDe(com.id)).toEqual([expect.stringContaining('Criou o painel Comercial (COM, de Vendas)')]);
     // os campos do Comercial do Helena (o print do Luan, 17/10), menos a Área de atuação
     const campos = ((await s.get('/atendimento/opcoes')).json().campos as CampoPersonalizado[]).filter((c) => c.painelId === com.id);
-    expect(campos.map((c) => `${c.nome}:${c.tipo}`)).toEqual(['CNPJ:texto', 'Contatos principais:texto_longo', 'Origem de lead:lista', 'Indicação:lista']);
+    // sem os Contatos principais (2.3: "já tem essa parte de contatos na lateral")
+    expect(campos.map((c) => `${c.nome}:${c.tipo}`)).toEqual(['CNPJ:texto', 'Origem de lead:lista', 'Indicação:lista']);
     // a Indicação é a lista que cresce no próprio formulário (2.0.3): nasce vazia, e se inclui na hora
     expect(campos.find((c) => c.nome === 'Indicação')).toMatchObject({ opcoes: [], incluirNaHora: true });
     expect(campos.find((c) => c.nome === 'Origem de lead')!.incluirNaHora).toBe(false);
-    expect(campos.find((c) => c.nome === 'Origem de lead')!.opcoes.map((o) => o.nome)).toEqual(CAMPOS_DO_PAINEL_DE_VENDAS[2]!.opcoes);
-    expect(await auditoriaDe(com.id)).toEqual([expect.stringContaining('e os campos CNPJ, Contatos principais, Origem de lead e Indicação')]);
+    expect(campos.find((c) => c.nome === 'Origem de lead')!.opcoes.map((o) => o.nome)).toEqual(CAMPOS_DO_PAINEL_DE_VENDAS.find((c) => c.nome === 'Origem de lead')!.opcoes);
+    expect(await auditoriaDe(com.id)).toEqual([expect.stringContaining('e os campos CNPJ, Origem de lead e Indicação')]);
   });
 
   it('o tipo não muda depois; os motivos e a meta ficam quando não vêm', async () => {

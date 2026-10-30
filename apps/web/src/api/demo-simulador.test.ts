@@ -181,6 +181,43 @@ describe('criar, mudar, duplicar e a lixeira (como o servidor)', () => {
   });
 });
 
+describe('a principal da negociação preenche o card (2.3, como o servidor)', () => {
+  it('o salvamento da principal põe os valores no card, sem linha no histórico; a cópia só depois do "Tornar a principal"', async () => {
+    await entrar('camila');
+    const op = await api.opcoes();
+    const idDo = (codigo: string) => op.produtos.find((x) => x.codigo === codigo)!.id;
+    const hotel = (await api.listar()).find((x) => x.nome.startsWith('Hotel'))!;
+    const neg = hotel.negociacao!.id;
+    const antes = await demoApi.atendimento.chamado(neg);
+    // a de exemplo ainda está com R$ 1.580 (a conta refeita pede R$ 1.690: R$ 1.190 do LinePBX e R$ 500 do LineChat)
+    expect(antes.valor).toBe(158_000);
+    const s = await api.ler(hotel.id);
+    expect(s.principalDaNegociacao).toBe(true);
+    const salva = await api.alterar(s.id, { nome: s.nome, negociacaoId: s.negociacaoId, cenarios: s.cenarios, principal: s.principal });
+    expect(salva.levouParaANegociacao).toBe(true);
+    const f = await demoApi.atendimento.chamado(neg);
+    expect(f).toMatchObject({ valor: 169_000, valoresDosProdutos: { [idDo('linepbx')]: 119_000, [idDo('linechat')]: 50_000 } });
+    expect(f.historico.length).toBe(antes.historico.length);
+    // a cópia não é a principal: mudar nela não mexe no card
+    const copia = await api.duplicar(s.id);
+    expect(copia.principalDaNegociacao).toBe(false);
+    const c0 = copia.cenarios[0]!;
+    const barata = { ...c0, porProduto: c0.porProduto!.map((x) => ({ ...x, mensalidade: x.produto === 'linepbx' ? 99_000 : 40_000 })) };
+    expect((await api.alterar(copia.id, { nome: copia.nome, negociacaoId: neg, cenarios: [barata], principal: copia.principal })).levouParaANegociacao).toBe(false);
+    expect((await demoApi.atendimento.chamado(neg)).valor).toBe(169_000);
+    // marcar a cópia: os valores dela vão para o card; a ficha mostra a principal primeiro
+    const t = await api.tornarPrincipal(copia.id);
+    expect(t).toMatchObject({ principalDaNegociacao: true, levouParaANegociacao: true });
+    expect((await demoApi.atendimento.chamado(neg)).valor).toBe(139_000);
+    expect((await api.daNegociacao(neg)).map((x) => [x.id, x.principalDaNegociacao])).toEqual([[copia.id, true], [s.id, false]]);
+    expect((await auditoria())[0]!.summary).toBe(`Marcou a simulação "${copia.nome}" como a principal da ${hotel.negociacao!.codigo}`);
+    // a principal na lixeira: a outra volta a ser a principal, e o card fica como está
+    await api.remover(copia.id);
+    expect((await api.ler(s.id)).principalDaNegociacao).toBe(true);
+    expect((await demoApi.atendimento.chamado(neg)).valor).toBe(139_000);
+  });
+});
+
 describe('a margem no relatório do Comercial (a prévia)', () => {
   it('as ganhas do mês com simulação: no total e por produto', async () => {
     await entrar('camila');

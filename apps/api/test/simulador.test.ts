@@ -13,6 +13,9 @@
  *  - a negociação ligada: só de painel de Vendas que a pessoa vê; quem não vê o painel não vê a negociação
  *    (e a ligação fica como estava quando ela salva); a ficha da negociação lista as simulações
  *  - o Excel: quem vê exporta a planilha com as fórmulas (uma folha por cenário e a "Lado a lado"), na auditoria
+ *  - a principal da negociação (2.3): a primeira ligada preenche o card a cada salvamento (a mensalidade, a ativação,
+ *    o valor de cada produto e os produtos), sem a linha no histórico; outra só preenche depois do "Tornar a
+ *    principal"; a principal na lixeira passa o lugar; a negociação perdida não muda
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -322,6 +325,107 @@ describe('o preço por produto ("uma proposta separada, porém uma negociação 
     expect(u.statusCode, u.body).toBe(200);
     expect(u.json().cenarios[0]).toMatchObject({ porProduto: null, mensalidade: 141_000 });
     expect((await auditoriaDe(s.id))[0]).toBe('Mudou a simulação "Colégio Saber": no Cenário A, o preço voltou a ser um só');
+  });
+});
+
+describe('a principal da negociação preenche o card (2.3)', () => {
+  // o Luan: "quando eu colocar os valores na simulação ele já deve ir para o card do cliente já preenchendo nos campos de
+  // valores"; de duas simulações, "continua a marcada com principal"; e "n precisa registrar as mudanças"
+  let sol = { id: '', codigo: '' };
+  let a: Simulacao;
+  let b: Simulacao;
+  let catalogo: Array<{ id: string; codigo: string }> = [];
+  const idDo = (codigo: string) => catalogo.find((x) => x.codigo === codigo)!.id;
+  const ficha = async (id = sol.id) => (await camila.get(`/atendimento/chamados/${id}`)).json();
+  const doisProdutos = (mensalPbx: number, mensalChat: number): CenarioDaSimulacao => ({
+    ...cenarioDaAurora(), produtos: ['linepbx', 'linechat'],
+    porProduto: [{ produto: 'linepbx', mensalidade: mensalPbx, ativacao: 100_000 }, { produto: 'linechat', mensalidade: mensalChat, ativacao: 0 }],
+  });
+  const corpo = (sim: { nome: string; cenarios: CenarioDaSimulacao[] }, negociacaoId: string | null = sol.id) => ({ nome: sim.nome, negociacaoId, cenarios: sim.cenarios, principal: sim.cenarios[0]!.id });
+
+  beforeAll(async () => {
+    catalogo = (await camila.get('/comercial/simulador/opcoes')).json().produtos;
+    const r = await camila.post('/atendimento/chamados', { painelId: com.id, titulo: 'PABX e LineChat', empresa: 'Padaria Sol' });
+    expect(r.statusCode, r.body).toBe(201);
+    sol = r.json();
+  });
+
+  it('a primeira ligada é a principal: o salvamento põe a mensalidade, a ativação e os produtos no card, sem linha no histórico', async () => {
+    const antes = (await ficha()).historico.length;
+    const r = await camila.post('/comercial/simulador/simulacoes', corpo({ nome: 'Padaria Sol — proposta 1', cenarios: [cenarioDaAurora()] }));
+    expect(r.statusCode, r.body).toBe(201);
+    a = r.json();
+    expect(a).toMatchObject({ principalDaNegociacao: true, levouParaANegociacao: true });
+    const f = await ficha();
+    expect(f).toMatchObject({ valor: 99_000, ativacao: 150_000, valoresDosProdutos: {}, ativacoesDosProdutos: {} });
+    expect(f.produtos.map((p: { id: string }) => p.id)).toEqual([idDo('linepbx')]);
+    // "n precisa registrar as mudanças": o histórico da negociação não ganha linha
+    expect(f.historico.length).toBe(antes);
+    // mudar a mensalidade na simulação muda o card
+    const m = await camila.put(`/comercial/simulador/simulacoes/${a.id}`, corpo({ nome: a.nome, cenarios: [{ ...a.cenarios[0]!, mensalidade: 105_000 }] }));
+    expect(m.json()).toMatchObject({ levouParaANegociacao: true });
+    expect((await ficha()).valor).toBe(105_000);
+    // salvar do mesmo jeito: nada muda no card
+    expect((await camila.put(`/comercial/simulador/simulacoes/${a.id}`, corpo({ nome: 'Padaria Sol — proposta 1 (revista)', cenarios: m.json().cenarios }))).json().levouParaANegociacao).toBe(false);
+    expect((await ficha()).historico.length).toBe(antes);
+  });
+
+  it('o preço por produto: cada produto com o seu valor no card (a mensalidade e a ativação), e os dois produtos', async () => {
+    const m = await camila.put(`/comercial/simulador/simulacoes/${a.id}`, corpo({ nome: a.nome, cenarios: [doisProdutos(80_000, 30_000)] }));
+    expect(m.statusCode, m.body).toBe(200);
+    a = m.json();
+    const f = await ficha();
+    expect(f).toMatchObject({
+      valor: 110_000, valoresDosProdutos: { [idDo('linepbx')]: 80_000, [idDo('linechat')]: 30_000 },
+      ativacao: 100_000, ativacoesDosProdutos: { [idDo('linepbx')]: 100_000, [idDo('linechat')]: 0 },
+    });
+    expect(f.produtos.map((p: { id: string }) => p.id).sort()).toEqual([idDo('linepbx'), idDo('linechat')].sort());
+  });
+
+  it('a segunda não é a principal: não mexe no card até o "Tornar a principal"; a ficha mostra a principal primeiro', async () => {
+    const r = await camila.post('/comercial/simulador/simulacoes', corpo({ nome: 'Padaria Sol — proposta 2', cenarios: [doisProdutos(70_000, 25_000)] }));
+    expect(r.statusCode, r.body).toBe(201);
+    b = r.json();
+    expect(b).toMatchObject({ principalDaNegociacao: false, levouParaANegociacao: false });
+    expect((await ficha()).valor).toBe(110_000);
+    expect((await camila.get(`/comercial/simulador/da-negociacao/${sol.id}`)).json().map((x: { id: string; principalDaNegociacao: boolean }) => [x.id, x.principalDaNegociacao]))
+      .toEqual([[a.id, true], [b.id, false]]);
+    // quem só lê não marca; a simulação sem negociação não tem o que marcar
+    expect((await lia.post(`/comercial/simulador/simulacoes/${b.id}/principal`)).statusCode).toBe(403);
+    const solta = (await camila.post('/comercial/simulador/simulacoes', corpo({ nome: 'Solta', cenarios: [cenarioDaAurora()] }, null))).json();
+    const semNegociacao = await camila.post(`/comercial/simulador/simulacoes/${solta.id}/principal`);
+    expect(semNegociacao.statusCode).toBe(400);
+    expect(semNegociacao.json().error).toBe('A simulação não está ligada a uma negociação: ligue antes (o código, como COM-12).');
+    // marcar: os valores da segunda vão para o card na hora; a primeira deixa de ser
+    const t = await camila.post(`/comercial/simulador/simulacoes/${b.id}/principal`);
+    expect(t.statusCode, t.body).toBe(200);
+    expect(t.json()).toMatchObject({ principalDaNegociacao: true, levouParaANegociacao: true });
+    expect((await ficha())).toMatchObject({ valor: 95_000, valoresDosProdutos: { [idDo('linepbx')]: 70_000, [idDo('linechat')]: 25_000 } });
+    expect((await camila.get(`/comercial/simulador/simulacoes/${a.id}`)).json().principalDaNegociacao).toBe(false);
+    expect((await auditoriaDe(b.id))[0]).toBe(`Marcou a simulação "Padaria Sol — proposta 2" como a principal da ${sol.codigo}`);
+    // a de antes, agora sem ser a principal, não mexe mais
+    await camila.put(`/comercial/simulador/simulacoes/${a.id}`, corpo({ nome: a.nome, cenarios: [doisProdutos(50_000, 10_000)] }));
+    expect((await ficha()).valor).toBe(95_000);
+  });
+
+  it('a principal na lixeira passa o lugar para a outra, sem mudar o card; a negociação perdida não muda mais', async () => {
+    expect((await camila.del(`/comercial/simulador/simulacoes/${b.id}`)).statusCode).toBe(200);
+    expect((await camila.get(`/comercial/simulador/simulacoes/${a.id}`)).json().principalDaNegociacao).toBe(true);
+    expect((await ficha()).valor).toBe(95_000);
+    // a de volta da lixeira não toma o lugar
+    expect((await s.post(`/admin/trash/salesSimulation/${b.id}/restore`)).statusCode).toBe(200);
+    expect((await camila.get(`/comercial/simulador/simulacoes/${b.id}`)).json().principalDaNegociacao).toBe(false);
+    // o próximo salvamento da principal põe os valores dela
+    const m = await camila.put(`/comercial/simulador/simulacoes/${a.id}`, corpo({ nome: a.nome, cenarios: [doisProdutos(50_000, 12_000)] }));
+    expect(m.json().levouParaANegociacao).toBe(true);
+    expect((await ficha()).valor).toBe(62_000);
+    // perdida: a simulação continua salvando, e o card fica como estava
+    const perdido = com.etapas.find((e) => e.nome === 'Perdido')!;
+    expect((await camila.post(`/atendimento/chamados/${sol.id}/mover`, { etapaId: perdido.id, motivoPerda: 'Preço' })).statusCode).toBe(200);
+    const depois = await camila.put(`/comercial/simulador/simulacoes/${a.id}`, corpo({ nome: a.nome, cenarios: [doisProdutos(40_000, 12_000)] }));
+    expect(depois.statusCode, depois.body).toBe(200);
+    expect(depois.json().levouParaANegociacao).toBe(false);
+    expect((await ficha()).valor).toBe(62_000);
   });
 });
 

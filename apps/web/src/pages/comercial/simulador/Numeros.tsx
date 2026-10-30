@@ -31,7 +31,8 @@ function Linha({ rotulo, valor, dica, tom, id, abaixo }: { rotulo: ReactNode; va
 export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador }) {
   const ruimDePagar = k.sePagaEm.tipo === 'nunca' || (k.sePagaEm.tipo === 'mes' && k.sePagaEm.depoisDoPrazo);
   // o custo do mês, parte a parte e sem agrupar (o Luan, 21/10: "eu quero q ele sempre coloque detalhado todos os
-  // custos n agrupe"): cada custo por mês pelo nome, o imposto e cada comissão
+  // custos n agrupe"): cada custo por mês pelo nome, o imposto e cada comissão — e o Helena numa linha só, com o
+  // total (2.3: "esse especifico vc pode agrupar")
   const partesDoCusto = k.partesDoCustoMensal.length > 0 ? (
     <ul className="mt-0.5 flex flex-col text-[12px] text-muted" id="simulador-partes-do-custo">
       {k.partesDoCustoMensal.map((p, i) => (

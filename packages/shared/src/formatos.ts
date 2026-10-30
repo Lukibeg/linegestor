@@ -19,6 +19,21 @@ export function cnpjFormatado(v: string): string {
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
 }
 
+/**
+ * O CNPJ enquanto se digita (2.3, o Luan: "se eu só colocar os números ele va colocando no formato"): os pontos, a
+ * barra e o traço entram conforme os números chegam. 45812 → 45.812; 45812033000174 → 45.812.033/0001-74. O que passa
+ * de 14 números fica de fora.
+ */
+export function cnpjEnquantoDigita(v: string): string {
+  const d = cnpjLimpo(v).slice(0, 14);
+  let out = d.slice(0, 2);
+  if (d.length > 2) out += `.${d.slice(2, 5)}`;
+  if (d.length > 5) out += `.${d.slice(5, 8)}`;
+  if (d.length > 8) out += `/${d.slice(8, 12)}`;
+  if (d.length > 12) out += `-${d.slice(12)}`;
+  return out;
+}
+
 /** Confere os dois dígitos verificadores do CNPJ (algoritmo oficial da Receita). */
 export function cnpjValido(v: string): boolean {
   const d = cnpjLimpo(v);

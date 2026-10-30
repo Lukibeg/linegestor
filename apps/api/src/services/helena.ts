@@ -25,6 +25,7 @@ import {
   ajustesDoPainelCompletos, chaveDaEtiqueta, chaveDoNome, codigoDoChamado, ehLista, leituraComAPlanilha, ligarEtapasDoEvento, linkDoCsvDaPlanilha,
   nomeDoPainelDeGestaoNovo, obrigatoriosDoPainel, planoDaImportacao, resumoDaImportacao, siglaDoPainelNovo, textoDoCard, tipoParaOPainelDoHelena, valorDoCampoNoGestor,
   type AjustesDoPainel, type CardDoHelena, type EstadoDoGestorParaHelena, type LeituraDoHelena, type LeituraDoHelenaNaTela, type Obrigatorio,
+  DICA_DO_CAMPO_DO_HELENA, PARTE_DOS_CAMPOS_DO_HELENA,
   type OpcaoDoCampo, type OpcoesDoTrazerDoHelena, type PainelDoGestorParaHelena, type PlanilhaParaALeitura, type PlanoDaImportacao, type PreviaDoHelena,
   type ResultadoDaVenda, type ResultadoDoTrazerDoHelena, type TipoDePainel, type TipoEtapa, type ValoresDosCampos,
 } from '@gestor/shared';
@@ -518,8 +519,12 @@ async function criarPainel(db: Db, leitura: LeituraDoHelena, agora: Date): Promi
 /** As etapas do plano no painel (as que saem só se vazias) e as do histórico, já fora; devolve o nome → id. */
 async function gravarEtapas(db: Db, ator: Ator, painel: PainelDoGestorParaHelena, plano: PlanoDaImportacao, agora: Date, tipo: TipoDePainel): Promise<(nome: string) => string | null> {
   const validos = obrigatoriosDoPainel({ camposDesligados: painel.camposDesligados }, painel.campos, tipo);
+  // o que a etapa que fica já fazia (2.3: abrir a implantação, ligar no cadastro) continua: o Trazer não mexe nisso
+  const antes = new Map((await db.select({ id: ticketStages.id, abre: ticketStages.opensPanelId, liga: ticketStages.activatesProducts, recebe: ticketStages.receivesImplementation }).from(ticketStages)
+    .where(eq(ticketStages.panelId, painel.id))).map((e) => [e.id, e]));
   const etapas: EtapaGravar[] = plano.etapas.etapas.map((e) => ({
     ...(e.id ? { id: e.id } : {}), nome: e.nome, tipo: e.tipo, nivel: null, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado,
+    abreImplantacao: (e.id && antes.get(e.id)?.abre) || null, ligaNoCadastro: !!(e.id && antes.get(e.id)?.liga), recebeImplantacao: !!(e.id && antes.get(e.id)?.recebe),
   }));
   const planoDasEtapas = await planejarEtapas(db, painel.id, etapas, {}, validos, tipo);
   await aplicarEtapas(db as unknown as Tx, ator, planoDasEtapas, agora);
@@ -542,7 +547,9 @@ async function gravarCampos(db: Db, painel: PainelDoGestorParaHelena, plano: Pla
   for (const c of plano.campos) {
     if (c.acao === 'cria') {
       await db.insert(ticketFields).values({
-        id: newId(), panelId: painel.id, name: c.nome, kind: c.tipo, help: 'Trazido do Helena.', active: true, sortOrder: ordem++,
+        id: newId(), panelId: painel.id, name: c.nome, kind: c.tipo, help: DICA_DO_CAMPO_DO_HELENA, active: true, sortOrder: ordem++,
+        // na negociação, os campos do Helena vão para os Detalhes da proposta (2.3)
+        section: painel.tipo === 'vendas' ? PARTE_DOS_CAMPOS_DO_HELENA : null,
         options: c.opcoesNovas.map((nome) => ({ id: newId(), nome, ativa: true })), createdAt: agora, updatedAt: agora,
       });
     } else if (c.acao === 'usa' && c.gestorId && c.opcoesNovas.length && ehLista(c.tipo)) {

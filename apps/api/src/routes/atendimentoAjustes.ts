@@ -16,7 +16,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AjustesDaNiaSchema, AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
+  AjustesDaNiaSchema, AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CaixinhasGravarSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
   EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, ExperimentarRoboSchema,
   LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, parametrosDoEndereco, SitesIframeSchema, WebhookGravarSchema,
   EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO,
@@ -112,6 +112,16 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     schema: { tags, summary: 'Mudar um campo do painel (o tipo não muda; desativar = ativo: false; a opção que não vier fica desativada)', params: Id, body: CampoGravarSchema },
   }, async (req) => {
     const r = await ajustes.alterarCampo(app, req.params.id, req.body);
+    await app.audit(req, { action: 'update', entityType: 'ticket_field', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
+    return r.valor;
+  });
+
+  // 2.3: o "Editar as caixinhas" do card (as caixinhas e as pastas, sem mexer no resto do campo)
+  app.put('/campos/:id/caixinhas', {
+    ...cuidar,
+    schema: { tags, summary: 'Mudar só as caixinhas de um campo de caixinhas (criar, renomear, tirar, a ordem e as pastas); vale para todos os cards do painel', params: Id, body: CaixinhasGravarSchema },
+  }, async (req) => {
+    const r = await ajustes.alterarCaixinhas(app.db, req.params.id, req.body);
     await app.audit(req, { action: 'update', entityType: 'ticket_field', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
     return r.valor;
   });

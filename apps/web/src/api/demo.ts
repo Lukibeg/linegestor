@@ -32,7 +32,8 @@ import {
   TIPOS_IMAGEM_PORTAL, TutoriaisListarSchema, TutorialGravarSchema, tutorialValePara, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar,
 } from '@gestor/shared';
 import type { Api } from './index.js';
-import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo } from './demo-atendimento.js';
+import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo, type CadastroDaPrevia } from './demo-atendimento.js';
+import type { AssinaturaNoCadastro } from '@gestor/shared';
 import { criarCalendarioDemo } from './demo-calendario.js';
 import { criarSimuladorDemo } from './demo-simulador.js';
 import { criarHelenaDemo } from './demo-helena.js';
@@ -52,6 +53,20 @@ const daysAgo = (d: number, h = 10) => { const x = new Date(); x.setDate(x.getDa
 const emDias = (d: number) => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
 /** Data de calendário: guardada ao meio-dia UTC, como no servidor (não "volta um dia" no Brasil). */
 const dia = (v: unknown) => { if (v == null || v === '') return null; const d = new Date(String(v)); return Number.isNaN(d.getTime()) ? null : diaAoMeioDia(d).toISOString(); };
+
+/**
+ * Os módulos que o catálogo de verdade tem além da carga inicial (Administração › Produtos, no ar) e os do card de
+ * ativação do Helena: os "Módulos a ativar" da implantação (2.3) mostram estes na prévia.
+ */
+const MODULOS_SO_DA_PREVIA = [
+  { product: 'linepbx',  code: 'line_reports',    name: 'Line Reports',          hasSettings: false, description: 'Os relatórios de ligações do cliente.' },
+  { product: 'linepbx',  code: 'callback',        name: 'Callback',              hasSettings: false, description: 'Retorno automático para quem desistiu na fila.' },
+  { product: 'linepbx',  code: 'webrtc',          name: 'WebRTC',                hasSettings: false, description: 'Ramal no navegador.' },
+  { product: 'linepbx',  code: 'nps_whatsapp',    name: 'NPS - WhatsApp',        hasSettings: false, description: 'A pesquisa de satisfação da ligação, enviada pelo WhatsApp.' },
+  { product: 'linepbx',  code: 'filas_dashboard', name: 'Filas - Dashboard',     hasSettings: false, description: 'Painel em tempo real das filas da central.' },
+  { product: 'linechat', code: 'confirmacao',     name: 'Confirmação Automática', hasSettings: false, description: 'Confirmação de agendamentos pelo WhatsApp.' },
+  { product: 'linechat', code: 'webchat',         name: 'WebChat',               hasSettings: false, description: 'O chat no site do cliente.' },
+] as const;
 
 // ---------------- estado ----------------
 type Client = { id: string; tradeName: string; legalName: string; cnpj: string; logoUrl: string | null; archived: boolean; isInternal: boolean; internalCode: string | null; notes: string | null; deletedAt: string | null; createdAt: string; updatedAt: string };
@@ -193,7 +208,8 @@ const S = {
   },
   carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[], cargos: [] as { id: string; name: string; active: boolean }[],
   products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, code: p.code as string, name: p.name as string, color: p.color as string, hasSettings: p.hasSettings as boolean, description: p.description as string | null, sortOrder: i, active: true, deletedAt: null as string | null })),
-  modules: MODULOS_INICIAIS.map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
+  // os módulos da carga inicial e os que o Luan já tem no catálogo de verdade (a prévia mostra a implantação, 2.3, com eles)
+  modules: [...MODULOS_INICIAIS, ...MODULOS_SO_DA_PREVIA].map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
   subMods: [] as SubMod[],
   audit: [] as (AuditItem & { userId: string | null })[],
   me: null as UserRow | null,
@@ -1036,6 +1052,60 @@ const unidadesDe = (cid: string) => {
   return S.units.filter((u) => u.clientId === cid && !u.deletedAt).sort((a, b) => Number(b.isMain) - Number(a.isMain) || a.name.localeCompare(b.name, 'pt-BR'));
 };
 const modMeta = (mid: string) => S.modules.find((m) => m.id === mid)!;
+
+/**
+ * O cadastro dos clientes que a implantação dos chamados (2.3) usa — as mesmas regras do servidor
+ * (services/atendimento/implantacao.ts): o cliente novo com a Matriz, o produto sem a data (em implantação), a data e
+ * os módulos do Implantado.
+ */
+const assinaturaDe = (clienteId: string, code: string) =>
+  S.subs.find((x) => x.clientId === clienteId && x.productCode === code && !x.deactivatedAt) ?? S.subs.find((x) => x.clientId === clienteId && x.productCode === code);
+const produtoDoId = (produtoId: string) => S.products.find((p) => p.id === produtoId);
+const cadastroDaPrevia: CadastroDaPrevia = {
+  clientePeloCnpj(cnpj) { const c = S.clients.find((x) => x.cnpj === cnpj && !x.deletedAt); return c ? { id: c.id, nome: c.tradeName } : null; },
+  clienteNaLixeira(cnpj) { const c = S.clients.find((x) => x.cnpj === cnpj && x.deletedAt); return c ? { nome: c.tradeName } : null; },
+  criarCliente(d) {
+    const c: Client = { id: id(), tradeName: d.nomeFantasia, legalName: d.razaoSocial, cnpj: d.cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: d.notas, deletedAt: null, createdAt: now(), updatedAt: now() };
+    S.clients.push(c); unidadesDe(c.id);
+    return { id: c.id, nome: c.tradeName };
+  },
+  assinaturas(clienteId) {
+    const m = new Map<string, AssinaturaNoCadastro>();
+    for (const p of S.products) {
+      const s = assinaturaDe(clienteId, p.code);
+      if (s) m.set(p.id, { ativadoEm: s.activatedAt, encerrado: !!s.deactivatedAt, modulosLigados: new Set(S.subMods.filter((x) => x.subscriptionId === s.id && !x.deactivatedAt).map((x) => x.moduleId)) });
+    }
+    return m;
+  },
+  porSemData(clienteId, produtoId) {
+    const p = produtoDoId(produtoId);
+    if (!p || assinaturaDe(clienteId, p.code)) return;
+    S.subs.push({ id: id(), clientId: clienteId, productCode: p.code, activatedAt: null, deactivatedAt: null, notes: null, settings: {} });
+  },
+  ativarProduto(clienteId, produtoId, quando) {
+    const p = produtoDoId(produtoId);
+    if (!p) return false;
+    const s = assinaturaDe(clienteId, p.code);
+    if (!s) { S.subs.push({ id: id(), clientId: clienteId, productCode: p.code, activatedAt: quando, deactivatedAt: null, notes: null, settings: {} }); return true; }
+    if (s.activatedAt || s.deactivatedAt) return false;
+    s.activatedAt = quando;
+    return true;
+  },
+  ligarModulo(clienteId, produtoId, moduloId, quando) {
+    const p = produtoDoId(produtoId);
+    const s = p ? assinaturaDe(clienteId, p.code) : undefined;
+    if (!s || s.deactivatedAt || !S.modules.some((m) => m.id === moduloId && m.productId === produtoId && !m.deletedAt)) return false;
+    const linha = S.subMods.find((x) => x.subscriptionId === s.id && x.moduleId === moduloId);
+    if (linha && !linha.deactivatedAt) return false;
+    if (linha) { linha.activatedAt = quando; linha.deactivatedAt = null; } else S.subMods.push({ id: id(), subscriptionId: s.id, moduleId: moduloId, activatedAt: quando, deactivatedAt: null, notes: null, settings: {} });
+    return true;
+  },
+  // os do produto, na ordem do catálogo (o da lixeira fica desativado: quem já o marcou continua com ele)
+  modulosDoProduto(produtoId) {
+    return S.modules.filter((m) => m.productId === produtoId).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR'))
+      .map((m) => ({ id: m.id, nome: m.name, ativa: m.active && !m.deletedAt }));
+  },
+};
 /** Módulos ligados numa assinatura (ordenados como no catálogo). */
 const activeMods = (subId: string) => S.subMods.filter((m) => m.subscriptionId === subId && !m.deactivatedAt && !modMeta(m.moduleId).deletedAt).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder);
 /** O que o cliente tem ligado: códigos dos produtos e "produto:módulo" (como o servidor, com withProducts). */
@@ -3790,6 +3860,7 @@ export const demoApi: Api = {
     S, id, wait, audit, requirePerm, requireAnyPerm, temPerm,
     ia: { pronta: iaProntaDemo, limite: limiteIaDemo, uso: usoIaDemo },
     cardsDoLineChat: () => chamadosDemo().cards,
+    cadastro: cadastroDaPrevia,
   }),
   // o calendário (2.0.1): o módulo inteiro mora em demo-calendario.ts
   calendario: calendarioDemo,

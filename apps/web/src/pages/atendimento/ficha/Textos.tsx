@@ -10,10 +10,11 @@
  */
 import { useState } from 'react';
 import { CircleAlert, Pencil } from 'lucide-react';
-import { campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
+import { campoAparece, campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
+import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
 
 type CampoTexto = 'relato' | 'descricao' | 'solucao' | 'causa' | 'contorno' | 'validacao';
 type Bloco = { campo: CampoTexto; titulo: string; dica: string; max: number; exemplo: string };
@@ -93,8 +94,10 @@ export function Textos() {
     : f.tipoChamado === 'problema' ? DO_PROBLEMA
       // o painel que não usa o relato, a solução e a causa (2.1.2): eles saem da ficha (o problema continua com os dele)
       : DO_CHAMADO.filter((b) => !painel || ((b.campo !== 'relato' || campoLigado(painel.ajustes, 'relato')) && ((b.campo !== 'solucao' && b.campo !== 'causa') || campoLigado(painel.ajustes, 'solucao'))));
-  // os campos de texto longo do painel (os ativos), na ordem dos Ajustes
-  const longos = opcoes.campos.filter((c) => c.painelId === f.painelId && c.ativo && c.tipo === 'texto_longo');
+  // os campos de texto longo do painel (os ativos), na ordem dos Ajustes — os de uma parte (2.3) ficam nas partes, e o de um
+  // produto só aparece no chamado que tem o produto
+  const produtos = f.produtos.map((p) => p.id);
+  const longos = opcoes.campos.filter((c) => c.painelId === f.painelId && !c.parte && campoAparece(c, produtos) && c.tipo === 'texto_longo');
   return (
     <section className="card p-4 flex flex-col divide-y divide-line min-w-0" aria-label="Os textos do chamado">
       {blocos.map((b) => <BlocoDeTexto key={b.campo} b={b} />)}
@@ -112,17 +115,19 @@ function BlocoDeTexto({ b }: { b: Bloco }) {
 }
 
 /** Um campo de texto longo do painel (a "Passos para reproduzir" do Desenvolvimento, por exemplo). */
-function BlocoDoCampo({ c }: { c: CampoPersonalizado }) {
+export function BlocoDoCampo({ c }: { c: CampoPersonalizado }) {
   const { f } = useAberta();
   const v = f.campos[c.id];
   return (
     <TextoEditavel id={`campo-c-${c.id}`} chave={chaveDoCampo(c.id)} titulo={c.nome} dica={c.dica ?? ''} max={MAX_LETRAS_DO_CAMPO.texto_longo} exemplo=""
-      valor={typeof v === 'string' ? v : ''} dados={(texto) => ({ campos: { [c.id]: texto.trim() ? texto : null } })} />
+      valor={typeof v === 'string' ? v : ''} dados={(texto) => ({ campos: { [c.id]: texto.trim() ? texto : null } })} campoId={c.id} />
   );
 }
 
-function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados }: {
+function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, campoId }: {
   id: string;
+  /** o campo do painel (2.3): com ele, o Anexar e as miniaturas */
+  campoId?: string;
   /** a chave do que falta ("solucao", "campo:<id>") */
   chave: string;
   titulo: string; dica: string; max: number; exemplo: string; valor: string;
@@ -150,9 +155,12 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados }: 
         {dica && <span className="text-[12px] text-muted">{dica}</span>}
         <MarcaFalta campo={chave} />
         {pode && !editando && (
-          <button type="button" className="btn-ghost btn-sm ml-auto -my-1" onClick={abrir} aria-label={`${valor ? 'Editar' : 'Escrever'}: ${titulo}`}>
-            <Pencil size={13} /> {valor ? 'Editar' : 'Escrever'}
-          </button>
+          <span className="ml-auto flex items-start gap-1">
+            {campoId && <BotaoAnexar campoId={campoId} rotulo={`Anexar em ${titulo}`} />}
+            <button type="button" className="btn-ghost btn-sm -my-1" onClick={abrir} aria-label={`${valor ? 'Editar' : 'Escrever'}: ${titulo}`}>
+              <Pencil size={13} /> {valor ? 'Editar' : 'Escrever'}
+            </button>
+          </span>
         )}
       </div>
       {editando ? (
@@ -180,6 +188,11 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados }: 
       ) : (
         <p className="text-[13px] text-muted italic">Ainda não escrito.</p>
       )}
+      {campoId && <AnexosDoTexto campoId={campoId} />}
     </div>
   );
+}
+
+function AnexosDoTexto({ campoId }: { campoId: string }) {
+  return <ListaDeAnexos anexos={useAnexosDe(campoId)} />;
 }

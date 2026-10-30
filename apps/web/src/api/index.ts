@@ -5,7 +5,7 @@
 import type * as T from './types.js';
 import type {
   AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
-  LeituraDoHelenaNaTela, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
+  AoMoverEntrada, LeituraDoHelenaNaTela, OQueAEtapaFaz, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
@@ -320,6 +320,11 @@ export type Api = {
     /** escalonar (subir de nível) e voltar de nível pedem o motivo */
     mover(id: string, d: T.MoverEntrada): Promise<T.FichaChamado>;
     /**
+     * O que a etapa vai fazer ao chegar (2.3), para a janela de antes de mover: abrir a implantação (o cliente, os produtos e
+     * o card) ou ligar no cadastro (os produtos com a data e os módulos). Não grava nada.
+     */
+    aoMover(id: string, d: AoMoverEntrada): Promise<OQueAEtapaFaz>;
+    /**
      * O lugar na coluna do quadro (2.1, nas etapas abertas do painel de Vendas): logo abaixo de `depoisDe`
      * (nulo: no alto). 409 quando o `depoisDe` saiu da etapa.
      */
@@ -335,6 +340,10 @@ export type Api = {
     reabrir(id: string, d: { motivo?: string | null; etapaId?: string | null }): Promise<T.FichaChamado>;
     trocarPainel(id: string, d: { painelId: string; etapaId?: string | null }): Promise<T.FichaChamado>;
     anotar(id: string, d: { texto: string; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<T.FichaChamado>;
+    /** anexar num campo do card ou numa caixinha (2.3): até 5 arquivos de 10 MB por vez */
+    anexarNoCampo(id: string, campoId: string, d: { opcaoId?: string | null; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<T.FichaChamado>;
+    /** tirar o anexo de um campo (o seu, ou qualquer um se cuida dos chamados) */
+    tirarAnexoDoCampo(id: string, anexoId: string): Promise<T.FichaChamado>;
     apagarAnotacao(id: string, notaId: string): Promise<T.FichaChamado>;
     ligar(id: string, d: { para: string; tipo: T.TipoLigacaoChamado }): Promise<T.FichaChamado>;
     desligar(id: string, ligacaoId: string): Promise<T.FichaChamado>;
@@ -364,6 +373,8 @@ export type Api = {
     salvarCamposDoSistema(painelId: string, d: T.CamposDoSistemaEntrada): Promise<T.Painel>;
     /** criar (sem id) ou mudar um campo do painel; obrigatório para abrir e nas etapas escolhidas */
     salvarCampo(painelId: string, id: string | null, d: T.CampoGravarEntrada): Promise<T.CampoPersonalizado>;
+    /** só as caixinhas de um campo de caixinhas (2.3, o "Editar as caixinhas" do card: os nomes, a ordem e as pastas) */
+    salvarCaixinhas(campoId: string, d: T.CaixinhasGravarEntrada): Promise<T.CampoPersonalizado>;
     /** a ordem dos campos do painel (todos os ids) */
     ordenarCampos(painelId: string, ids: string[]): Promise<T.CampoPersonalizado[]>;
     /** incluir uma opção numa lista do painel ali mesmo (2.0.3, só nas listas que incluem na hora: a Indicação) */
@@ -450,6 +461,8 @@ export type Api = {
     alterar(id: string, d: SimulacaoGravarEntrada): Promise<Simulacao>;
     /** a cópia ("… (cópia)"), com os mesmos cenários */
     duplicar(id: string): Promise<Simulacao>;
+    /** Marcar como a principal da negociação dela: a que preenche os valores do card (2.3) */
+    tornarPrincipal(id: string): Promise<Simulacao>;
     /** vai para a lixeira (volta pela Administração › Lixeira) */
     remover(id: string): Promise<{ ok: boolean }>;
     /** a planilha do Excel, com as fórmulas (o que está salvo); fica na auditoria */

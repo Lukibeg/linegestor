@@ -8,7 +8,10 @@
  *  - os campos do sistema que o painel usa: o Assunto (a árvore abre daqui), o Tipo (e as opções dele),
  *    a Gravidade e o alcance, os Produtos e as Operadoras — ligados ou desligados;
  *  - os campos que a equipe cria: texto, texto longo, número, data, sim ou não e lista (de uma ou de
- *    várias opções), cada um obrigatório para abrir ou para entrar nas etapas escolhidas.
+ *    várias opções), cada um obrigatório para abrir ou para entrar nas etapas escolhidas;
+ *  - a implantação (2.3): as caixinhas (o que já foi feito, com quem marcou e quando) e os módulos do produto; e, em
+ *    qualquer campo, a parte da ficha (Curadoria, Configuração, Testes: o campo vai para o meio da ficha, num cartão
+ *    com os da mesma parte) e o produto (o campo só aparece no chamado que tem o produto).
  *
  * Desligar e desativar nunca apagam: o que os chamados já têm fica guardado e volta com o campo. O
  * resto do chamado (cliente, contato, relato, descrição, prioridade, responsável, solução, causa,
@@ -19,13 +22,14 @@ import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ListTree, Pencil, Plus, Undo2, X } from 'lucide-react';
 import {
   camposDoSistemaDoTipo, DICA_CAMPO_DO_SISTEMA, DICA_TIPO_CAMPO, MAX_CAMPOS_DO_PAINEL, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO,
-  OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, chaveDoCampo, ehLista, etiquetasUnicas, nomeDoSistemaIgual, paraBusca,
+  OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, chaveDoCampo, etiquetasUnicas, nomeDoSistemaIgual, paraBusca, partesDoPainel, temOpcoesEscritas,
   type CampoDoSistema, type CampoGravarEntrada, type CampoPersonalizado, type Painel, type TipoCampo,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Carregando, Chip, Confirmar, Modal, Spinner, Toggle, Vazio, mensagemErro } from '../../../components/ui/index.js';
 import { TOM_DO_PAINEL, useDepoisDeMudar, useOpcoes } from '../comum.js';
 import { AjustesAssuntos } from './Assuntos.js';
+import { caixinhasParaGravar, EditorDasCaixinhas, pastasDoEditor, problemaNasPastas, type PastaRascunho } from './EditorDasCaixinhas.js';
 
 const lista = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`);
 
@@ -221,6 +225,8 @@ function JanelaTipos({ painel, onFechar }: { painel: Painel; onFechar: () => voi
 
 function CamposDoPainel({ painel, campos, onNovo, onEditar }: { painel: Painel; campos: CampoPersonalizado[]; onNovo: () => void; onEditar: (c: CampoPersonalizado) => void }) {
   const depois = useDepoisDeMudar();
+  const opcoes = useOpcoes();
+  const nomeDoProduto = (id: string) => opcoes.data?.produtos.find((p) => p.id === id)?.nome ?? 'produto fora do catálogo';
   const [erro, setErro] = useState('');
   const [movendo, setMovendo] = useState(false);
   const mover = async (id: string, delta: number) => {
@@ -237,7 +243,7 @@ function CamposDoPainel({ painel, campos, onNovo, onEditar }: { painel: Painel; 
       <header className="px-3 py-2.5 sm:px-4 border-b border-line flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="font-display font-semibold text-[15px]" id="campos-painel-titulo">Os campos do painel {painel.nome}</h3>
-          <p className="text-[12.5px] text-muted">Os que a equipe cria. Aparecem na ficha e no Abrir chamado, nesta ordem (o texto longo fica junto do relato).</p>
+          <p className="text-[12.5px] text-muted">Os que a equipe cria. Aparecem na ficha e no Abrir chamado, nesta ordem (o texto longo fica junto do relato; os que têm parte vão para o meio da ficha, num cartão por parte).</p>
         </div>
         <button type="button" className="btn-primary btn-sm" id="campos-novo" onClick={onNovo} disabled={campos.length >= MAX_CAMPOS_DO_PAINEL}
           title={campos.length >= MAX_CAMPOS_DO_PAINEL ? `Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos` : undefined}>
@@ -264,10 +270,13 @@ function CamposDoPainel({ painel, campos, onNovo, onEditar }: { painel: Painel; 
                   <span className="flex flex-wrap items-center gap-1.5">
                     <span className="font-semibold text-ink break-words">{c.nome}</span>
                     <Chip tone="neutral">{NOME_TIPO_CAMPO[c.tipo]}</Chip>
+                    {c.parte && <Chip tone="accent" title="A parte da ficha: o campo fica no cartão dela, no meio da ficha">{c.parte}</Chip>}
+                    {c.produtoId && <Chip tone="neutral" title="Só aparece no chamado que tem este produto">{nomeDoProduto(c.produtoId)}</Chip>}
                     {!c.ativo && <Chip tone="muted">desativado</Chip>}
                     {pede.length > 0 && <Chip tone="signal">obrigatório: {lista(pede)}</Chip>}
                   </span>
-                  {ehLista(c.tipo) && <span className="block text-[12.5px] text-ink-2 break-words">{ativas.map((o) => o.nome).join(' · ') || 'Sem opções ativas'}</span>}
+                  {temOpcoesEscritas(c.tipo) && <span className="block text-[12.5px] text-ink-2 break-words">{ativas.map((o) => o.nome).join(' · ') || 'Sem opções ativas'}</span>}
+                  {c.tipo === 'modulos' && <span className="block text-[12.5px] text-ink-2 break-words">{ativas.map((o) => o.nome).join(' · ') || 'O produto ainda não tem módulos (Administração › Produtos)'}</span>}
                   {c.dica && <span className="block text-[12.5px] text-muted leading-snug break-words">{c.dica}</span>}
                 </button>
                 <button type="button" className="btn-ghost btn-sm shrink-0" onClick={() => onEditar(c)} aria-label={`Editar o campo ${c.nome}`}>
@@ -292,6 +301,10 @@ let sequencia = 0;
 
 function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: CampoPersonalizado | null; onFechar: () => void }) {
   const depois = useDepoisDeMudar();
+  const opcoesDoModulo = useOpcoes();
+  const produtos = opcoesDoModulo.data?.produtos ?? [];
+  // as partes que o painel já tem (para escolher sem escrever de novo)
+  const partes = partesDoPainel((opcoesDoModulo.data?.campos ?? []).filter((c) => c.painelId === painel.id));
   const chave = campo ? chaveDoCampo(campo.id) : null;
   const [f, setF] = useState(() => ({
     nome: campo?.nome ?? '',
@@ -302,11 +315,28 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     obrigatorioAoAbrir: chave ? painel.ajustes.obrigatoriosAoAbrir.includes(chave) : false,
     etapas: chave ? painel.etapas.filter((e) => e.obrigatorios.includes(chave)).map((e) => e.id) : [],
     incluirNaHora: campo?.incluirNaHora ?? false,
+    parte: campo?.parte ?? '',
+    produtoId: campo?.produtoId ?? '',
+    escolhidosEm: campo?.escolhidosEm ?? '',
+    anexos: campo?.anexos ?? false,
   }));
+  // as caixinhas, em pastas (2.3)
+  const [pastas, setPastas] = useState<PastaRascunho[]>(() => pastasDoEditor(campo?.opcoes ?? []));
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
   const mudar = (o: Partial<typeof f>) => { setF((x) => ({ ...x, ...o })); setErro(''); };
-  const lista_ = ehLista(f.tipo);
+  // trocar o tipo do campo novo leva as opções já escritas (da lista para as caixinhas e de volta)
+  const mudarTipo = (tipo: TipoCampo) => {
+    if (tipo === 'caixinhas' && f.tipo !== 'caixinhas') setPastas([{ chave: 'sem', nome: '', caixinhas: f.opcoes.map((o) => ({ chave: o.chave, nome: o.nome, ativa: o.ativa })) }]);
+    if (tipo !== 'caixinhas' && f.tipo === 'caixinhas') { mudar({ tipo, opcoes: pastas.flatMap((p) => p.caixinhas).map((c) => ({ chave: c.chave, nome: c.nome, ativa: c.ativa })) }); return; }
+    mudar({ tipo });
+  };
+  const lista_ = temOpcoesEscritas(f.tipo);
+  // os módulos são os do produto: o produto não muda depois de criado
+  const produtoTravado = !!campo && campo.tipo === 'modulos';
+  // o checklist dos módulos (2.3) segue um campo de módulos do mesmo produto, que seja a escolha
+  const fontes = (opcoesDoModulo.data?.campos ?? []).filter((c) => c.painelId === painel.id && c.tipo === 'modulos' && !c.escolhidosEm && c.id !== campo?.id && (c.produtoId ?? '') === f.produtoId);
+  const seguido = !!campo && (opcoesDoModulo.data?.campos ?? []).some((c) => c.escolhidosEm === campo.id);
 
   const salvar = async () => {
     const nome = f.nome.trim();
@@ -314,19 +344,28 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     const doSistema = nomeDoSistemaIgual(nome, painel.ajustes);
     if (doSistema) { setErro(`Todo chamado do painel ${painel.nome} já tem o campo ${doSistema}: escolha outro nome.`); document.getElementById('campo-nome')?.focus(); return; }
     const opcoes = f.opcoes.map((o) => ({ ...o, nome: o.nome.trim() })).filter((o) => o.nome || o.id);
-    if (lista_) {
+    if (f.tipo === 'caixinhas') {
+      const problema = problemaNasPastas(pastas);
+      if (problema) { setErro(problema); return; }
+    } else if (lista_) {
       if (opcoes.some((o) => !o.nome)) { setErro('Dê um nome a cada opção (ou tire a que ficou vazia).'); return; }
       // a lista que inclui na hora pode começar vazia (as opções nascem nos chamados, 2.0.3)
-      if (!opcoes.some((o) => o.ativa) && !(f.tipo === 'lista' && f.incluirNaHora)) { setErro('A lista precisa de pelo menos uma opção.'); document.getElementById('campo-opcao-nova')?.focus(); return; }
+      if (!opcoes.some((o) => o.ativa) && !(f.tipo === 'lista' && f.incluirNaHora)) {
+        setErro('A lista precisa de pelo menos uma opção.');
+        document.getElementById('campo-opcao-nova')?.focus(); return;
+      }
       const vistas = new Set<string>();
       for (const o of opcoes) {
         if (vistas.has(paraBusca(o.nome))) { setErro(`Duas opções com o nome ${o.nome}.`); return; }
         vistas.add(paraBusca(o.nome));
       }
     }
+    if (f.tipo === 'modulos' && !f.produtoId) { setErro('Escolha o produto: os módulos são os dele.'); document.getElementById('campo-produto')?.focus(); return; }
     const d: CampoGravarEntrada = {
-      nome, tipo: f.tipo, dica: f.dica.trim() || null, ativo: f.ativo,
-      opcoes: lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
+      nome, tipo: f.tipo, dica: f.dica.trim() || null, ativo: f.ativo, parte: f.parte.trim() || null, produtoId: f.produtoId || null,
+      escolhidosEm: f.tipo === 'modulos' && fontes.some((c) => c.id === f.escolhidosEm) ? f.escolhidosEm : null,
+      anexos: f.anexos,
+      opcoes: f.tipo === 'caixinhas' ? caixinhasParaGravar(pastas) : lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
       obrigatorioAoAbrir: f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
     };
     setSalvando(true); setErro('');
@@ -354,14 +393,19 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
             <input className="input" id="campo-nome" value={f.nome} maxLength={40} placeholder="Ex.: Sistema" autoFocus={!campo} onChange={(e) => mudar({ nome: e.target.value })} />
           </Rotulo>
           <Rotulo rotulo="Tipo" id="campo-tipo" dica={campo ? 'O tipo não muda depois de criado.' : undefined}>
-            <select className="input" id="campo-tipo" value={f.tipo} disabled={!!campo} onChange={(e) => mudar({ tipo: e.target.value as TipoCampo })}>
+            <select className="input" id="campo-tipo" value={f.tipo} disabled={!!campo} onChange={(e) => mudarTipo(e.target.value as TipoCampo)}>
               {TIPOS_CAMPO.map((t) => <option key={t} value={t}>{NOME_TIPO_CAMPO[t]}</option>)}
             </select>
           </Rotulo>
         </div>
         <p className="text-[12.5px] text-muted -mt-2.5">{DICA_TIPO_CAMPO[f.tipo]}</p>
 
-        {lista_ && <EditarOpcoes opcoes={f.opcoes} onChange={(opcoes) => mudar({ opcoes })} />}
+        {f.tipo === 'caixinhas' ? (
+          <div className="min-w-0">
+            <div className="label">As caixinhas</div>
+            <EditorDasCaixinhas id="campo-caixinhas" pastas={pastas} onChange={(p) => { setPastas(p); setErro(''); }} />
+          </div>
+        ) : lista_ && <EditarOpcoes opcoes={f.opcoes} onChange={(opcoes) => mudar({ opcoes })} />}
         {/* a lista que cresce no próprio chamado (2.0.3, a Indicação do Comercial: "eu tenho que conseguir criar por aqui mesmo") */}
         {f.tipo === 'lista' && (
           <label className="flex items-start gap-2.5 text-sm cursor-pointer -mt-1" id="campo-incluir-na-hora">
@@ -372,9 +416,52 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
           </label>
         )}
 
+        {f.tipo === 'modulos' && campo && (
+          <div className="text-[12.5px] -mt-1" id="campo-modulos">
+            <span className="text-ink-2 font-semibold">Os módulos de hoje: </span>
+            <span className="text-ink-2">{campo.opcoes.filter((o) => o.ativa).map((o) => o.nome).join(' · ') || 'nenhum'}</span>
+            <span className="block text-muted">Entram e saem em Administração › Produtos: o campo acompanha.</span>
+          </div>
+        )}
+
+        {/* a implantação (2.3): a parte da ficha e o produto */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Rotulo rotulo="Parte da ficha (opcional)" id="campo-parte" dica="Com ela, o campo vai para o meio da ficha, num cartão com os da mesma parte. Ex.: Curadoria, Configuração, Testes.">
+            <input className="input" id="campo-parte" list="campo-partes" value={f.parte} maxLength={40} placeholder={partes[0] ? `Ex.: ${partes[0]}` : 'Ex.: Curadoria'}
+              onChange={(e) => mudar({ parte: e.target.value })} />
+            <datalist id="campo-partes">{partes.map((p) => <option key={p} value={p} />)}</datalist>
+          </Rotulo>
+          <Rotulo rotulo={f.tipo === 'modulos' ? 'Produto' : 'Produto (opcional)'} id="campo-produto"
+            dica={produtoTravado ? 'O produto dos módulos não muda depois de criado.' : f.tipo === 'modulos' ? 'Os módulos dele viram as caixinhas.' : 'Com ele, o campo só aparece no chamado que tem o produto.'}>
+            <select className="input" id="campo-produto" value={f.produtoId} disabled={produtoTravado} onChange={(e) => mudar({ produtoId: e.target.value })}>
+              <option value="">{f.tipo === 'modulos' ? 'Escolha o produto…' : 'Todo chamado'}</option>
+              {produtos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              {f.produtoId && !produtos.some((p) => p.id === f.produtoId) && <option value={f.produtoId}>(produto fora do catálogo)</option>}
+            </select>
+          </Rotulo>
+        </div>
+
+        {f.tipo === 'modulos' && f.produtoId && !seguido && (
+          <Rotulo rotulo="Os módulos que aparecem" id="campo-escolhidos-em"
+            dica="Com um campo escolhido, este vira o checklist: só os módulos marcados lá aparecem aqui e entram na conta da parte. Ex.: a Ativação dos módulos (Configuração) segue o Módulos a ativar (Curadoria).">
+            <select className="input" id="campo-escolhidos-em" value={f.escolhidosEm} onChange={(e) => mudar({ escolhidosEm: e.target.value })}>
+              <option value="">Todos os do produto (aqui se escolhe)</option>
+              {fontes.map((c) => <option key={c.id} value={c.id}>Só os marcados em {c.nome}{c.parte ? ` (${c.parte})` : ''}</option>)}
+            </select>
+          </Rotulo>
+        )}
+
         <Rotulo rotulo="Explicação (opcional)" id="campo-dica" dica="Aparece embaixo do campo, na ficha e no Abrir chamado.">
           <input className="input" id="campo-dica" value={f.dica} maxLength={200} placeholder="Ex.: o sistema em que o problema aparece" onChange={(e) => mudar({ dica: e.target.value })} />
         </Rotulo>
+
+        {/* 2.3: o Anexar do campo (o Luan: "eu quis dizer todas as opções de curadoria") */}
+        <label className="flex items-start gap-2.5 text-sm cursor-pointer" id="campo-anexos">
+          <Toggle checked={f.anexos} onChange={(v) => mudar({ anexos: v })} />
+          <span>Recebe anexos
+            <span className="block text-[12.5px] text-muted">Na ficha, o Anexar do campo{f.tipo === 'caixinhas' || f.tipo === 'modulos' ? ' (nas caixinhas, o clipe de cada uma)' : ''}: imagens, PDF, Word e Excel, de até 10 MB. Desligado, o que já foi anexado continua lá.</span>
+          </span>
+        </label>
 
         <fieldset className={`flex flex-col gap-2.5 rounded-lg border border-line p-3 ${f.ativo ? '' : 'opacity-60'}`} disabled={!f.ativo}>
           <legend className="label px-1 mb-0">Quando é obrigatório</legend>

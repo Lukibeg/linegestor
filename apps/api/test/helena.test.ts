@@ -306,7 +306,10 @@ describe('trazer do Helena', () => {
     ]);
     expect(com.ajustes.motivosDePerda).toContain('Perfil fora do público-alvo');
     const campos = ((await s.get('/atendimento/opcoes')).json().campos as CampoPersonalizado[]).filter((c) => c.painelId === com.id);
-    expect(campos.map((c) => c.nome)).toEqual(['CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação', 'Licenças WhatsApp']);
+    expect(campos.map((c) => c.nome)).toEqual(['CNPJ', 'Origem de lead', 'Indicação', 'Licenças WhatsApp']);
+    // o campo que veio do Helena vai para os Detalhes da proposta (2.3); os do Gestor ficam onde sempre ficaram
+    expect(campos.find((c) => c.nome === 'Licenças WhatsApp')).toMatchObject({ parte: 'Detalhes da proposta', dica: 'Trazido do Helena.' });
+    expect(campos.find((c) => c.nome === 'CNPJ')!.parte).toBeNull();
     expect(campos.find((c) => c.nome === 'Origem de lead')!.opcoes.map((o) => o.nome)).toContain('Feira');
 
     // o número do Helena fica: IC-34 continua IC-34

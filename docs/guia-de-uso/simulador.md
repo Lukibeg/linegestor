@@ -35,7 +35,7 @@ entra no lugar.
 - **Imposto**: um percentual só, sobre tudo o que o cliente paga. A simulação nova vem com o dos Ajustes;
   quando os dois diferem, aparece "Nos Ajustes: 6% · usar".
 - **Produtos**: os produtos do catálogo que a venda leva (o modelo traz o dele; **+ produto** põe outro, o
-  **×** tira). O **Levar para a negociação** põe estes na negociação.
+  **×** tira). A simulação principal da negociação põe estes no card dela (2.3).
 - **Um valor só | Por produto** (com dois produtos ou mais): cada produto é uma proposta, numa negociação só.
   **Por produto**, cada um tem a sua mensalidade e a sua ativação, e o total é o do cenário (a conta e a
   margem são as da negociação inteira). Ao passar para por produto, o valor de agora fica no primeiro; o
@@ -92,7 +92,8 @@ Cada linha tem o nome, o **tipo** (só os do grupo), a quantidade, o valor de ca
   por mês) com o **sinal**: verde, amarelo ou vermelho, pelas faixas dos Ajustes (escritas embaixo da
   margem). Para "dá para fazer mais barato?", mude a mensalidade e veja a margem e o sinal na hora.
 - **O custo do mês**: embaixo do total, **cada custo pelo nome**, sem agrupar — cada linha por mês (a nuvem,
-  os números, a licença), o **imposto** e cada **comissão** recorrente (2.0.3).
+  os números), o **imposto** e cada **comissão** recorrente (2.0.3). Os custos do LineChat (a licença, os
+  usuários, os canais, os agentes) aparecem juntos, numa linha **Helena** com o total (2.3).
 - **Investimento**: o total pago uma vez — os aparelhos e a comissão da venda (e quanto disso
   é da compra parcelada).
 - **Sai antes**: o pior momento do contrato — o que a Ingline põe antes de a venda se pagar ("nada" quando
@@ -108,18 +109,18 @@ Cada linha tem o nome, o **tipo** (só os do grupo), a quantidade, o valor de ca
 No alto da simulação, o quadro **Mês a mês**, do 1º mês ao fim do contrato. **O 1º mês é o da assinatura**:
 nele entram a ativação (ou a 1ª parcela) e já a 1ª mensalidade, e saem o que é pago de uma vez e os custos
 do mês. No detalhe de cada mês, os custos vêm **um a um, pelo nome** (a "Máquina em nuvem", o imposto, a
-comissão…), sem juntar os custos mensais numa linha só.
+comissão…), sem juntar os custos mensais numa linha só. Só os do LineChat ficam juntos, numa linha **Helena** com o
+total (2.3).
 
 - Em cima, os totais do contrato: o **faturamento**, os **custos**, o **lucro** e quando a venda **se paga**.
-- No gráfico, cada mês é uma coluna: o faturamento (azul) para cima, os custos (laranja) para baixo e um
-  ponto no lucro do mês. Embaixo, a linha do **acumulado**, com o pior momento e o mês em que a venda se
-  paga. Os eixos vão em números redondos. As colunas do 1º mês, quando são bem maiores que as outras,
-  aparecem cortadas (um vão perto da ponta), com o valor escrito acima (ou abaixo) do gráfico.
-- **Passe o mouse num mês** (ou toque, no celular) para ver o detalhe: cada parte do faturamento (a
-  mensalidade, a ativação, a parcela) e dos custos (os aparelhos e as parcelas da compra, a instalação, os
+- No gráfico, a linha do **acumulado**, com o pior momento e o mês em que a venda se paga (o gráfico de
+  colunas saiu no 2.3). O eixo vai em números redondos.
+- **Passe o mouse num mês** do gráfico (ou toque, no celular) para ver o detalhe: cada parte do faturamento
+  (a mensalidade, a ativação, a parcela) e dos custos (os aparelhos e as parcelas da compra, a instalação, os
   custos mensais, o imposto, as comissões), o lucro e o acumulado.
-- **A tabela** tem todos os meses (o faturamento, os custos, o lucro e o acumulado) e o total do contrato;
-  passar o mouse numa linha marca o mês no gráfico.
+- **A tabela**, sempre aberta, tem todos os meses (o faturamento, os custos, o lucro e o acumulado) e o total
+  do contrato. **Um clique na linha do mês abre o detalhe** embaixo dela (outro clique fecha); passar o mouse
+  numa linha marca o mês no gráfico.
 
 ## Cenários
 
@@ -146,13 +147,18 @@ A mesma venda em versões diferentes (comodato ou venda dos aparelhos, 12 ou 24 
 - **A negociação ligada, sem sair da simulação (2.1)**: na simulação, o chip da negociação (COM-12 · o
   título · a empresa) tem o **Abrir**: a ficha dela abre numa janela por cima da simulação; fechando, você volta
   para a simulação. Na lista do Simulador, o chip da negociação também abre a ficha numa janela.
-- **Levar para a negociação**: na simulação ligada a uma negociação em aberto, o **Levar para a COM-12**
-  põe nela o que o cliente paga no cenário principal: a **mensalidade** (com o aluguel dos aparelhos), a
-  **ativação** (com os aparelhos vendidos) e os **produtos** do cenário (sem produto no cenário, os da
-  negociação ficam). Com o preço por produto, a negociação recebe o valor de cada produto (o aluguel e a
-  venda dos aparelhos entram no produto deles). A janela mostra o que a negociação tem hoje e o que fica,
-  antes do **Levar**. Com um valor só na simulação, a negociação que tinha o valor por produto passa a ter
-  um valor só. A mudança fica no histórico da negociação. O que mudou na simulação é salvo antes.
+- **Os valores vão para o card sozinhos (2.3)**: a simulação ligada a uma negociação em aberto é a
+  **principal** dela (ao lado do chip da negociação, **principal · preenche o card**). A cada salvamento (uns
+  2 segundos depois que você para de digitar), o card da negociação fica com o que o cliente paga no cenário
+  principal: a **mensalidade** (com o aluguel dos aparelhos), a **ativação** (com os aparelhos vendidos) e os
+  **produtos** do cenário (sem produto no cenário, os da negociação ficam). Com o **Por produto**, o card
+  recebe o valor de cada produto (o aluguel e a venda dos aparelhos entram no produto deles); com **Um valor
+  só**, um valor só. O histórico da negociação não ganha linha por isso. O que alguém mudar à mão no card é
+  trocado no próximo salvamento da simulação. O antigo botão **Levar para a COM-x** saiu.
+- **Mais de uma simulação na mesma negociação**: a primeira é a principal; as outras não mexem no card. Para
+  trocar, **Tornar a principal da COM-12** (no alto da simulação) ou **Tornar a principal** (na ficha, em
+  **Simulações**): os valores dela vão para o card na hora. A principal que vai para a lixeira passa o lugar
+  para a mexida por último, e o card fica com os valores que tem. A negociação ganha ou perdida não muda mais.
 - **A margem no relatório**: o relatório do Comercial (Comercial › Relatórios) tem **A margem das
   ganhas**: das ganhas do período que têm simulação, a margem do total e por produto.
 

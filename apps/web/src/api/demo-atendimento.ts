@@ -21,7 +21,7 @@
  */
 import {
   AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AssuntoGravarSchema,
-  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, CAMPOS_DO_SISTEMA,
+  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, AnexosDoCampoSchema, DICA_DO_CAMPO_DO_HELENA, PARTE_DOS_CAMPOS_DO_HELENA, CaixinhasGravarSchema, CampoGravarSchema, MAX_ANEXOS_DO_CAMPO, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
   ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
@@ -34,9 +34,11 @@ import {
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
+  ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, modulosSemMarcar, AoMoverSchema,
+  type AssinaturaNoCadastro, type MarcasDosCampos, type NegociacaoNoFim, type OQueAEtapaFaz, type PlanoDaImplantacao, type PlanoDoCadastro, type PedidoDoCliente,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
-  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, type ValoresDosProdutos, tituloQueFica, mensagemDoTitulo, acharCampo, OpcaoIncluirSchema, MAX_OPCOES_DO_CAMPO,
+  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, type ValoresDosProdutos, type ValoresParaANegociacao, tituloQueFica, mensagemDoTitulo, acharCampo, OpcaoIncluirSchema, MAX_OPCOES_DO_CAMPO,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca,
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
@@ -66,7 +68,7 @@ import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import { planoDoHistorico, type ChamadoDoHistorico } from './demo-atendimento-historico.js';
 import { PROPOSTA_PDF_DEMO } from './proposta-demo-midia.js';
 import {
-  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, CORES_DAS_ETIQUETAS_DO_COMERCIAL, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
+  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, CAMPOS_DO_HELENA_NO_COMERCIAL, ETAPA_QUE_ABRE_A_IMPLANTACAO, IMPLANTACOES_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, CORES_DAS_ETIQUETAS_DO_COMERCIAL, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, WHATSAPP_DA_EQUIPE,
   type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
@@ -115,6 +117,25 @@ export type ContextoAtendimentoDemo = {
   cardsDoLineChat: () => Array<{ key: string | null; title: string; stepTitle: string | null; campos?: Record<string, unknown> }>;
   /** a hora de agora (os testes podem adiantar o relógio) */
   agora?: () => Date;
+  /**
+   * O cadastro dos clientes da prévia (2.3, a implantação), que mora em demo.ts: o cliente pelo CNPJ, criar o cliente (com a
+   * Matriz), os produtos e os módulos de cada um, e o catálogo dos módulos de um produto.
+   */
+  cadastro?: CadastroDaPrevia;
+};
+export type CadastroDaPrevia = {
+  clientePeloCnpj(cnpj: string): { id: string; nome: string } | null;
+  /** o cliente da lixeira com o CNPJ (o CNPJ não repete, nem com a lixeira) */
+  clienteNaLixeira(cnpj: string): { nome: string } | null;
+  criarCliente(d: { nomeFantasia: string; razaoSocial: string; cnpj: string; notas: string }): { id: string; nome: string };
+  /** os produtos que o cliente tem (pelo id do produto): a data de ativação, se foi encerrado e os módulos ligados */
+  assinaturas(clienteId: string): Map<string, AssinaturaNoCadastro>;
+  /** põe o produto no cliente sem a data de ativação (em implantação) */
+  porSemData(clienteId: string, produtoId: string): void;
+  /** a data de ativação (o produto que não estava no cliente entra ativo) */
+  ativarProduto(clienteId: string, produtoId: string, quando: string): boolean;
+  ligarModulo(clienteId: string, produtoId: string, moduloId: string, quando: string): boolean;
+  modulosDoProduto(produtoId: string): Array<{ id: string; nome: string; ativa: boolean }>;
 };
 
 // =====================================================================
@@ -135,10 +156,17 @@ type EtapaRow = {
   id: string; painelId: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; ordem: number; obrigatorios: Obrigatorio[]; avisar: string[]; deletedAt: string | null;
   /** no painel de Vendas: o Ganho e o Perdido */
   resultado: ResultadoDaVenda | null;
+  /** a implantação (2.3): a etapa de Vendas que abre o card neste painel; a de Gestão que liga no cadastro */
+  abreImplantacao?: string | null;
+  ligaNoCadastro?: boolean;
+  /** e a de Vendas que recebe a negociação quando a implantação termina (o Implantado do Comercial) */
+  recebeImplantacao?: boolean;
 };
 type ChamadoRow = {
   id: string; painelId: string; etapaId: string; numero: number; codigo: string; tipoChamado: TipoChamado; titulo: string;
   relato: string | null; descricao: string | null; clienteId: string | null; contatoNome: string | null; contatoTelefone: string | null; sessaoId: string | null;
+  /** o e-mail do contato (2.3) */
+  contatoEmail?: string | null;
   /** os outros contatos e as outras conversas (2.2, como o servidor) */
   outrosContatos?: OutroContato[]; outrasSessoes?: string[];
   origem: Origem; responsavelId: string | null; assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null;
@@ -162,10 +190,18 @@ type ChamadoRow = {
   externalRef?: string | null;
   /** o lugar na coluna do quadro que a equipe escolheu arrastando (2.1); mudar de etapa apaga */
   ordemNoQuadro?: number | null;
+  /** quem marcou cada caixinha e quando (2.3) */
+  marcas?: MarcasDosCampos;
+  /** a negociação que abriu este card na implantação (2.3) */
+  daNegociacaoId?: string | null;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
 type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
-type AnexoRow = { id: string; chamadoId: string; notaId: string; nome: string; tipo: string; tamanho: number; url: string; porId: string | null; em: string; deletedAt: string | null };
+/** O anexo: o de uma anotação (`notaId`) ou o de um campo do card e de uma caixinha (2.3: `campoId`, `opcaoId`). */
+type AnexoRow = {
+  id: string; chamadoId: string; notaId: string | null; campoId?: string | null; opcaoId?: string | null; nome: string; tipo: string; tamanho: number; url: string;
+  porId: string | null; em: string; deletedAt: string | null;
+};
 type LigacaoRow = { id: string; de: string; para: string; tipo: TipoLigacaoChamado; porId: string | null; em: string; deletedAt: string | null };
 type TempoRow = { id: string; chamadoId: string; userId: string | null; minutos: number; nota: string | null; dia: string; em: string; deletedAt: string | null };
 type Andamento = { em: string; porId: string | null; porNome: string | null; acao: 'abriu' | 'cobrou' | 'fechou'; texto: string | null };
@@ -196,11 +232,18 @@ type ChaveRow = { id: string; nome: string; inicio: string; criadaEm: string; cr
 type AvisosGuardados = Omit<AvisosChamadosTela, 'temChavePropria' | 'temChaveLineChat' | 'pessoas'>;
 
 /** O que uma mudança devolve: o chamado e a frase da auditoria (nula quando nada mudou). */
-type Feito = { id: string; codigo: string; titulo: string; resumo: string | null; antes?: unknown; depois?: unknown; erro?: string };
+type Feito = {
+  id: string; codigo: string; titulo: string; resumo: string | null; antes?: unknown; depois?: unknown; erro?: string;
+  /** as linhas a mais da auditoria (2.3: o cliente criado, o card da implantação, o que ligou no cadastro) */
+  auditoriaExtra?: AuditoriaExtra[];
+};
+type AuditoriaExtra = { action: 'create' | 'update'; entityType: string; entityId: string; summary: string; after?: unknown };
 
 type Esquema<T> = { safeParse(v: unknown): { success: true; data: T } | { success: false; error: { issues: Array<{ path: Array<string | number>; message: string }> } } };
 
 const PREVIA = 'Prévia: nada foi enviado de verdade';
+/** O painel da Implantação da prévia (2.3): o Comercial abre os cards nele. */
+const PAINEL_DA_IMPLANTACAO = 'painel-implantacao';
 /** O endereço do Gestor (para o link do aviso no WhatsApp e os exemplos das Integrações). */
 const ENDERECO = 'https://gestao.inglinesystems.com.br';
 const FECHADOS_NO_QUADRO = 30;
@@ -332,6 +375,12 @@ export type AcessoDoCalendarioDemo = {
    * O lembrete de um evento (2.0.2): o sininho de cada pessoa ativa, conforme os Ajustes dos avisos (o WhatsApp,
    * na prévia, não aparece em lugar nenhum). `lido`: o lembrete antigo dos exemplos já foi visto. Devolve quantos receberam.
    */
+  /**
+   * A simulação principal preenche o card da negociação (2.3, como o `levarParaANegociacao` do servidor): os valores
+   * que `calcular` dá (com o painel tendo ou não o campo Produtos), sem a linha no histórico. Não muda a negociação
+   * ganha, perdida ou na lixeira. Devolve se o card mudou.
+   */
+  levarDaSimulacao: (id: string, calcular: (usaProdutos: boolean) => ValoresParaANegociacao) => boolean;
   /** o lembrete (padrão) ou o aviso de que o evento entrou (`qual`, 2.0.2) */
   avisarDoCalendario: (a: { qual?: 'lembrete' | 'evento_novo'; para: string[]; evento: { id: string; titulo: string; inicio: string }; texto: string }, em: Date, lido?: boolean) => number;
 };
@@ -454,7 +503,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   // ---------- os painéis ----------
 
-  const etapaParaTela = (e: EtapaRow): EtapaPainel => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar], resultado: e.resultado });
+  const etapaParaTela = (e: EtapaRow): EtapaPainel => ({
+    id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar], resultado: e.resultado,
+    abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: !!e.recebeImplantacao,
+  });
   /** A etapa pelo id, mesmo a que saiu do painel (um chamado antigo pode citá-la no histórico). */
   const etapaPorId = (id: string) => A.etapas.find((e) => e.id === id);
   const etapaDe = (id: string): EtapaPainel | null => { const e = etapaPorId(id); return e ? etapaParaTela(e) : null; };
@@ -521,6 +573,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return { filhos, incidentes, anotacoes, codigos: new Map(A.chamados.map((t) => [t.id, t.codigo])) };
   }
 
+  /**
+   * Os módulos do produto (2.3): as opções dos campos "Módulos do produto" vêm do catálogo da prévia (Administração ›
+   * Produtos), como o servidor faz ao carregar os campos. Refeito a cada chamada (o catálogo pode ter mudado).
+   */
+  function sincronizarModulos() {
+    for (const c of A.campos) if (c.tipo === 'modulos') c.opcoes = c.produtoId ? ctx.cadastro?.modulosDoProduto(c.produtoId) ?? [] : [];
+  }
   /** Os campos do painel, na ordem dos Ajustes (todos, ou só os ativos). */
   const camposDoPainel = (painelId: string, soAtivos = false) =>
     A.campos.filter((c) => c.painelId === painelId && (!soAtivos || c.ativo)).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
@@ -538,7 +597,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       id: t.id, codigo: t.codigo, numero: t.numero, tipoChamado: t.tipoChamado, titulo: t.titulo,
       painelId: t.painelId, etapaId: t.etapaId, situacao: situacaoDaEtapa(e?.tipo ?? 'andamento'), nivel: e?.nivel ?? null,
       cliente: t.clienteId && usa('cliente') ? { id: t.clienteId, nome: nomeCliente(t.clienteId)! } : null,
-      contato: (t.contatoNome || t.contatoTelefone) && usa('cliente') ? { nome: t.contatoNome, telefone: t.contatoTelefone } : null,
+      contato: (t.contatoNome || t.contatoTelefone || t.contatoEmail) && usa('cliente') ? { nome: t.contatoNome, telefone: t.contatoTelefone, email: t.contatoEmail ?? null } : null,
       responsavel: pessoaCurta(t.responsavelId),
       prioridade: usa('prioridade') ? t.prioridade : null, gravidade: usa('gravidade') ? t.gravidade : null, alcance: usa('alcance') ? t.alcance : null, tipo: usa('tipo') ? t.tipo : null,
       assunto: assunto ? { id: assunto.id, nome: assunto.nome, caminho: caminhoDoAssunto(assunto.id, A.assuntos), ativo: assunto.ativo } : null,
@@ -565,6 +624,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       resultado: e?.resultado ?? null, motivoPerda: e?.resultado === 'perdido' ? t.motivoPerda : null,
       // o lugar que a equipe escolheu arrastando (2.1: só vale onde a ordem é à mão)
       ordemNoQuadro: t.ordemNoQuadro ?? null,
+      // as partes da ficha (2.3, a implantação), com a conta de cada uma (como o servidor)
+      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos),
     };
   }
 
@@ -575,7 +636,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return A.chamados.filter((t) => !t.deletedAt && vis.has(t.painelId)).map((t) => {
       const c = cartao(t, par, agora);
       // os outros contatos (2.2) também acham o chamado, como no servidor
-      const outros = (t.outrosContatos ?? []).flatMap((o) => [o.nome, o.telefone]);
+      const outros = (t.outrosContatos ?? []).flatMap((o) => [o.nome, o.telefone, o.email ?? null]);
       return { ...c, busca: textoDeBusca(c, [t.relato, t.descricao, t.solucao, t.causa, ...outros, ...textosDosCampos(camposDoPainel(t.painelId, true), c.campos)]) };
     });
   }
@@ -725,7 +786,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const minutosGastos = (id: string) => A.tempos.filter((x) => x.chamadoId === id && !x.deletedAt).reduce((s, x) => s + x.minutos, 0);
   function dadosDoChamado(t: ChamadoRow): DadosObrigatorios {
     return {
-      tipoChamado: t.tipoChamado, clienteId: t.clienteId, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone,
+      tipoChamado: t.tipoChamado, clienteId: t.clienteId, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone, contatoEmail: t.contatoEmail ?? null,
       relato: t.relato, descricao: t.descricao, assuntoId: t.assuntoId, tipo: t.tipo, gravidade: t.gravidade, alcance: t.alcance, prioridade: t.prioridade,
       produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
       solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id), campos: t.campos,
@@ -825,6 +886,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     let telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
     let clienteId = d.clienteId ?? null;
     let contatoNome = d.contatoNome ?? null;
+    // o e-mail do contato (2.3): o escrito, ou o do contato do cadastro com o mesmo WhatsApp (como o servidor)
+    let contatoEmail = d.contatoEmail?.trim().toLowerCase() || null;
     if (telefone) {
       // primeiro os contatos cadastrados dos clientes (a aba Contatos); o mesmo número em dois clientes não adivinha o cliente
       const cadastrados = S.contatos.filter((c) => c.whatsapp === telefone && c.ativo && clienteVivo(c.clientId));
@@ -832,6 +895,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (doCadastro) {
         if (!clienteId) clienteId = doCadastro.clientId;
         if (!contatoNome) contatoNome = doCadastro.nome;
+        if (!contatoEmail && doCadastro.email) contatoEmail = doCadastro.email.toLowerCase();
       }
       const conhecido = A.contatos.get(telefone);
       if (conhecido) {
@@ -842,7 +906,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // os campos do sistema que o painel desligou: o que vier para eles fica de fora (como no servidor)
     const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
     // o painel sem o cliente e o contato (2.1.2): o chamado é interno
-    if (!usa('cliente')) { clienteId = null; contatoNome = null; telefone = null; }
+    if (!usa('cliente')) { clienteId = null; contatoNome = null; telefone = null; contatoEmail = null; }
     const assunto = d.assuntoId && usa('assunto') ? conferirAssunto(d.assuntoId, painel) : null;
     const tipo = usa('tipo') ? conferirTipo(d.tipo, painel) : null;
     const gravidade = usa('gravidade') ? d.gravidade ?? null : null;
@@ -877,7 +941,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!titulo) throw bad(mensagemDoTitulo(d.titulo ?? '', vendas));
 
     const dados: DadosObrigatorios = {
-      tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
+      tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, contatoEmail, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
       assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
       produtos, operadoras, responsavelId: d.responsavelId ?? null,
       solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, ativacao, empresa,
@@ -927,7 +991,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const id = novoId();
     const t: ChamadoRow = {
       id, painelId: painel.id, etapaId: etapa.id, numero, codigo, tipoChamado, titulo,
-      relato: dados.relato, descricao: dados.descricao, clienteId, contatoNome, contatoTelefone: telefone, sessaoId, origem,
+      relato: dados.relato, descricao: dados.descricao, clienteId, contatoNome, contatoTelefone: telefone, contatoEmail, sessaoId, origem,
       responsavelId: d.responsavelId ?? null, assuntoId: assunto?.id ?? null, tipo, gravidade, alcance,
       prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasDoCatalogo(painel.id, d.etiquetas ?? [], d.coresDasEtiquetas ?? {}, pessoa, agora),
       paiId: pai?.id ?? null, problemaId: problema?.id ?? null, checklist, campos,
@@ -987,7 +1051,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
       // a negociação não tem prioridade; o painel de Gestão pode não ter (2.1.2), nem o cliente, o relato, a solução e a causa
       ...(painel.tipo === 'vendas' || !usa('prioridade') ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
-      ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined }),
+      ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined, contatoEmail: undefined }),
       ...(usa('relato') ? {} : { relato: undefined }),
       ...(usa('solucao') || t.tipoChamado === 'problema' ? {} : { solucao: undefined, causa: undefined }),
     };
@@ -1017,6 +1081,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const fone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone : null;
       if (fone !== t.contatoTelefone) { set.contatoTelefone = fone; campo('contatoTelefone', 'WhatsApp do contato', t.contatoTelefone, fone, t.contatoTelefone); }
     }
+    // o e-mail do contato (2.3, como o servidor)
+    if (d.contatoEmail !== undefined) {
+      const email = d.contatoEmail?.trim().toLowerCase() || null;
+      if (email !== (t.contatoEmail ?? null)) { set.contatoEmail = email; campo('contatoEmail', 'E-mail do contato', t.contatoEmail ?? null, email, t.contatoEmail ?? null); }
+    }
     // a conversa do LineChat (2.1, o chamado ativo): o link colado ou o código da sessão; vazio tira (como o servidor)
     if (d.sessaoId !== undefined) {
       const lida = sessaoDaConversa(d.sessaoId, A.integ.linkConversa);
@@ -1025,7 +1094,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     // os outros contatos e as outras conversas (2.2, como o servidor): a lista inteira toma o lugar da de antes
     if (d.outrosContatos !== undefined) {
-      const principal = { nome: set.contatoNome !== undefined ? set.contatoNome : t.contatoNome, telefone: set.contatoTelefone !== undefined ? set.contatoTelefone : t.contatoTelefone };
+      const principal = {
+        nome: set.contatoNome !== undefined ? set.contatoNome : t.contatoNome, telefone: set.contatoTelefone !== undefined ? set.contatoTelefone : t.contatoTelefone,
+        email: set.contatoEmail !== undefined ? set.contatoEmail : t.contatoEmail ?? null,
+      };
       const novos = outrosContatosLimpos(d.outrosContatos, principal);
       const velhos = t.outrosContatos ?? [];
       if (JSON.stringify(novos) !== JSON.stringify(velhos)) {
@@ -1160,15 +1232,28 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const novos: ValoresDosCampos = { ...t.campos };
       let mexeu = false;
       incluirOpcoesEscritas(painel, d.campos);
+      let marcas = t.marcas ?? {};
+      let mexeuNasMarcas = false;
       for (const { campo: c, valor } of lerCampos(painel, d.campos, t.campos)) {
         const antes = t.campos[c.id] ?? null;
         if (mesmoValorDoCampo(antes, valor)) continue;
         mexeu = true;
         if (valor === null) delete novos[c.id]; else novos[c.id] = valor;
-        if (c.tipo === 'texto_longo') longo(chaveDoCampo(c.id), c.nome, antes);
-        else campo(chaveDoCampo(c.id), c.nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
+        // o campo de um produto leva o nome dele no histórico (2.3)
+        const nome = nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name })));
+        if (c.tipo === 'texto_longo') longo(chaveDoCampo(c.id), nome, antes);
+        else if (ehCaixinhas(c.tipo)) {
+          // as caixinhas (2.3): quem marcou e quando, e o histórico diz o que foi marcado e desmarcado (como o servidor)
+          const r = marcasDepois(marcas, c, antes, valor, { porId: pessoaDoAtor(ator), porNome: integracaoDoAtor(ator) }, iso(agora));
+          marcas = r.marcas;
+          mexeuNasMarcas = true;
+          const nomes = (ids: string[]) => ids.map((id) => c.opcoes.find((o) => o.id === id)?.nome ?? '(opção que saiu)');
+          eventos.push(['campo', { campo: nome, marcou: nomes(r.marcou), desmarcou: nomes(r.desmarcou) }]);
+          mudou(chaveDoCampo(c.id), nome, antes);
+        } else campo(chaveDoCampo(c.id), nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
       }
       if (mexeu) set.campos = novos;
+      if (mexeuNasMarcas) set.marcas = marcas;
     }
     // os textos longos: o histórico diz só que mudou (o texto está no chamado; a auditoria guarda o de antes)
     const textos: Array<['relato' | 'descricao' | 'solucao' | 'causa' | 'contorno' | 'validacao', string]> = [
@@ -1337,7 +1422,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   function mover(
-    ator: Ator, ref: string, d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null },
+    ator: Ator, ref: string,
+    d: {
+      etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null;
+      implantacao?: PedidoDoCliente;
+    },
     agora: Date = agoraReal(),
   ): Feito {
     exigirTrabalhar(ator);
@@ -1351,11 +1440,203 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const venda = conferirResultado(e, para, d);
     const valor = e.t.valor;
     const sentido = conferirMovimento(e, para, { motivo, responsavelId, nivel: true, venda, ator });
+    // o que a etapa faz ao chegar (2.3): abrir a implantação (a negociação) ou ligar no cadastro (o card do Implantado). O
+    // cliente novo precisa do CNPJ (o cadastro exige): sem ele, a negociação não vai, e a tela abre a janela para pedir
+    const vai = oQueAEtapaFaz(e.t, e.painel, para, e.agora, d.implantacao);
+    if (vai.implantacao?.falta) throw bad(vai.implantacao.falta, { implantacao: vai.implantacao });
+    // o fim da implantação: a negociação de onde o card veio vai para o Implantado do Comercial
+    const fim = vai.negociacao ? negociacaoNoFim(e.t, e.painel, para) : null;
     const m = gravarMovimento(e, ator, para, { motivo, sentido, responsavelId, venda });
     // arrastado para um lugar da coluna (2.1): a etapa se arruma com ele ali (se o de cima saiu da etapa, ele fica no alto)
     if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) arrumarNaEtapa(e.painel, para.id, e.t.id, d.depoisDe);
+    const implantacao = vai.implantacao ? abrirAImplantacao(e, ator, vai.implantacao) : null;
+    const cadastro = vai.cadastro ? ligarNoCadastro(e, ator, vai.cadastro) : null;
+    // a negociação vai sem as regras de entrar na etapa (quem moveu foi o card: nada trava); o histórico diz o porquê
+    const naNegociacao = fim ? gravarMovimento({ t: fim.linha, painel: fim.painel, etapa: fim.de, agora: e.agora, quando: e.quando }, ator, fim.para, { motivo: `a implantação ${e.t.codigo} terminou`, sentido: null }) : null;
+    if (fim) registrarEvento(e.t.id, 'implantacao', ator, { acao: 'negociacao', codigo: fim.linha.codigo, etapa: fim.para.nome }, e.quando());
     depoisDoMovimento(ator, e.t, m, agora);
-    return { ...nada(e.t), resumo: frasesDoMovimento(e.t.codigo, m, sentido, motivo, venda && { valor, motivoPerda: venda.motivoPerda }) };
+    if (fim && naNegociacao) depoisDoMovimento(ator, fim.linha, naNegociacao, agora);
+    if (implantacao) emitir('chamado.criado', implantacao.id);
+    const extra = [
+      implantacao ? `; abriu a implantação ${implantacao.codigo}${implantacao.clienteNovo ? ` e criou o cliente ${implantacao.clienteNovo.nome}` : ''}` : '',
+      cadastro && (cadastro.produtos.length || cadastro.modulos.length) ? `; ligou no cadastro ${[...cadastro.produtos, ...cadastro.modulos].join(', ')}` : '',
+      fim ? `; a negociação ${fim.linha.codigo} foi para ${fim.para.nome}` : '',
+    ].join('');
+    return {
+      ...nada(e.t), resumo: frasesDoMovimento(e.t.codigo, m, sentido, motivo, venda && { valor, motivoPerda: venda.motivoPerda }) + extra,
+      auditoriaExtra: [
+        ...(implantacao?.auditoria ?? []), ...(cadastro?.auditoria ?? []),
+        ...(fim ? [{ action: 'update' as const, entityType: 'ticket', entityId: fim.linha.id, summary: `Moveu ${fim.linha.codigo} de ${fim.de.nome} para ${fim.para.nome}: a implantação ${e.t.codigo} terminou` }] : []),
+      ],
+    };
+  }
+
+  // =====================================================================
+  //  A IMPLANTAÇÃO (2.3) — as mesmas regras do servidor (services/atendimento/implantacao.ts); o cadastro
+  //  dos clientes mora em demo.ts (ctx.cadastro)
+  // =====================================================================
+
+  const nomeDoProduto = (id: string) => S.products.find((p) => p.id === id)?.name ?? '?';
+  const nomeDoClienteNaPrevia = (id: string) => S.clients.find((c) => c.id === id)?.tradeName ?? null;
+  /** O CNPJ que a negociação tem: o campo do painel chamado "CNPJ" (o do Comercial do Helena). */
+  function cnpjDoCampo(t: ChamadoRow): string | null {
+    const campo = camposDoPainel(t.painelId).find((c) => paraBusca(c.nome) === 'cnpj' && (c.tipo === 'texto' || c.tipo === 'texto_longo'));
+    const v = campo ? t.campos[campo.id] : null;
+    return typeof v === 'string' && v.trim() ? v.trim() : null;
+  }
+  /** O que a etapa faz ao chegar: o plano da implantação (a negociação) e o do cadastro (o card). */
+  function oQueAEtapaFaz(t: ChamadoRow, painel: Painel, para: EtapaPainel, agora: Date, pedido?: PedidoDoCliente): OQueAEtapaFaz {
+    const cad = ctx.cadastro;
+    if (!cad) return { implantacao: null, cadastro: null, negociacao: null };
+    let implantacao: PlanoDaImplantacao | null = null;
+    const destino = painel.tipo === 'vendas' && para.abreImplantacao ? paineis().find((p) => p.id === para.abreImplantacao && p.tipo === 'gestao') : undefined;
+    if (destino) {
+      const ja = A.chamados.find((x) => x.daNegociacaoId === t.id && !x.deletedAt);
+      const achado = !t.clienteId && pedido?.clienteId ? S.clients.find((c) => c.id === pedido.clienteId && !c.deletedAt) : undefined;
+      const escolhido = achado ? { id: achado.id, nome: achado.tradeName } : null;
+      const cnpj = (pedido?.cnpj ?? '').replace(/\D/g, '') || (cnpjDoCampo(t) ?? '').replace(/\D/g, '');
+      const peloCnpj = !t.clienteId && !escolhido && cnpj.length === 14 ? cad.clientePeloCnpj(cnpj) : null;
+      const naLixeira = !t.clienteId && !escolhido && !peloCnpj && cnpj.length === 14 ? cad.clienteNaLixeira(cnpj) : null;
+      const clienteId = t.clienteId ?? escolhido?.id ?? peloCnpj?.id ?? null;
+      implantacao = planoDaImplantacao({
+        painel: { id: destino.id, nome: destino.nome, sigla: destino.sigla, etapaDeEntrada: etapaDeEntrada(destino.etapas)?.nome ?? null },
+        negociacao: {
+          clienteId: t.clienteId, clienteNome: t.clienteId ? nomeDoClienteNaPrevia(t.clienteId) : null, empresa: t.empresa, cnpjDoCampo: cnpjDoCampo(t),
+          produtos: t.produtos.map((id) => ({ id, nome: nomeDoProduto(id) })),
+        },
+        clientePeloCnpj: peloCnpj, clienteEscolhido: escolhido, clienteNaLixeira: naLixeira, produtosDoCliente: new Set(clienteId ? cad.assinaturas(clienteId).keys() : []),
+        jaAberta: ja ? { codigo: ja.codigo } : null, pedido,
+      });
+    }
+    let cadastro: PlanoDoCadastro | null = null;
+    if (painel.tipo === 'gestao' && para.ligaNoCadastro) {
+      const cliente = t.clienteId ? { id: t.clienteId, nome: nomeDoClienteNaPrevia(t.clienteId) ?? '(cliente)' } : null;
+      const produtos = t.produtos.map((id) => ({ id, nome: nomeDoProduto(id), semData: !temDataDeAtivacao(S.products.find((p) => p.id === id)?.code ?? '') }));
+      cadastro = planoDoCadastro({
+        etapa: para.nome, dia: diaLocal(agora), cliente, produtos,
+        modulosMarcados: modulosMarcados(camposDoPainel(painel.id), t.produtos, t.campos, produtos),
+        semMarcar: modulosSemMarcar(camposDoPainel(painel.id), t.produtos, t.campos, produtos),
+        assinaturas: cliente ? cad.assinaturas(cliente.id) : new Map(),
+      });
+    }
+    return { implantacao, cadastro, negociacao: negociacaoNoFim(t, painel, para)?.mostra ?? null };
+  }
+
+  /** A negociação do card que chega no fim da implantação, e para onde ela vai (como o servidor). */
+  function negociacaoNoFim(t: ChamadoRow, painel: Painel, para: EtapaPainel): { linha: ChamadoRow; painel: Painel; de: EtapaPainel; para: EtapaPainel; mostra: NegociacaoNoFim } | null {
+    if (painel.tipo !== 'gestao' || !para.ligaNoCadastro || !t.daNegociacaoId) return null;
+    const linha = A.chamados.find((x) => x.id === t.daNegociacaoId && !x.deletedAt);
+    const dela = linha ? paineis().find((p) => p.id === linha.painelId && p.tipo === 'vendas') : undefined;
+    if (!linha || !dela) return null;
+    const alvo = etapaDoFimDaImplantacao(dela.etapas, linha.etapaId);
+    const de = dela.etapas.find((x) => x.id === linha.etapaId);
+    if (!alvo || !de) return null;
+    return { linha, painel: dela, de, para: alvo, mostra: { id: linha.id, codigo: linha.codigo, titulo: linha.titulo, de: de.nome, para: alvo.nome } };
+  }
+
+  /**
+   * Abre a implantação (como o servidor): o cliente (o novo entra no cadastro, com a Matriz; a negociação passa a ser dele),
+   * os produtos que ele não tem (sem a data de ativação) e o card, na entrada do painel da implantação, ligado à negociação.
+   */
+  function abrirAImplantacao(e: Estado, ator: Ator, plano: PlanoDaImplantacao): { id: string; codigo: string; clienteNovo: { id: string; nome: string } | null; auditoria: AuditoriaExtra[] } | null {
+    const cad = ctx.cadastro;
+    if (plano.jaAberta || !cad) return null;
+    const { t, agora } = e;
+    const destino = painelPorId(plano.painel.id);
+    const entrada = destino ? etapaDeEntrada(destino.etapas) : null;
+    if (!destino || !entrada) return null;
+    const auditoria: AuditoriaExtra[] = [];
+    const tituloAntes = t.titulo;
+
+    // 1. o cliente
+    let cliente: { id: string; nome: string };
+    let clienteNovo: { id: string; nome: string } | null = null;
+    if (plano.cliente.tipo === 'cadastro') cliente = { id: plano.cliente.id, nome: plano.cliente.nome };
+    else {
+      const c = plano.cliente;
+      cliente = cad.criarCliente({ nomeFantasia: c.nomeFantasia, razaoSocial: c.razaoSocial, cnpj: c.cnpj!, notas: `Criado pela negociação ${t.codigo}, ao abrir a implantação.` });
+      clienteNovo = cliente;
+      auditoria.push({
+        action: 'create', entityType: 'client', entityId: cliente.id,
+        summary: `Criou o cliente ${c.nomeFantasia} (CNPJ ${c.cnpj}) pela negociação ${t.codigo}, ao abrir a implantação`,
+        after: { tradeName: c.nomeFantasia, legalName: c.razaoSocial, cnpj: c.cnpj },
+      });
+    }
+    // a negociação passa a ser do cliente (o "Virou cliente?" de uma vez): o título que era o nome da empresa acompanha
+    if (t.clienteId !== cliente.id) {
+      // o cliente de antes (a empresa que ainda não era cliente não conta: o histórico diria "de X para X")
+      const antes = t.clienteId ? nomeDoClienteNaPrevia(t.clienteId) : null;
+      const titulo = t.empresa && paraBusca(t.titulo) === paraBusca(t.empresa) ? cliente.nome.slice(0, 200) : t.titulo;
+      if (titulo !== t.titulo) registrarEvento(t.id, 'campo', ator, { campo: 'Título', de: t.titulo, para: titulo }, e.quando());
+      registrarEvento(t.id, 'campo', ator, { campo: 'Cliente', de: antes, para: cliente.nome }, e.quando());
+      t.clienteId = cliente.id; t.empresa = null; t.titulo = titulo; tocar(t, agora);
+    }
+
+    // 2. os produtos que o cliente não tem: entram sem a data de ativação (estão em implantação)
+    const ja = cad.assinaturas(cliente.id);
+    const novos = t.produtos.filter((id) => !ja.has(id));
+    for (const id of novos) cad.porSemData(cliente.id, id);
+    const produtosNovos = novos.map(nomeDoProduto);
+    if (novos.length) {
+      auditoria.push({
+        action: 'update', entityType: 'client', entityId: cliente.id,
+        summary: `Pôs ${produtosNovos.join(', ')} no cadastro de ${cliente.nome} (em implantação, sem a data de ativação), pela negociação ${t.codigo}`,
+        after: { produtos: produtosNovos },
+      });
+    }
+
+    // 3. o card, na entrada do painel da implantação
+    const linha = A.paineis.find((p) => p.id === destino.id)!;
+    const numero = linha.proximoNumero;
+    linha.proximoNumero += 1;
+    const codigo = codigoDoChamado(destino.sigla, numero);
+    const id = novoId();
+    const descricao = [`Da negociação ${t.codigo}.`, t.descricao?.trim() ? `\n${t.descricao.trim()}` : ''].join('');
+    A.chamados.push({
+      id, painelId: destino.id, etapaId: entrada.id, numero, codigo, tipoChamado: 'chamado', titulo: plano.titulo,
+      relato: null, descricao, clienteId: cliente.id, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone, contatoEmail: t.contatoEmail ?? null, sessaoId: null,
+      outrosContatos: (t.outrosContatos ?? []).map((x) => ({ ...x })), outrasSessoes: [],
+      origem: 'comercial', responsavelId: null, assuntoId: null, tipo: null, gravidade: null, alcance: null, prioridade: null, motivoPrioridade: null,
+      produtos: [...t.produtos], operadoras: [], etiquetas: [], paiId: null, problemaId: null, checklist: [], campos: {},
+      solucao: null, causa: null, contorno: null, validacao: null, esperas: [], observadores: unicos([t.responsavelId, ...t.observadores].filter((x): x is string => !!x)),
+      respondidoEm: null, resolvidoEm: null, fechadoEm: null, reaberto: 0, alertas: {}, agendadoId: null, criadoPorId: pessoaDoAtor(ator),
+      criadoEm: iso(agora), atualizadoEm: iso(agora), ultimaAtividadeEm: iso(agora), deletedAt: null,
+      valor: null, empresa: null, motivoPerda: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {},
+      marcas: {}, daNegociacaoId: t.id,
+    });
+    registrarEvento(id, 'criado', ator, { origem: 'comercial', etapa: entrada.nome, etapaId: entrada.id, painel: destino.nome }, e.quando());
+    registrarEvento(id, 'implantacao', ator, { acao: 'veio', codigo: t.codigo, titulo: tituloAntes }, e.quando());
+    registrarEvento(t.id, 'implantacao', ator, { acao: 'abriu', codigo, painel: destino.nome, clienteNovo: !!clienteNovo, cliente: cliente.nome, produtos: produtosNovos }, e.quando());
+    auditoria.push({ action: 'create', entityType: 'ticket', entityId: id, summary: `Abriu ${codigo} "${plano.titulo}" no painel ${destino.nome}, pela negociação ${t.codigo}` });
+    return { id, codigo, clienteNovo, auditoria };
+  }
+
+  /** Liga no cadastro o que o plano diz (como o servidor): os produtos com a data de hoje e os módulos marcados. */
+  function ligarNoCadastro(e: Estado, ator: Ator, plano: PlanoDoCadastro): { produtos: string[]; modulos: string[]; auditoria: AuditoriaExtra[] } | null {
+    const cad = ctx.cadastro;
+    if (!plano.cliente || !cad) return null;
+    const cliente = plano.cliente;
+    const quando = `${plano.dia}T12:00:00.000Z`;
+    const ja = cad.assinaturas(cliente.id);
+    const produtos: string[] = [];
+    const modulos: string[] = [];
+    for (const p of plano.produtos) {
+      const a = ja.get(p.id);
+      // o Equipamentos não tem data de ativação (decisão 0034): entra sem ela
+      if (p.acao === 'novo' && !a) { if (p.semData) { cad.porSemData(cliente.id, p.id); produtos.push(p.nome); } else if (cad.ativarProduto(cliente.id, p.id, quando)) produtos.push(p.nome); }
+      else if (p.acao === 'ativa' && a && !a.ativadoEm && !a.encerrado) { if (cad.ativarProduto(cliente.id, p.id, quando)) produtos.push(p.nome); }
+    }
+    for (const m of plano.modulos) if (m.acao === 'liga' && cad.ligarModulo(cliente.id, m.produtoId, m.id, quando)) modulos.push(`${m.nome} (${m.produto})`);
+    registrarEvento(e.t.id, 'cadastro', ator, { cliente: cliente.nome, produtos, modulos, dia: plano.dia, etapa: plano.etapa }, e.quando());
+    if (!produtos.length && !modulos.length) return { produtos, modulos, auditoria: [] };
+    return {
+      produtos, modulos,
+      auditoria: [{
+        action: 'update', entityType: 'client', entityId: cliente.id,
+        summary: `Ligou no cadastro de ${cliente.nome}${produtos.length ? ` ${produtos.join(', ')}` : ''}${modulos.length ? `${produtos.length ? ' e' : ''} os módulos ${modulos.join(', ')}` : ''}, desde ${plano.dia.split('-').reverse().join('/')} (o ${e.t.codigo} chegou em ${plano.etapa})`,
+        after: { produtos, modulos, dia: plano.dia },
+      }],
+    };
   }
 
   // =====================================================================
@@ -1646,6 +1927,65 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     for (const a of A.anexos) if (a.notaId === n.id && !a.deletedAt) a.deletedAt = iso(agora);
     const autor = n.userId ? pessoaCurta(n.userId)!.nome : n.actorName;
     return { ...nada(t), resumo: `Apagou uma anotação${autor && !minha ? ` de ${autor}` : ''} em ${t.codigo}`, antes: { texto: n.texto, escritaEm: n.em, por: autor } };
+  }
+
+  // =====================================================================
+  //  OS ANEXOS DOS CAMPOS (2.3, como o servidor)
+  // =====================================================================
+
+  function campoParaAnexo(e: Estado, campoId: string, opcaoId: string | null) {
+    const c = camposDoPainel(e.painel.id).find((x) => x.id === campoId);
+    if (!c) throw naoAchado('Campo');
+    if (!c.ativo) throw bad(`O campo ${c.nome} está desativado.`);
+    if (!c.anexos) throw bad(`O campo ${c.nome} não recebe anexos. Quem cuida dos chamados liga em Painéis › Ajustes › Campos › Recebe anexos.`);
+    if (c.produtoId && !e.t.produtos.includes(c.produtoId)) throw bad(`O campo ${c.nome} é de um produto que ${e.painel.tipo === 'vendas' ? 'a negociação' : 'o chamado'} não tem.`);
+    const opcao = opcaoId ? c.opcoes.find((o) => o.id === opcaoId) ?? null : null;
+    if (opcaoId && (!opcao || !ehCaixinhas(c.tipo))) throw bad('A caixinha não é deste campo. Recarregue a tela e tente de novo.');
+    if (!opcao && ehCaixinhas(c.tipo)) throw bad('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
+    return { c, opcao, nome: nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name }))) };
+  }
+  function anexarNoCampo(ator: Ator, ref: string, campoId: string, d: { opcaoId: string | null; anexos: Array<{ fileName: string; conteudo: string }> }, agora: Date = agoraReal()): Feito {
+    exigirTrabalhar(ator);
+    if (!d.anexos.length) throw bad('Escolha o arquivo.');
+    if (d.anexos.length > 5) throw bad('Até 5 arquivos de uma vez.');
+    const guardar = d.anexos.map(anexoParaGuardar);
+    const e = carregar(ator, ref, agora);
+    const { t } = e;
+    const { c, opcao, nome } = campoParaAnexo(e, campoId, d.opcaoId);
+    const n = A.anexos.filter((a) => a.chamadoId === t.id && a.campoId === c.id && (a.opcaoId ?? null) === (opcao?.id ?? null) && !a.deletedAt).length;
+    if (n + guardar.length > MAX_ANEXOS_DO_CAMPO) {
+      throw bad(`${opcao ? `A caixinha ${opcao.nome}` : `O campo ${nome}`} já tem ${plural(n, 'anexo', 'anexos')}: cabem até ${MAX_ANEXOS_DO_CAMPO}. Tire um antes de anexar outro.`);
+    }
+    const pessoa = pessoaDoAtor(ator);
+    guardar.forEach((a, i) => A.anexos.push({ id: novoId(), chamadoId: t.id, notaId: null, campoId: c.id, opcaoId: opcao?.id ?? null, ...a, porId: pessoa, em: iso(new Date(agora.getTime() + i)), deletedAt: null }));
+    registrarEvento(t.id, 'anexo', ator, { acao: 'anexou', campo: nome, opcao: opcao?.nome ?? null, arquivos: guardar.map((a) => a.nome) }, e.quando());
+    tocar(t, agora);
+    camposAosObservadores(ator, t, [nome], agora);
+    return {
+      ...nada(t),
+      resumo: `Anexou ${guardar.length === 1 ? guardar[0]!.nome : plural(guardar.length, 'arquivo', 'arquivos')} em ${nome}${opcao ? ` › ${opcao.nome}` : ''} (${t.codigo})`,
+      depois: { campo: nome, opcao: opcao?.nome ?? null, anexos: guardar.map((a) => a.nome) },
+    };
+  }
+  function tirarAnexoDoCampo(ator: Ator, ref: string, anexoId: string, agora: Date = agoraReal()): Feito {
+    exigirTrabalhar(ator);
+    const e = carregar(ator, ref, agora);
+    const { t } = e;
+    const a = A.anexos.find((x) => x.id === anexoId && x.chamadoId === t.id && x.campoId && !x.deletedAt);
+    if (!a) throw naoAchado('Anexo');
+    const meu = ator.tipo === 'pessoa' && a.porId === ator.id;
+    if (!meu && !podeCuidar(ator)) throw proibido('Só quem anexou (ou quem cuida dos chamados) pode tirar este anexo.');
+    const c = camposDoPainel(e.painel.id).find((x) => x.id === a.campoId);
+    const nome = c ? nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name }))) : 'um campo';
+    const opcao = c && a.opcaoId ? c.opcoes.find((o) => o.id === a.opcaoId)?.nome ?? null : null;
+    a.deletedAt = iso(agora);
+    registrarEvento(t.id, 'anexo', ator, { acao: 'tirou', campo: nome, opcao, arquivos: [a.nome] }, e.quando());
+    tocar(t, agora);
+    return {
+      ...nada(t),
+      resumo: `Tirou o anexo ${a.nome} de ${nome}${opcao ? ` › ${opcao}` : ''} (${t.codigo})`,
+      antes: { arquivo: a.nome, anexadoEm: a.em, por: a.porId ? pessoaCurta(a.porId)?.nome ?? null : null },
+    };
   }
 
   // =====================================================================
@@ -2621,6 +2961,23 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       faltam: Object.fromEntries(painel.etapas.map((e) => [e.id, faltaParaEtapa(dados, e, { de: painel.etapas.find((x) => x.id === t.etapaId), painel })])),
       filhosTravam: Object.fromEntries(painel.etapas.map((e) => [e.id, filhosQueTravam(filhos, e, painel.ajustes.paiEsperaFilhos)])),
       grafo,
+      // a implantação (2.3): quem marcou cada caixinha; a negociação de onde o card veio; os cards que a negociação abriu
+      marcas: JSON.parse(JSON.stringify(t.marcas ?? {})),
+      anexosDosCampos: anexos.filter((a) => !a.notaId && a.campoId).map((a) => ({
+        id: a.id, nome: a.nome, tipo: a.tipo, tamanho: a.tamanho, imagem: IMAGENS_NA_TELA.includes(a.tipo), url: a.url,
+        campoId: a.campoId!, opcaoId: a.opcaoId ?? null, por: a.porId ? pessoaCurta(a.porId) : null, em: a.em, podeTirar: podeCuidar(ator) || (ator.tipo === 'pessoa' && a.porId === ator.id),
+      })),
+      daNegociacao: (() => {
+        const n = t.daNegociacaoId ? A.chamados.find((x) => x.id === t.daNegociacaoId) : undefined;
+        return n ? { id: n.id, codigo: n.codigo, titulo: n.titulo, podeAbrir: visiveis(ator).has(n.painelId) } : null;
+      })(),
+      implantacoes: A.chamados.filter((x) => x.daNegociacaoId === t.id && !x.deletedAt).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)).map((x) => {
+        const et = etapaPorId(x.etapaId);
+        return {
+          id: x.id, codigo: x.codigo, titulo: x.titulo, painelId: x.painelId, painel: A.paineis.find((p) => p.id === x.painelId)?.nome ?? '?', etapa: et?.nome ?? '?',
+          situacao: situacaoDaEtapa(et?.tipo ?? 'andamento'), podeAbrir: visiveis(ator).has(x.painelId),
+        };
+      }),
       observando: ator.tipo === 'pessoa' && t.observadores.includes(ator.id),
       pode: { trabalhar: podeTrabalhar(ator), cuidar: cuida },
     };
@@ -2707,8 +3064,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (unicos(ids).some((id) => !S.users.some((u) => u.id === id))) throw bad('Uma das pessoas escolhidas não existe mais. Recarregue a tela e escolha de novo.');
   }
   const painelParaAuditoria = (p: Painel) => ({ nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, tipo: p.tipo, acesso: p.acesso, pessoas: p.pessoas, ajustes: p.ajustes, ativo: p.ativo });
-  const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null }) =>
-    ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar], ...(e.resultado ? { resultado: e.resultado } : {}) });
+  const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean }) =>
+    ({
+      nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar], ...(e.resultado ? { resultado: e.resultado } : {}),
+      ...(e.abreImplantacao ? { abreImplantacao: e.abreImplantacao } : {}), ...(e.ligaNoCadastro ? { ligaNoCadastro: true } : {}),
+      ...(e.recebeImplantacao ? { recebeImplantacao: true } : {}),
+    });
   function linhaDoPainel(id: string) {
     const p = A.paineis.find((x) => x.id === id && !x.deletedAt);
     if (!p) throw naoAchado('Painel');
@@ -2742,10 +3103,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const pessoas = unicos(d.pessoas);
     // o tipo (Gestão ou Vendas) é escolhido ao criar e não muda depois (o pedido de mudar fica de fora)
     const tipo: TipoDePainel = atual ? atual.tipo : d.tipo;
+    // o modelo Implantação (2.3): só ao criar, num painel de Gestão — as etapas, os campos e os ajustes dele
+    const modelo = !atual && tipo === 'gestao' && d.modelo === 'implantacao' ? MODELO_DA_IMPLANTACAO : null;
     const deFabrica = tipo === 'vendas' ? AJUSTES_DO_PAINEL_DE_VENDAS : AJUSTES_PAINEL_PADRAO;
     // os campos do sistema que o painel usa: sem a lista no pedido, ficam como estão (quem muda é a aba
     // Campos); o painel novo nasce com o padrão (sem o alcance, por enquanto; o de Vendas, só com os produtos)
-    const camposDesligados = d.ajustes.camposDesligados ?? atual?.ajustes.camposDesligados ?? deFabrica.camposDesligados;
+    const camposDesligados = d.ajustes.camposDesligados ?? atual?.ajustes.camposDesligados ?? (modelo ?? { ajustes: deFabrica }).ajustes.camposDesligados;
     // o que pode ser pedido neste painel: o resto sai das regras
     const validos = obrigatoriosDoPainel({ camposDesligados }, atual ? camposDoPainel(atual.id) : [], tipo);
     const ajustes: AjustesDoPainel = {
@@ -2757,13 +3120,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       metaMensal: d.ajustes.metaMensal !== undefined ? d.ajustes.metaMensal : atual?.ajustes.metaMensal ?? null,
       // a negociação não tem prazo nem fecha sozinha
       ...(tipo === 'vendas' ? { contaPrazo: false, fecharSozinhoDias: null } : {}),
+      // a implantação também não (2.3: leva o tempo dela)
+      ...(modelo ? { contaPrazo: modelo.ajustes.contaPrazo, fecharSozinhoDias: modelo.ajustes.fecharSozinhoDias } : {}),
     };
     if (tipo === 'vendas' && !ajustes.motivosDePerda.length) throw bad('O painel de Vendas precisa de pelo menos um motivo de perda.');
     conferirPessoas([...pessoas, ...ajustes.supervisores]);
     if (!atual) {
       const novoPainel = novoId();
-      // as etapas da janela (todas novas) ou as de fábrica do tipo; conferidas antes de criar qualquer coisa
-      const etapas = d.etapas ?? (tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null }))).map((e) => ({ ...e, avisar: [] }));
+      // as etapas da janela (todas novas) ou as de fábrica do tipo (ou do modelo); conferidas antes de criar qualquer coisa
+      const etapas = d.etapas ?? (
+        modelo ? modelo.etapas.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: false }))
+          : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS.map((e) => ({ ...e, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false }))
+            : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false }))
+      ).map((e) => ({ ...e, avisar: [] }));
       const plano = planejarEtapas(novoPainel, etapas, {}, validos, tipo);
       const novo: PainelRow = {
         id: novoPainel, nome: d.nome, sigla, descricao: d.descricao ?? null, cor: d.cor, ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1,
@@ -2771,12 +3140,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       };
       A.paineis.push(novo);
       aplicarEtapas(ator, plano, agora);
-      // o painel de Vendas nasce com os campos do Comercial do Helena (como no servidor)
-      const camposDeFabrica = camposDeFabricaDoPainel(novo.id, tipo);
+      // o painel de Vendas nasce com os campos do Comercial do Helena (como no servidor); o da implantação, com os do modelo
+      const camposDeFabrica = camposDeFabricaDoPainel(novo.id, tipo, !!modelo);
       const painel = painelPorId(novo.id)!;
       return {
-        valor: painel, resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`
-          + (camposDeFabrica.length ? ` e os campos ${lista(camposDeFabrica)}` : ''),
+        valor: painel, resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : modelo ? ', pelo modelo Implantação' : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`
+          + (camposDeFabrica.length ? (modelo ? ` e ${camposDeFabrica.length} campos (a curadoria, a configuração e os testes)` : ` e os campos ${lista(camposDeFabrica)}`) : ''),
         depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria), ...(camposDeFabrica.length ? { campos: camposDeFabrica } : {}) },
       };
     }
@@ -2811,7 +3180,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   type PlanoDasEtapas = {
     painelId: string; atuais: EtapaRow[]; porId: Map<string, EtapaRow>; saem: EtapaRow[]; destino: Record<string, string>;
-    novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null }>;
+    novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null; abreImplantacao: string | null; ligaNoCadastro: boolean; recebeImplantacao: boolean }>;
     /** o retrato de antes (aplicar muda as mesmas linhas): o nome, o tipo e o que vai para a auditoria */
     fotoAntes: Array<ReturnType<typeof etapaParaAuditoria> & { id: string }>;
   };
@@ -2832,8 +3201,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const novas = etapas.map((e, ordem) => ({
       id: e.id ?? novoId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: limparObrigatorios(e.obrigatorios, validos), avisar: unicos(e.avisar),
       resultado: e.resultado ?? null,
+      // a implantação (2.3): abrir é da negociação (o painel de Vendas), numa etapa que não fecha; ligar no cadastro é do chamado (Gestão)
+      abreImplantacao: tipo === 'vendas' && !e.resultado ? e.abreImplantacao ?? null : null,
+      ligaNoCadastro: tipo === 'gestao' && !!e.ligaNoCadastro,
+      // e a de Vendas, fora do Ganho e do Perdido, que recebe a negociação quando a implantação termina
+      recebeImplantacao: tipo === 'vendas' && !e.resultado && !!e.recebeImplantacao,
     }));
+    if (novas.filter((e) => e.recebeImplantacao).length > 1) throw bad('Só uma etapa recebe a negociação quando a implantação termina: escolha uma.');
     conferirPessoas(novas.flatMap((e) => e.avisar));
+    for (const id of new Set(novas.map((e) => e.abreImplantacao).filter((x): x is string => !!x))) {
+      const p = A.paineis.find((x) => x.id === id && !x.deletedAt);
+      if (!p || id === painelId) throw bad('O painel da implantação escolhido numa etapa não existe mais. Recarregue a tela e escolha de novo.');
+      if (p.tipo === 'vendas') throw bad(`A implantação abre num painel de chamados (Gestão): o ${p.nome} é de Vendas.`);
+    }
     const saem = atuais.filter((e) => !ficam.has(e.id));
     const semDestino = saem
       .map((e) => ({ id: e.id, nome: e.nome, chamados: A.chamados.filter((t) => t.etapaId === e.id && !t.deletedAt).length }))
@@ -2857,7 +3237,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // o Object.assign abaixo muda as mesmas linhas: o tipo de antes vem do retrato do plano
     const antesDe = new Map(plano.fotoAntes.map((e) => [e.id, e]));
     for (const e of novas) {
-      const campos = { nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado };
+      const campos = { nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado, abreImplantacao: e.abreImplantacao, ligaNoCadastro: e.ligaNoCadastro, recebeImplantacao: e.recebeImplantacao };
       if (e.nova) A.etapas.push({ id: e.id, painelId, ...campos, deletedAt: null });
       else Object.assign(porId.get(e.id)!, campos);
     }
@@ -2893,7 +3273,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const mesmaLista = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
     const ajustadas = ficaram.filter((e) => {
       const a = antesDe.get(e.id)!;
-      return a.tipo !== e.tipo || (a.nivel ?? null) !== e.nivel || (a.resultado ?? null) !== e.resultado || !mesmaLista(a.obrigatorios, e.obrigatorios) || !mesmaLista(a.avisar, e.avisar);
+      return a.tipo !== e.tipo || (a.nivel ?? null) !== e.nivel || (a.resultado ?? null) !== e.resultado || !mesmaLista(a.obrigatorios, e.obrigatorios) || !mesmaLista(a.avisar, e.avisar)
+        || (a.abreImplantacao ?? null) !== e.abreImplantacao || !!a.ligaNoCadastro !== e.ligaNoCadastro || !!a.recebeImplantacao !== e.recebeImplantacao;
     }).map((e) => e.nome);
     const ordemAntes = fotoAntes.filter((e) => ficaram.some((x) => x.id === e.id)).map((e) => e.id).join();
     const partes = [
@@ -3001,7 +3382,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   // ---------- os campos de cada painel ----------
 
-  const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes.map((o) => ({ ...o })), ativo: c.ativo, incluirNaHora: c.incluirNaHora });
+  const campoParaAuditoria = (c: CampoPersonalizado) => ({
+    nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes.map((o) => ({ ...o })), ativo: c.ativo, incluirNaHora: c.incluirNaHora,
+    ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}), ...(c.anexos ? { anexos: true } : {}),
+  });
   /**
    * Incluir uma opção numa lista do painel ali mesmo (2.0.3, a Indicação), como o servidor: só nas listas marcadas;
    * a que já existe volta, a desativada é reativada. Sem `podeVer`, é o próprio Gestor (a API, o n8n, o robô).
@@ -3062,15 +3446,31 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   function conferirCampo(p: PainelRow, d: ReturnType<typeof CampoGravarSchema.parse>, atual: CampoPersonalizado | null): OpcaoDoCampo[] {
     const doSistema = nomeDoSistemaIgual(d.nome, { camposDesligados: p.ajustes.camposDesligados ?? AJUSTES_PAINEL_PADRAO.camposDesligados });
     if (doSistema) throw conflito(`Todo chamado do painel ${p.nome} já tem o campo ${doSistema}: escolha outro nome.`);
-    const igual = camposDoPainel(p.id).find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome));
-    if (igual) throw conflito(`O painel ${p.nome} já tem o campo ${igual.nome}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
+    // os módulos são os do produto: trocar o produto trocaria as opções do que já foi marcado
+    if (atual?.tipo === 'modulos' && atual.produtoId !== d.produtoId) throw bad(`O produto dos módulos não muda depois de criado (${atual.nome}). Crie outro campo e desative este.`);
+    // o checklist dos módulos (2.3): segue um campo de módulos deste painel, do mesmo produto, que seja a escolha
+    if (d.escolhidosEm) {
+      if (d.tipo !== 'modulos') throw bad('Só os módulos do produto seguem outro campo.');
+      const fonte = camposDoPainel(p.id).find((c) => c.id === d.escolhidosEm);
+      if (!fonte || fonte.id === atual?.id || fonte.tipo !== 'modulos' || (fonte.produtoId ?? null) !== (d.produtoId ?? null) || fonte.escolhidosEm) {
+        throw bad('O checklist dos módulos segue um campo de módulos deste painel, do mesmo produto, em que os módulos são escolhidos.');
+      }
+      if (atual && camposDoPainel(p.id).some((c) => c.escolhidosEm === atual.id)) throw bad(`Outro campo segue ${d.nome}: ele continua sendo a escolha dos módulos.`);
+    }
+    // o mesmo nome pode estar em produtos diferentes (2.3: o Horário de atendimento do LineChat e o do LinePBX)
+    const igual = camposDoPainel(p.id).find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome) && (c.produtoId ?? null) === (d.produtoId ?? null));
+    if (igual) throw conflito(`O painel ${p.nome} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
     if (atual && atual.tipo !== d.tipo) throw bad(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
-    if (!ehLista(d.tipo)) return [];
-    const existentes = atual?.opcoes ?? [];
-    const opcoes: OpcaoDoCampo[] = d.opcoes.map((o) => {
-      if (!o.id) return { id: novoId(), nome: o.nome, ativa: o.ativa };
+    if (!temOpcoesEscritas(d.tipo)) return [];
+    return opcoesConferidas(d.tipo, d.opcoes, atual?.opcoes ?? []);
+  }
+  /** As opções gravadas (como o servidor): a sem id é nova; a que não veio fica desativada; a pasta (2.3) só nas caixinhas. */
+  function opcoesConferidas(tipo: CampoPersonalizado['tipo'], vindas: ReturnType<typeof CampoGravarSchema.parse>['opcoes'], existentes: OpcaoDoCampo[]): OpcaoDoCampo[] {
+    const pasta = (p: string | null | undefined) => (tipo === 'caixinhas' && p ? { pasta: p } : {});
+    const opcoes: OpcaoDoCampo[] = vindas.map((o) => {
+      if (!o.id) return { id: novoId(), nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
       if (!existentes.some((x) => x.id === o.id)) throw bad(`A opção ${o.nome} não é deste campo. Recarregue a tela e tente de novo.`);
-      return { id: o.id, nome: o.nome, ativa: o.ativa };
+      return { id: o.id, nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
     });
     for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
     const vistas = new Set<string>();
@@ -3095,22 +3495,46 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     return [...(abrir ? ['para abrir'] : []), ...etapas.filter((e) => pedidas.has(e.id)).map((e) => e.nome)];
   }
-  /** Os campos com que o painel nasce (só o de Vendas tem: os do Comercial do Helena); devolve os nomes. */
-  function camposDeFabricaDoPainel(painelId: string, tipo: TipoDePainel): string[] {
-    if (tipo !== 'vendas') return [];
-    CAMPOS_DO_PAINEL_DE_VENDAS.forEach((c, ordem) => A.campos.push({
+  /**
+   * Os campos com que o painel nasce (o de Vendas: os do Comercial do Helena; o do modelo Implantação, 2.3: a curadoria, a
+   * configuração e os testes de cada produto, sem os de um produto que não está no catálogo); devolve os nomes.
+   */
+  function camposDeFabricaDoPainel(painelId: string, tipo: TipoDePainel, implantacao = false): string[] {
+    const produtoDoCodigo = (code: string | null) => (code ? S.products.find((x) => x.code === code && !x.deletedAt)?.id ?? null : null);
+    const fabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null; escolhidosEm?: string; anexos?: boolean }> = implantacao
+      ? MODELO_DA_IMPLANTACAO.campos.filter((c) => !c.produto || produtoDoCodigo(c.produto)).map((c) => ({ ...c, produtoId: produtoDoCodigo(c.produto) }))
+      : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
+    fabrica.forEach((c, ordem) => A.campos.push({
       id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: c.dica, ativo: true, ordem,
-      opcoes: c.opcoes.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: !!c.incluirNaHora,
+      opcoes: c.opcoes.map(opcaoDoModelo).map((o) => ({ id: novoId(), nome: o.nome, ativa: true, ...(o.pasta ? { pasta: o.pasta } : {}) })), incluirNaHora: !!c.incluirNaHora,
+      parte: c.parte ?? null, produtoId: c.produtoId ?? null, escolhidosEm: null, anexos: !!c.anexos,
     }));
-    return CAMPOS_DO_PAINEL_DE_VENDAS.map((c) => c.nome);
+    // o checklist dos módulos segue o campo de módulos do mesmo produto com o nome do modelo (o da Curadoria)
+    const criados = A.campos.filter((c) => c.painelId === painelId);
+    fabrica.forEach((c, i) => {
+      if (!c.escolhidosEm) return;
+      const fonte = criados.find((x) => x.nome === c.escolhidosEm && (x.produtoId ?? null) === (c.produtoId ?? null));
+      const eu = criados.find((x) => x.ordem === i);
+      if (fonte && eu) eu.escolhidosEm = fonte.id;
+    });
+    if (implantacao) sincronizarModulos();
+    return fabrica.map((c) => c.nome);
+  }
+  function conferirProdutoDoCampo(produtoId: string | null) {
+    if (produtoId && !S.products.some((p) => p.id === produtoId && !p.deletedAt)) throw bad('O produto escolhido para o campo não existe mais. Recarregue a tela e escolha de novo.');
   }
   function criarCampo(painelId: string, d: ReturnType<typeof CampoGravarSchema.parse>) {
     const p = linhaDoPainel(painelId);
     const outros = camposDoPainel(painelId);
     if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw bad(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos (os desativados contam).`);
+    conferirProdutoDoCampo(d.produtoId);
     const opcoes = conferirCampo(p, d, null);
-    const c: CampoPersonalizado = { id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, incluirNaHora: d.tipo === 'lista' && d.incluirNaHora };
+    const c: CampoPersonalizado = {
+      id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, incluirNaHora: d.tipo === 'lista' && d.incluirNaHora,
+      parte: d.parte, produtoId: d.produtoId, escolhidosEm: d.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos,
+    };
     A.campos.push(c);
+    sincronizarModulos();
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     return {
       valor: campoParaTela(c),
@@ -3124,14 +3548,33 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const p = A.paineis.find((x) => x.id === c.painelId && !x.deletedAt);
     if (!p) throw naoAchado('Campo');
     const antes = campoParaTela(c);
+    conferirProdutoDoCampo(d.produtoId);
     const opcoes = conferirCampo(p, d, antes);
-    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora });
+    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos });
+    sincronizarModulos();
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
     return {
       valor: campoParaTela(c),
       resumo: `${como} o campo ${c.nome} no painel ${p.nome}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}`,
       antes: campoParaAuditoria(antes), depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
+    };
+  }
+  /** Só as caixinhas do campo (2.3, o "Editar as caixinhas" do card), como o servidor. */
+  function alterarCaixinhas(id: string, d: ReturnType<typeof CaixinhasGravarSchema.parse>) {
+    const c = A.campos.find((x) => x.id === id);
+    if (!c) throw naoAchado('Campo');
+    const p = A.paineis.find((x) => x.id === c.painelId && !x.deletedAt);
+    if (!p) throw naoAchado('Campo');
+    if (c.tipo !== 'caixinhas') throw bad(`${c.nome} não é de caixinhas: as opções dele se mudam em Painéis › Ajustes › Campos.`);
+    if (!c.ativo) throw bad(`O campo ${c.nome} está desativado.`);
+    const antes = campoParaTela(c);
+    c.opcoes = opcoesConferidas('caixinhas', d.opcoes, antes.opcoes);
+    const mudou = mudancasDasCaixinhas(antes.opcoes, c.opcoes);
+    return {
+      valor: campoParaTela(c),
+      resumo: `Mudou as caixinhas de ${nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name })))} no painel ${p.nome}${mudou.length ? `: ${mudou.join('; ')}` : ' (nada mudou)'}`,
+      antes: { opcoes: antes.opcoes }, depois: { opcoes: c.opcoes.map((o) => ({ ...o })) },
     };
   }
   function ordenarCampos(painelId: string, ids: string[]) {
@@ -3341,14 +3784,37 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         },
         ativo: true, proximoNumero: 1, deletedAt: null, tipo: p.tipo,
       });
-      const etapas = p.tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null }));
+      // o funil do Comercial ganha a etapa que abre a implantação (2.3), depois da Negociação: o Ganho é marcado quando começa a faturar
+      // e a Implantado, que recebe a negociação quando o card da implantação chega no Implantado de lá
+      const etapas: Array<(typeof ETAPAS_DO_PAINEL_DE_VENDAS)[number] & { abreImplantacao?: string; recebeImplantacao?: boolean }> = p.tipo === 'vendas'
+        ? ETAPAS_DO_PAINEL_DE_VENDAS.flatMap((e) => (e.nome === 'Negociação'
+          ? [e, { nome: ETAPA_QUE_ABRE_A_IMPLANTACAO, tipo: 'andamento' as const, nivel: null, obrigatorios: [], resultado: null, abreImplantacao: PAINEL_DA_IMPLANTACAO },
+            { nome: 'Implantado', tipo: 'andamento' as const, nivel: null, obrigatorios: [], resultado: null, recebeImplantacao: true }]
+          : [e]))
+        : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null }));
       etapas.forEach((e, j) => A.etapas.push({
         id: `etapa-${p.chave}-${j + 1}`, painelId: id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: j, obrigatorios: [...e.obrigatorios], avisar: [], deletedAt: null,
-        resultado: e.resultado,
+        resultado: e.resultado, abreImplantacao: e.abreImplantacao ?? null, recebeImplantacao: !!e.recebeImplantacao,
       }));
       // o Comercial nasce com os campos do Helena (CNPJ, contatos principais, origem de lead, indicação)
       camposDeFabricaDoPainel(id, p.tipo);
     });
+
+    // ---- a Implantação (2.3): o painel de Gestão pelo modelo (as etapas, os campos da curadoria, da configuração e dos
+    //      testes de cada produto); os cards nascem das negociações do Comercial, mais abaixo ----
+    {
+      const m = MODELO_DA_IMPLANTACAO;
+      A.paineis.push({
+        id: PAINEL_DA_IMPLANTACAO, nome: m.nome, sigla: m.sigla, descricao: m.descricao, cor: m.cor, ordem: PAINEIS_INICIAIS.length + equipes.length, acesso: 'todos', pessoas: [],
+        ajustes: { ...m.ajustes, tipos: [...m.ajustes.tipos], obrigatoriosAoAbrir: [], supervisores: [luan], camposDesligados: [...m.ajustes.camposDesligados], motivosDePerda: [] },
+        ativo: true, proximoNumero: 1, deletedAt: null, tipo: 'gestao',
+      });
+      m.etapas.forEach((e, j) => A.etapas.push({
+        id: `etapa-implantacao-${j + 1}`, painelId: PAINEL_DA_IMPLANTACAO, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: j, obrigatorios: [...e.obrigatorios], avisar: [],
+        deletedAt: null, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro,
+      }));
+      camposDeFabricaDoPainel(PAINEL_DA_IMPLANTACAO, 'gestao', true);
+    }
 
     // ---- os assuntos: a lista da equipe (colada) e o que já foi preenchido em alguns ----
     colarAssuntos('painel-suporte', LISTA_DE_ASSUNTOS_DO_SUPORTE);
@@ -3464,7 +3930,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         ...(d.relato !== undefined ? { relato: textoCom(d.relato, chave) } : {}),
         ...(d.descricao !== undefined ? { descricao: textoCom(d.descricao, chave) } : {}),
         ...(d.cliente ? { clienteId } : {}),
-        ...(d.contato ? { contatoNome: d.contato[0], contatoTelefone: d.contato[1] } : {}),
+        ...(d.contato ? { contatoNome: d.contato[0], contatoTelefone: d.contato[1], contatoEmail: d.contato[2] ?? null } : {}),
         ...(d.assunto ? { assuntoId: assuntoDoCaminho(painelId, d.assunto) } : {}),
         ...(d.tipo ? { tipo: d.tipo } : {}), ...(d.gravidade ? { gravidade: d.gravidade } : {}), ...(d.alcance ? { alcance: d.alcance } : {}),
         ...(d.prioridade ? { prioridade: d.prioridade } : {}), ...(d.motivoPrioridade ? { motivoPrioridade: d.motivoPrioridade } : {}),
@@ -3501,7 +3967,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       // os outros contatos e as outras conversas do exemplo (2.2): direto na linha, sem histórico
       if (d.outrosContatos || d.outrasSessoes) {
         const linha = A.chamados.find((x) => x.id === r.id)!;
-        linha.outrosContatos = (d.outrosContatos ?? []).map(([nome, fone]) => ({ nome, telefone: fone ? numeroWhatsApp(fone) : null }));
+        linha.outrosContatos = (d.outrosContatos ?? []).map(([nome, fone, email]) => ({ nome, telefone: fone ? numeroWhatsApp(fone) : null, email: email ?? null }));
         linha.outrasSessoes = d.outrasSessoes ?? [];
       }
       if (robo) { const k = A.chaves.find((x) => x.id === A.robo!.id)!; k.usadaEm = iso(quando); webhook.ultimoEm = iso(quando); webhook.ultimoOk = true; webhook.ultimaMsg = 'chamado.criado: recebido (200)'; }
@@ -3601,6 +4067,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // ---- o Comercial (2.0.1, o painel de Vendas): as negociações dos últimos meses, ganhas e perdidas,
     //      e o funil de agora — cada uma vivida pelas funções da tela (abrir, mover, marcar o resultado) ----
     const com = A.paineis.find((p) => p.id === 'painel-comercial')!;
+    // os campos que vieram do Helena (2.3): nos Detalhes da proposta, no meio da ficha
+    let ordemNoComercial = camposDoPainel(com.id).reduce((m, c) => Math.max(m, c.ordem), -1) + 1;
+    for (const c of CAMPOS_DO_HELENA_NO_COMERCIAL) {
+      A.campos.push({ id: novoId(), painelId: com.id, nome: c.nome, tipo: c.tipo, dica: DICA_DO_CAMPO_DO_HELENA, ativo: true, ordem: ordemNoComercial++, opcoes: [], incluirNaHora: false, parte: PARTE_DOS_CAMPOS_DO_HELENA, produtoId: null });
+    }
     const etapaDoComercial = (nome: string) => {
       const e = A.etapas.find((x) => x.painelId === com.id && !x.deletedAt && x.nome === nome);
       if (!e) throw new Error(`a etapa ${nome} não é do Comercial`);
@@ -3615,12 +4086,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const quando = iso(noDia(60, '09:00'));
       A.etiquetas.push({ id: novoId(), painelId: com.id, nome, chave: chaveDaEtiqueta(nome), cor, criadoPorId: idDa('camila'), criadoEm: quando, atualizadoEm: quando });
     }
+    const negociacaoDoExemplo = new Map<string, string>();
+    // o Ganho das que têm a implantação de exemplo fica para depois dela (o Implantado do card leva a negociação ao
+    // Implantado do Comercial; só depois o Luan marca o Ganho, quando começa a faturar)
+    const comImplantacao = new Set(IMPLANTACOES_DE_EXEMPLO.map((x) => x.negociacao));
+    const ganhosDepois: Array<() => void> = [];
     for (const n of [...NEGOCIACOES_DE_EXEMPLO].sort((a, b) => b.abriu - a.abriu)) {
       try {
         const dono = atorDaPessoa(idDa(n.responsavel ?? n.por));
         const r = criarChamado(atorDaPessoa(idDa(n.por)), ChamadoCriarSchema.parse({
           painelId: com.id, titulo: n.titulo, ...(n.cliente ? { clienteId: idDoCliente(n.cliente) } : { empresa: n.empresa }),
-          ...(n.contato ? { contatoNome: n.contato[0], contatoTelefone: n.contato[1] } : {}),
+          ...(n.contato ? { contatoNome: n.contato[0], contatoTelefone: n.contato[1], contatoEmail: n.contato[2] ?? null } : {}),
           valor: n.valor !== undefined ? Math.round(n.valor * 100) : null,
           ...(n.porProduto ? { valoresDosProdutos: Object.fromEntries(Object.entries(n.porProduto).map(([codigo, v]) => [produtoDo(codigo), Math.round(v * 100)])) } : {}),
           ativacao: n.ativacao !== undefined ? Math.round(n.ativacao * 100) : null,
@@ -3630,6 +4106,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           ...(n.etiquetas ? { etiquetas: n.etiquetas } : {}),
           produtos: (n.produtos ?? []).map(produtoDo), responsavelId: n.responsavel ? idDa(n.responsavel) : null, descricao: n.descricao ?? null,
         }), { origem: 'manual' }, noDia(n.abriu, '09:30'));
+        negociacaoDoExemplo.set(n.chave, r.id);
         for (const p of n.passos ?? []) mover(dono, r.id, { etapaId: etapaDoComercial(p.para) }, noDia(p.dias, '11:00'));
         if (n.anotacao) {
           anotar(atorDaPessoa(idDa(n.anotacao.por)), r.id, {
@@ -3637,14 +4114,69 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           }, noDia(n.anotacao.dias, '15:00'));
         }
         if (n.fim) {
-          mover(dono, r.id, {
-            etapaId: etapaDoResultado(n.fim.resultado), motivoPerda: n.fim.motivo ?? null,
-            concluidoEm: n.fim.fechouHaDias !== undefined ? somarDias(hojeAqui, -n.fim.fechouHaDias) : null,
-          }, noDia(n.fim.dias, '16:00'));
+          const fim = n.fim;
+          const marcar = () => mover(dono, r.id, {
+            etapaId: etapaDoResultado(fim.resultado), motivoPerda: fim.motivo ?? null,
+            concluidoEm: fim.fechouHaDias !== undefined ? somarDias(hojeAqui, -fim.fechouHaDias) : null,
+          }, noDia(fim.dias, '16:00'));
+          if (comImplantacao.has(n.chave)) ganhosDepois.push(() => { try { marcar(); } catch (err) { A.erros.push(`comercial ${n.chave} (o ganho): ${err instanceof Error ? err.message : String(err)}`); } });
+          else marcar();
         }
       } catch (err) { A.erros.push(`comercial ${n.chave}: ${err instanceof Error ? err.message : String(err)}`); }
     }
     com.ajustes.metaMensal = META_DO_COMERCIAL * 100;
+
+    // os cards da implantação na ordem em que nasceram (as negociações são vividas uma de cada vez, a mais antiga primeiro, e
+    // a que abriu o card ontem pode ter nascido antes da que abriu há duas semanas): os números seguem o dia de cada card
+    {
+      const sigla = A.paineis.find((p) => p.id === PAINEL_DA_IMPLANTACAO)!.sigla;
+      const cards = A.chamados.filter((x) => x.painelId === PAINEL_DA_IMPLANTACAO).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
+      const troca = new Map<string, string>();
+      cards.forEach((x, i) => { const novo = codigoDoChamado(sigla, i + 1); if (novo !== x.codigo) troca.set(x.codigo, novo); x.numero = i + 1; x.codigo = novo; });
+      if (troca.size) {
+        const trocar = (t: string) => t.replace(new RegExp(`\\b${sigla}-\\d+\\b`, 'g'), (c) => troca.get(c) ?? c);
+        for (const ev of A.eventos) for (const [k, v] of Object.entries(ev.dados)) if (typeof v === 'string') ev.dados[k] = trocar(v);
+        for (const a of A.avisos) a.texto = trocar(a.texto);
+      }
+    }
+
+    // ---- a Implantação (2.3): os cards que as negociações abriram ao entrar na Em processo de Implantação — a curadoria,
+    //      a configuração e os testes, cada passo vivido pelas funções da tela (quem marcou cada caixinha fica no card) ----
+    const etapaDaImplantacao = (nome: string) => {
+      const e = A.etapas.find((x) => x.painelId === PAINEL_DA_IMPLANTACAO && !x.deletedAt && x.nome === nome);
+      if (!e) throw new Error(`a etapa ${nome} não é da Implantação`);
+      return e.id;
+    };
+    for (const ex of IMPLANTACOES_DE_EXEMPLO) {
+      try {
+        const negociacao = negociacaoDoExemplo.get(ex.negociacao);
+        const card = negociacao ? A.chamados.find((x) => x.daNegociacaoId === negociacao && !x.deletedAt) : undefined;
+        if (!card) throw new Error('a negociação não abriu o card');
+        for (const p of ex.passos) {
+          const ator = atorDaPessoa(idDa(p.por));
+          const quando = noDia(p.dias, p.hora);
+          if (p.campos?.length) {
+            const campos: ValoresDosCampos = {};
+            for (const x of p.campos) {
+              const c = A.campos.find((y) => y.painelId === PAINEL_DA_IMPLANTACAO && y.nome === x.nome && y.produtoId === produtoDo(x.produto));
+              if (!c) throw new Error(`o campo ${x.nome} (${x.produto}) não é da Implantação`);
+              if (Array.isArray(x.valor)) {
+                const ids = (x.valor as string[]).map((nome) => c.opcoes.find((o) => o.nome === nome)?.id);
+                if (ids.some((id) => !id)) throw new Error(`uma opção de ${x.nome} não existe: ${(x.valor as string[]).join(', ')}`);
+                // as que já estavam marcadas continuam (quem marcou primeiro fica)
+                const antes = Array.isArray(card.campos[c.id]) ? (card.campos[c.id] as string[]) : [];
+                campos[c.id] = c.opcoes.map((o) => o.id).filter((id) => antes.includes(id) || ids.includes(id));
+              } else campos[c.id] = x.valor;
+            }
+            alterar(ator, card.id, { campos }, quando);
+          }
+          if (p.para) {
+            mover(ator, card.id, { etapaId: etapaDaImplantacao(p.para), ...(p.responsavel ? { responsavelId: idDa(p.responsavel) } : {}) }, new Date(quando.getTime() + 5 * MINUTO));
+          }
+        }
+      } catch (err) { A.erros.push(`implantação ${ex.negociacao}: ${err instanceof Error ? err.message : String(err)}`); }
+    }
+    for (const marcar of ganhosDepois) marcar();
 
     // ---- o sininho: o que é antigo já foi lido ----
     // O Luan vê os 5 de que mais precisa (o Crítico que chegou, o prazo perto, o chamado que recebeu, o
@@ -3670,11 +4202,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Registra na auditoria (quando algo mudou) e devolve a ficha atualizada — ou o erro (o WhatsApp recusou). */
   function fichaDepois(r: Feito, acao: 'update' | 'delete' | 'restore' = 'update'): FichaChamado {
     if (r.resumo) auditar(acao, 'ticket', r.resumo, r.id, { before: r.antes, after: r.depois });
+    for (const x of r.auditoriaExtra ?? []) auditar(x.action, x.entityType, x.summary, x.entityId, { after: x.after });
     if (r.erro) throw bad(r.erro);
     return ficha(eu(), r.id);
   }
   /** O começo de toda chamada: os exemplos (na primeira) e o relógio. */
   function preparar() {
+    sincronizarModulos();
     semear();
     relogioAoVivo();
     // a NIA de exemplo (2.1) responde os pedidos que já deram a hora
@@ -3778,6 +4312,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     },
     async alterar(id, d) { await ctx.wait(150); const dados = ler(ChamadoAlterarSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(alterar(eu(), id, dados)); },
     async mover(id, d) { await ctx.wait(150); const dados = ler(MoverSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(mover(eu(), id, dados)); },
+    async aoMover(id, d) {
+      await ctx.wait(120); const dados = ler(AoMoverSchema, d); ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
+      const e = carregar(eu(), id, agoraReal());
+      const para = e.painel.etapas.find((x) => x.id === dados.etapaId);
+      if (!para) throw bad('Essa etapa não é do painel deste chamado.');
+      return oQueAEtapaFaz(e.t, e.painel, para, e.agora, { clienteId: dados.clienteId, cnpj: dados.cnpj, nomeFantasia: dados.nomeFantasia, razaoSocial: dados.razaoSocial });
+    },
     async posicionar(id, d) {
       await ctx.wait(120); const dados = ler(PosicaoNoQuadroSchema, d); ctx.requirePerm('tickets.work'); preparar();
       const r = posicionar(eu(), id, dados);
@@ -3790,6 +4331,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async reabrir(id, d) { await ctx.wait(150); const dados = ler(ReabrirSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(reabrir(eu(), id, dados)); },
     async trocarPainel(id, d) { await ctx.wait(150); const dados = ler(TrocarPainelSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(trocarPainel(eu(), id, dados)); },
     async anotar(id, d) { await ctx.wait(200); const dados = ler(AnotacaoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(anotar(eu(), id, dados)); },
+    async anexarNoCampo(id, campoId, d) { await ctx.wait(250); const dados = ler(AnexosDoCampoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(anexarNoCampo(eu(), id, campoId, dados)); },
+    async tirarAnexoDoCampo(id, anexoId) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(tirarAnexoDoCampo(eu(), id, anexoId), 'delete'); },
     async apagarAnotacao(id, notaId) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(apagarAnotacao(eu(), id, notaId), 'delete'); },
     async ligar(id, d) { await ctx.wait(150); const dados = ler(LigarChamadoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(ligar(eu(), id, dados)); },
     async desligar(id, ligacaoId) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(desligar(eu(), id, ligacaoId)); },
@@ -3882,6 +4425,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ctx.requirePerm('tickets.manage'); preparar();
       const r = id ? alterarCampo(id, dados) : criarCampo(painelId, dados);
       auditar(id ? 'update' : 'create', 'ticket_field', r.resumo, r.valor.id, { before: 'antes' in r ? r.antes : undefined, after: r.depois });
+      return r.valor;
+    },
+    async salvarCaixinhas(campoId, d) {
+      await ctx.wait(150);
+      const dados = ler(CaixinhasGravarSchema, d);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const r = alterarCaixinhas(campoId, dados);
+      auditar('update', 'ticket_field', r.resumo, r.valor.id, { before: r.antes, after: r.depois });
       return r.valor;
     },
     async incluirOpcaoDoCampo(campoId, d) {
@@ -4323,7 +4874,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // o painel de Gestão novo (2.1.2): quem vê são as pessoas dos cards e quem traz
     if (novo && gestao) p.pessoas = [...new Set([...plano.pessoasDoPainel, ...(pessoaDoAtor(ator) ? [pessoaDoAtor(ator)!] : [])])];
     // as etapas (a que sai só se vazia) e as que só o histórico cita, já fora do painel
-    const etapas = plano.etapas.etapas.map((e) => ({ ...(e.id ? { id: e.id } : {}), nome: e.nome, tipo: e.tipo, nivel: null, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado }));
+    // a implantação (2.3) não vem do Helena: a etapa que já abria ou ligava continua igual
+    const etapas = plano.etapas.etapas.map((e) => {
+      const ja = e.id ? A.etapas.find((x) => x.id === e.id) : undefined;
+      return { ...(e.id ? { id: e.id } : {}), nome: e.nome, tipo: e.tipo, nivel: null, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado, abreImplantacao: ja?.abreImplantacao ?? null, ligaNoCadastro: !!ja?.ligaNoCadastro, recebeImplantacao: !!ja?.recebeImplantacao };
+    });
     aplicarEtapas(ator, planejarEtapas(painelId, etapas, {}, obrigatoriosValidos(p), p.tipo), agora);
     plano.etapas.historicas.forEach((nome, i) => {
       if (A.etapas.some((e) => e.painelId === painelId && chaveDoNome(e.nome) === chaveDoNome(nome))) return;
@@ -4336,7 +4891,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     let ordem = camposDoPainel(painelId).reduce((m, c) => Math.max(m, c.ordem), -1) + 1;
     for (const c of plano.campos) {
       if (c.acao === 'cria') {
-        A.campos.push({ id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: 'Trazido do Helena.', ativo: true, ordem: ordem++, opcoes: c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: false });
+        // na negociação, os campos do Helena vão para os Detalhes da proposta (2.3)
+        A.campos.push({ id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: DICA_DO_CAMPO_DO_HELENA, ativo: true, ordem: ordem++, opcoes: c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: false, parte: gestao ? null : PARTE_DOS_CAMPOS_DO_HELENA, produtoId: null });
       } else if (c.acao === 'usa' && c.gestorId && c.opcoesNovas.length && ehLista(c.tipo)) {
         const campo = A.campos.find((x) => x.id === c.gestorId);
         if (campo) campo.opcoes = [...campo.opcoes, ...c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true }))];
@@ -4449,6 +5005,24 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, empresa: nomeCliente(t.clienteId) ?? t.empresa,
           resultado: r === 'ganho' || r === 'perdido' ? r : null,
         };
+      },
+      levarDaSimulacao: (id, calcular) => {
+        semear();
+        const t = A.chamados.find((x) => x.id === id && !x.deletedAt);
+        if (!t) return false;
+        const painel = painelPorId(t.painelId);
+        const r = etapaPorId(t.etapaId)?.resultado ?? null;
+        if (!painel || painel.tipo !== 'vendas' || r === 'ganho' || r === 'perdido') return false;
+        const v = calcular(campoLigado(painel.ajustes, 'produtos'));
+        const produtos = v.produtos ?? t.produtos;
+        const mesmos = produtos.length === t.produtos.length && produtos.every((x) => t.produtos.includes(x));
+        if (v.valor === t.valor && v.ativacao === t.ativacao && mesmos
+          && mesmoValorPorProduto(v.valoresDosProdutos, t.valoresDosProdutos) && mesmoValorPorProduto(v.ativacoesDosProdutos, t.ativacoesDosProdutos)) return false;
+        Object.assign(t, {
+          valor: v.valor, valoresDosProdutos: { ...v.valoresDosProdutos }, ativacao: v.ativacao, ativacoesDosProdutos: { ...v.ativacoesDosProdutos },
+          produtos: [...produtos], atualizadoEm: iso(agoraReal()),
+        });
+        return true;
       },
       avisarDoCalendario: (a, em, lido = false) => {
         const qual = a.qual ?? 'lembrete';

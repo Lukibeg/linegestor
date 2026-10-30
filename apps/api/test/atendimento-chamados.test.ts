@@ -206,7 +206,7 @@ describe('abrir', () => {
     const { codigo } = await abrir(operador, { titulo: 'Ligou de novo', contatoTelefone: '71 99999-0000' });
     const f = await ficha(s, codigo);
     expect(f.cliente).toEqual({ id: aurora, nome: 'Clínica Aurora' });
-    expect(f.contato).toEqual({ nome: 'Maria', telefone: '5571999990000' });
+    expect(f.contato).toEqual({ nome: 'Maria', telefone: '5571999990000', email: null });
   });
 
   it('recusa o que não existe: painel, assunto de outro painel, cliente, problema que não é problema', async () => {
@@ -327,6 +327,31 @@ describe('alterar', () => {
     const sem = (await operador.patch(`/atendimento/chamados/${id}`, { outrosContatos: [] })).json();
     expect(sem.outrosContatos).toEqual([]);
     expect(eventos(sem, 'campo').at(-1).texto).toBe('mudou Outros contatos de "João do financeiro (71) 98888-7777, Rita" para (vazio)');
+  });
+
+  it('o e-mail do contato (2.3): opcional; minúsculo; vira histórico; o errado é recusado; nos outros contatos também; a busca acha', async () => {
+    const r = await operador.patch(`/atendimento/chamados/${id}`, { contatoEmail: 'Sandra@Clinica.com.br' });
+    expect(r.statusCode, r.body).toBe(200);
+    const f = r.json();
+    expect(f.contato).toMatchObject({ nome: 'Sandra', email: 'sandra@clinica.com.br' });
+    expect(eventos(f, 'campo').at(-1).texto).toBe('mudou E-mail do contato para "sandra@clinica.com.br"');
+    const errado = await operador.patch(`/atendimento/chamados/${id}`, { contatoEmail: 'sandra@clinica' });
+    expect(errado.statusCode).toBe(400);
+    expect(errado.json().details[0].message).toBe('E-mail inválido: use o jeito nome@empresa.com.br.');
+    // os outros contatos: só o e-mail basta; o mesmo e-mail do principal fica de fora
+    const o = (await operador.patch(`/atendimento/chamados/${id}`, { outrosContatos: [
+      { nome: 'Contabilidade', email: 'Contas@Clinica.com.br' }, { nome: 'Sandra (e-mail)', email: 'sandra@clinica.com.br' },
+    ] })).json();
+    expect(o.outrosContatos).toEqual([{ nome: 'Contabilidade', telefone: null, email: 'contas@clinica.com.br' }]);
+    expect(eventos(o, 'campo').at(-1).texto).toBe('mudou Outros contatos para "Contabilidade contas@clinica.com.br"');
+    // a busca acha pelo e-mail do principal e pelo de um outro contato
+    for (const q of ['sandra@clinica', 'contas@clinica']) {
+      expect((await s.get(`/atendimento/chamados?situacao=todos&q=${encodeURIComponent(q)}`)).json().items.map((c: any) => c.id)).toContain(id);
+    }
+    // vazio tira
+    const sem = (await operador.patch(`/atendimento/chamados/${id}`, { contatoEmail: null, outrosContatos: [] })).json();
+    expect(sem.contato.email).toBeNull();
+    expect(eventos(sem, 'campo').map((e: any) => e.texto)).toContain('mudou E-mail do contato de "sandra@clinica.com.br" para (vazio)');
   });
 
   it('passar para alguém registra o responsável e avisa quem recebeu', async () => {
@@ -1201,7 +1226,7 @@ describe('os contatos do cliente (a aba Contatos; o Abrir chamado puxa de lá e 
     const { codigo } = await abrir(operador, { titulo: 'Ligou do celular', contatoTelefone: '71 98123-4567' });
     const f = await ficha(s, codigo);
     expect(f.cliente).toEqual({ id: aurora, nome: 'Clínica Aurora' });
-    expect(f.contato).toEqual({ nome: 'Maria Souza', telefone: '5571981234567' });
+    expect(f.contato).toEqual({ nome: 'Maria Souza', telefone: '5571981234567', email: null });
     // o mesmo número em dois clientes: o cliente não é adivinhado
     await s.post(`/clients/${hospital}/contatos`, { nome: 'Recepção do hospital', whatsapp: '(71) 96666-2222' });
     await s.post(`/clients/${aurora}/contatos`, { nome: 'Recepção da clínica', whatsapp: '(71) 96666-2222' });
@@ -1209,9 +1234,18 @@ describe('os contatos do cliente (a aba Contatos; o Abrir chamado puxa de lá e 
     expect(outro.cliente).toBeNull();
     // ...mas com o cliente escolhido, o nome vem do contato dele
     const doHospital = await ficha(s, (await abrir(operador, { titulo: 'Do hospital', clienteId: hospital, contatoTelefone: '71 96666-2222' })).codigo);
-    expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222' });
+    expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222', email: null });
     // a lista conta os chamados de cada WhatsApp no cliente
     expect((await s.get(`/clients/${aurora}/contatos`)).json().find((c: any) => c.nome === 'Maria Souza').chamados).toBe(1);
+  });
+
+  it('o e-mail do contato cadastrado vem junto (2.3); o escrito ao abrir vale mais', async () => {
+    const r = await s.post(`/clients/${aurora}/contatos`, { nome: 'Paula Reis', whatsapp: '(71) 94444-5555', cargo: 'Financeiro', email: 'Paula@Aurora.com.br' });
+    expect(r.statusCode, r.body).toBe(201);
+    const f = await ficha(s, (await abrir(operador, { titulo: 'Boleto do mês', contatoTelefone: '71 94444-5555' })).codigo);
+    expect(f.contato).toEqual({ nome: 'Paula Reis', telefone: '5571944445555', email: 'paula@aurora.com.br' });
+    const g = await ficha(s, (await abrir(operador, { titulo: 'Boleto de novo', contatoTelefone: '71 94444-5555', contatoEmail: 'financeiro@aurora.com.br' })).codigo);
+    expect(g.contato.email).toBe('financeiro@aurora.com.br');
   });
 
   it('o cargo vem da lista (Administração › Catálogos): fora dela não entra; o de antes fica; renomear muda os contatos', async () => {
