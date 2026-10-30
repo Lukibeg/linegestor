@@ -137,7 +137,8 @@ function mensagemDaFalha(e: unknown): string {
  * (o corpo da resposta também conta). A mensagem de cada falha já vem pronta para a tela.
  */
 async function pedir(cfg: { endereco: string; chave: string }, metodo: 'GET' | 'POST', caminho: string, corpo?: unknown): Promise<Resultado> {
-  const sinal = AbortSignal.timeout(ferramentas.prazoMs);
+  // o catálogo é leve: 15 s bastam (a tela desiste de uma leitura em 30 s); a proposta espera os 90 s
+  const sinal = AbortSignal.timeout(metodo === 'GET' ? Math.min(15_000, ferramentas.prazoMs) : ferramentas.prazoMs);
   let r: Response;
   try {
     r = await ferramentas.fetchFn(`${cfg.endereco}${caminho}`, {

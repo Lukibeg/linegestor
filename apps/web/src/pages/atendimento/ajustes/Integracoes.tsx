@@ -19,10 +19,10 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AppWindow, Bot, KeyRound, Link2, MousePointerClick, Pencil, Plus, Send, Trash2, TriangleAlert, Webhook, X } from 'lucide-react';
+import { AppWindow, Bot, KeyRound, Link2, MousePointerClick, Pencil, Plus, Send, ShieldCheck, Trash2, TriangleAlert, WandSparkles, Webhook, X } from 'lucide-react';
 import {
   EVENTOS_WEBHOOK, linkDaConversa, MENSAGEM_DO_ROBO_PADRAO, NOME_EVENTO_WEBHOOK, respostaAoRobo, respostaDoRoboQueFalhou,
-  type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type WebhookGravarEntrada, type WebhookTela,
+  type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type NiaAcoesTela, type TesteDaNia, type WebhookGravarEntrada, type WebhookTela,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Carregando, Chip, Confirmar, Modal, Spinner, Toggle, mensagemErro, usePaginaLocal, useToast } from '../../../components/ui/index.js';
@@ -76,6 +76,7 @@ const SECOES = [
   { id: 'integ-webhooks', nome: 'Webhooks' },
   { id: 'integ-iframe', nome: 'Dentro de outros sistemas' },
   { id: 'integ-link', nome: 'Link da conversa' },
+  { id: 'integ-nia', nome: 'NIA (/nia)' },
 ];
 
 // =====================================================================
@@ -108,6 +109,7 @@ export function AjustesIntegracoes() {
       <CartaoWebhooks webhooks={t.webhooks} />
       <CartaoSites inicial={t.sites} base={base} />
       <CartaoLinkConversa inicial={t.linkConversa} />
+      <CartaoNiaNoCard />
     </div>
   );
 }
@@ -775,6 +777,106 @@ function CartaoLinkConversa({ inicial }: { inicial: string }) {
           {mudou && <span className="text-[12.5px] text-signal">há mudanças sem salvar</span>}
         </div>
         <Resultado r={erro ? { ok: false, mensagem: erro } : null} className="mt-0" />
+      </form>
+    </CartaoAjuste>
+  );
+}
+
+// ---------- a NIA no card (2.4): o /nia ----------
+
+const CHAVE_NIA = ['atendimento', 'nia-acoes', 'ajustes'];
+
+/**
+ * O /nia no card (2.4): o endereço da NIA (a IA do suporte, um serviço de fora) e a chave de serviço. A chave vai para o
+ * cofre e nunca volta para a tela ("já existe uma guardada; preencha só para trocar"); ela só vai para o servidor onde
+ * foi colada. Sem os dois, o /nia não aparece nos cards. O Testar lê o catálogo da NIA e diz quantos comandos vieram.
+ */
+function CartaoNiaNoCard() {
+  const qc = useQueryClient(); const toast = useToast();
+  const q = useQuery({ queryKey: CHAVE_NIA, queryFn: () => api.atendimento.niaAcoesAjustes() });
+  if (q.isLoading) return <CartaoAjuste id="integ-nia" icone={<WandSparkles size={18} />} titulo="NIA (/nia)"><Carregando /></CartaoAjuste>;
+  if (q.isError || !q.data) return <CartaoAjuste id="integ-nia" icone={<WandSparkles size={18} />} titulo="NIA (/nia)"><p className="text-bad text-sm" role="alert">{mensagemErro(q.error)}</p></CartaoAjuste>;
+  return <FormNiaNoCard inicial={q.data} aoMudar={(t) => { qc.setQueryData(CHAVE_NIA, t); void qc.invalidateQueries({ queryKey: ['atendimento', 'nia', 'acoes'] }); }} toast={toast} />;
+}
+
+function FormNiaNoCard({ inicial, aoMudar, toast }: { inicial: NiaAcoesTela; aoMudar: (t: NiaAcoesTela) => void; toast: ReturnType<typeof useToast> }) {
+  const [endereco, setEndereco] = useState(inicial.endereco);
+  const [chave, setChave] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [testando, setTestando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [teste, setTeste] = useState<TesteDaNia | null>(null);
+  const mudou = endereco.trim().replace(/\/+$/, '') !== inicial.endereco || !!chave.trim();
+  const ligada = !!inicial.endereco && inicial.temChave;
+
+  const salvar = async () => {
+    setSalvando(true); setErro(null); setTeste(null);
+    try {
+      const t = await api.atendimento.salvarNiaAcoes({ endereco: endereco.trim(), ...(chave.trim() ? { chave: chave.trim() } : {}) });
+      aoMudar(t); setEndereco(t.endereco); setChave('');
+      toast.push('ok', t.endereco ? 'NIA salva: o /nia aparece nos cards (teste para conferir).' : 'NIA desligada: o /nia saiu dos cards.');
+    } catch (e) { setErro(erroLegivel(e)); } finally { setSalvando(false); }
+  };
+  const testar = async () => {
+    setTestando(true); setErro(null);
+    try {
+      const r = await api.atendimento.testarNiaAcoes();
+      setTeste(r);
+      aoMudar({ ...inicial, ultimoTeste: { em: new Date().toISOString(), ok: r.ok, mensagem: r.mensagem, quantos: r.quantos } });
+    } catch (e) { setTeste({ ok: false, mensagem: erroLegivel(e), quantos: null, acoes: [] }); } finally { setTestando(false); }
+  };
+
+  return (
+    <CartaoAjuste id="integ-nia" icone={<WandSparkles size={18} />} titulo="NIA (/nia)" ligado={ligada}
+      situacao={ligada ? <Chip tone="ok">ligada: o /nia aparece nos cards</Chip> : <Chip tone="muted">desligada: o /nia não aparece</Chip>}>
+      <Explicacao>
+        <p>
+          A <b>NIA</b> (a IA do suporte) dentro do card, em todos os painéis: em qualquer campo de texto (e na anotação), digitar
+          <span className="font-mono"> /nia </span> abre a lista dos comandos dela — corrigir o português, formalizar para o cliente,
+          resumir, criar o chamado a partir de uma descrição e preencher um card vazio. <b>A NIA propõe, a pessoa aplica</b>: nada
+          é gravado sem o clique em Aplicar, e o que for aplicado fica no Histórico do card.
+        </p>
+        <p className="flex items-start gap-1.5">
+          <ShieldCheck size={15} className="mt-0.5 shrink-0 text-ok" />
+          <span>
+            A chave é do servidor: vai para o cofre, nunca volta para a tela e só vai para o servidor onde foi colada (trocar o
+            endereço para outro servidor pede a chave de novo). Enquanto a NIA não tiver domínio, o servidor do Gestor precisa do
+            certificado dela, o <span className="font-mono">nia-ca.crt</span> (o passo a passo está no guia de publicação).
+          </span>
+        </p>
+      </Explicacao>
+      <form autoComplete="off" className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
+        <Campo label="Endereço da NIA" dica="o servidor dela, com https:// (hoje o IP com a porta; vira domínio depois)">
+          <input className="input font-mono text-[13px]" id="integ-nia-endereco" spellCheck={false} inputMode="url" maxLength={300}
+            placeholder="https://2.24.93.36:8443" value={endereco} onChange={(e) => { setEndereco(e.target.value); setErro(null); }} />
+        </Campo>
+        <Campo label="Chave de serviço" dica={inicial.temChave ? 'já existe uma guardada; preencha só para trocar' : 'vai para o cofre ao salvar'}>
+          <div className="flex items-center gap-2">
+            <input className="input font-mono text-[13px]" id="integ-nia-chave" type="password" autoComplete="new-password" spellCheck={false} maxLength={500}
+              placeholder={inicial.temChave ? '••••••••  guardada (deixe vazio para manter)' : 'cole aqui a chave de serviço da NIA'}
+              value={chave} onChange={(e) => { setChave(e.target.value); setErro(null); }} />
+            {inicial.temChave ? <Chip tone="ok">guardada</Chip> : <Chip tone="signal">não guardada</Chip>}
+          </div>
+        </Campo>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="submit" className="btn-primary" id="integ-nia-salvar" disabled={salvando || !mudou}>{salvando ? <Spinner className="text-white" /> : 'Salvar'}</button>
+          <button type="button" className="btn-secondary" id="integ-nia-testar" disabled={testando || mudou || !ligada} onClick={() => void testar()}
+            title={mudou ? 'Salve antes de testar' : !ligada ? 'Ponha o endereço e a chave primeiro' : 'Lê os comandos da NIA agora'}>
+            {testando ? <Spinner /> : <Send size={15} />} Testar
+          </button>
+          {mudou && <span className="text-[12.5px] text-signal">há mudanças sem salvar</span>}
+        </div>
+        <Resultado r={erro ? { ok: false, mensagem: erro } : teste ? { ok: teste.ok, mensagem: teste.mensagem } : null} className="mt-0" />
+        {teste?.ok && teste.acoes.length > 0 && (
+          <ul className="flex flex-col gap-1 text-[13px]" id="integ-nia-comandos">
+            {teste.acoes.map((a) => (
+              <li key={a.comando} className="min-w-0"><span className="font-mono text-ink-2">/nia {a.comando}</span> — <b>{a.nome}</b>{a.descricao ? <span className="text-muted">: {a.descricao}</span> : null}</li>
+            ))}
+          </ul>
+        )}
+        {!teste && inicial.ultimoTeste && (
+          <p className="text-[12.5px] text-muted">Último teste: {dataHoraCurta(inicial.ultimoTeste.em)} — {inicial.ultimoTeste.ok ? 'deu certo' : 'não deu certo'}. {inicial.ultimoTeste.mensagem}</p>
+        )}
       </form>
     </CartaoAjuste>
   );

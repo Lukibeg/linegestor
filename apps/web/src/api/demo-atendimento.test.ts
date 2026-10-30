@@ -1434,3 +1434,52 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(e.message).toMatch(/está na lixeira/);
   });
 });
+
+describe('o /nia no card na prévia (2.4, como o servidor)', () => {
+  it('o menu lista todos os comandos do catálogo, com o nome e a descrição; quem só lê não usa', async () => {
+    await entrar('operador');
+    const cat = await api.niaAcoes();
+    expect(cat.configurada).toBe(true);
+    expect(cat.acoes.map((a) => a.comando)).toEqual(['corrigir', 'formalizar', 'resumir', 'criar-chamado', 'preencher-card-vazio']);
+    expect(cat.acoes.every((a) => a.nome && a.descricao)).toBe(true);
+    await entrar('leitor');
+    expect((await erroDe(api.niaAcoes())).status).toBe(403);
+  });
+
+  it('propor não grava nada; o Aplicar grava só o marcado e a linha da NIA vai para o Histórico', async () => {
+    await entrar('operador');
+    const op = await api.opcoes();
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Teste do /nia')), relato: 'desde terca os ramais nao tem audio' });
+    const antes = await api.chamado(r.codigo);
+    const p = await api.niaPropor(r.id, { comando: 'corrigir', instrucao: 'o relato', campo: 'descricao' });
+    expect(p).toMatchObject({ ok: true, alcance: 'campos citados', alteracoes: [{ campo: 'relato', depois: 'Desde terça os ramais não tem áudio.', mudou: true }] });
+    expect((await api.chamado(r.codigo)).historico).toHaveLength(antes.historico.length);
+    const f = await api.niaAplicar(r.id, { comando: 'corrigir', campos: { relato: p.alteracoes![0]!.depois } });
+    expect(f.relato).toBe('Desde terça os ramais não tem áudio.');
+    expect(f.historico.find((e) => e.tipo === 'nia')?.texto).toBe('aplicou a NIA (Corrigir o português): mudou Relato do cliente');
+    // o que passa do tamanho é recusado com a mensagem clara
+    expect((await erroDe(api.niaAplicar(r.id, { comando: 'corrigir', campos: { causa: 'x'.repeat(5_001) } }))).message).toMatch(/^Causa ficaria com 5\.001 letras/);
+  }, DEMORA);
+
+  it('criar-chamado: a NIA acha o cliente, o produto e o assunto (só as folhas) no texto; aplicar troca o nome pelo id', async () => {
+    await entrar('operador');
+    const op = await api.opcoes();
+    const r = await api.criar({ painelId: painel(op, 'SUP').id, titulo: 'Ligação da Clínica Aurora' });
+    const p = await api.niaPropor(r.id, { comando: 'criar-chamado', instrucao: 'a Clínica Aurora ligou: desde cedo os ramais estão mudos, ninguém escuta', campo: 'relato' });
+    expect(p.ok).toBe(true);
+    expect(p.campos).toMatchObject({ cliente: 'Clínica Aurora' });
+    expect(p.idsDasListas?.clienteId).toBeTruthy();
+    const f = await api.niaAplicar(r.id, { comando: 'criar-chamado', campos: { relato: p.campos!.relato! }, listas: { clienteId: p.idsDasListas!.clienteId! } });
+    expect(f.cliente?.nome).toBe('Clínica Aurora');
+    expect(f.historico.filter((e) => e.tipo === 'nia').at(-1)!.texto).toMatch(/^aplicou a NIA \(Criar chamado a partir de uma descrição\): preencheu /);
+  }, DEMORA);
+
+  it('os ajustes: a chave não volta; trocar de servidor pede a chave de novo; o Testar diz quantos comandos', async () => {
+    await entrar('admin');
+    const t = await api.niaAcoesAjustes();
+    expect(t).toMatchObject({ endereco: 'https://2.24.93.36:8443', temChave: true });
+    expect(JSON.stringify(t)).not.toMatch(/chave-/);
+    expect((await erroDe(api.salvarNiaAcoes({ endereco: 'https://nia.exemplo.com.br' }))).message).toMatch(/cole a chave de novo/);
+    expect((await api.testarNiaAcoes())).toMatchObject({ ok: true, quantos: 5 });
+  });
+});

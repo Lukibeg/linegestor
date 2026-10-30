@@ -14,6 +14,7 @@ import { Chip, Spinner, useToast, type TomChip } from '../../../components/ui/in
 import { paraALista } from '../../../lib/voltar.js';
 import { ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
 import { ErroPerto, linkDaFicha, nomeComNivel, useAberta, useAcao } from './base.js';
+import { useNiaNoCampo } from './NiaNoCampo.js';
 
 const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug, helena: History, comercial: Handshake };
 const TOM_SITUACAO: Record<string, TomChip> = { aberto: 'accent', resolvido: 'ok', fechado: 'muted' };
@@ -134,11 +135,14 @@ function Titulo() {
   const acao = useAcao();
   // o Enter grava e tira a caixa da tela; o "sair da caixa" que vem junto não pode gravar de novo
   const fim = useRef(false);
+  const caixa = useRef<HTMLInputElement>(null);
 
   const abrir = () => { fim.current = false; setTexto(f.titulo); acao.limpar(); setEditando(true); };
   const desistir = () => { fim.current = true; setEditando(false); acao.limpar(); };
+  // o /nia (2.4) também no título: enquanto a NIA lê (e a janela da proposta está aberta), o "sair da caixa" não grava
+  const nia = useNiaNoCampo({ campo: 'titulo', caixa, texto, setTexto, salvo: f.titulo, aoMandar: desistir });
   const gravar = async () => {
-    if (fim.current) return;
+    if (fim.current || nia.ocupada.current) return;
     const t = texto.trim();
     if (t === f.titulo) { desistir(); return; }
     if (vendas ? t.length > 0 && t.length < 3 : t.length < 3) {
@@ -155,24 +159,29 @@ function Titulo() {
       <div className="min-w-0">
         <label htmlFor="titulo-do-chamado" className="sr-only">Título do chamado</label>
         <div className="flex items-center gap-2">
-          <input id="titulo-do-chamado" className="input font-display text-lg sm:text-xl font-semibold py-1.5" autoFocus autoComplete="off" maxLength={200} value={texto}
+          <input ref={caixa} id="titulo-do-chamado" className="input font-display text-lg sm:text-xl font-semibold py-1.5" autoFocus autoComplete="off" maxLength={200} value={texto} disabled={nia.lendo}
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void gravar(); } else if (e.key === 'Escape') { e.preventDefault(); desistir(); } }}
             onBlur={() => { void gravar(); }} />
           {acao.ocupado && <Spinner />}
         </div>
-        <p className="text-[12px] text-muted mt-1">Enter grava · Esc desiste{vendas ? ' · vazio, fica o nome da empresa' : ''}</p>
+        <p className="text-[12px] text-muted mt-1">Enter grava · Esc desiste{vendas ? ' · vazio, fica o nome da empresa' : ''}{nia.disponivel ? ' · /nia chama a NIA' : ''}</p>
+        {nia.aviso}
         <ErroPerto erro={acao.erro} />
+        {nia.janelas}
       </div>
     );
   }
   if (!pode) return <h1 className="font-display text-xl sm:text-2xl font-semibold leading-snug break-words">{f.titulo}</h1>;
   return (
-    <h1 className="font-display text-xl sm:text-2xl font-semibold leading-snug min-w-0">
-      <button type="button" onClick={abrir} title="Clique para editar o título"
-        className="group text-left rounded-lg -mx-1.5 px-1.5 hover:bg-surface-2 focus-visible:bg-surface-2 break-words max-w-full">
-        {f.titulo}<Pencil size={15} className="inline-block ml-2 -mt-1 text-muted opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
-      </button>
-    </h1>
+    <>
+      <h1 className="font-display text-xl sm:text-2xl font-semibold leading-snug min-w-0">
+        <button type="button" onClick={abrir} title="Clique para editar o título"
+          className="group text-left rounded-lg -mx-1.5 px-1.5 hover:bg-surface-2 focus-visible:bg-surface-2 break-words max-w-full">
+          {f.titulo}<Pencil size={15} className="inline-block ml-2 -mt-1 text-muted opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
+        </button>
+      </h1>
+      {nia.janelas}
+    </>
   );
 }
