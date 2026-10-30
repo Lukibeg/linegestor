@@ -350,7 +350,7 @@ def editar_texto(page, campo, texto):
     """Escreve no campo do card e salva (atrás da capa: os erros de quem escreve correndo, para a NIA corrigir)."""
     bloco = page.locator(f'#campo-{campo}')
     bloco.scroll_into_view_if_needed()
-    bloco.get_by_role('button').filter(has_text=re.compile('^(Editar|Escrever)$')).first.click()
+    bloco.get_by_role('button').filter(has_text=re.compile('^ *(Editar|Escrever) *$')).first.click()
     esperar(page, 300)
     area = bloco.locator('textarea')
     area.fill(texto)
@@ -364,9 +364,14 @@ def antes_do_roteiro(page):
     codigos = page.evaluate("""() => [...new Set([...document.querySelectorAll('a[href^="#/atendimento/SUP-"]')].map((a) => a.getAttribute('href').split('/').pop()))]""")
     for c in codigos[1:30]:
         ir(page, f'/atendimento/{c}', 1400)
-        if page.locator('#relato-dica-nia').count():
+        if page.locator('#campo-relato [data-nia-dica]').count():
             COD_2_4['vazio'] = c
             break
+    if 'vazio' not in COD_2_4:
+        # nenhum exemplo sem relato: o segundo card fica sem ele (a prévia é de mentira)
+        COD_2_4['vazio'] = codigos[1]
+        ir(page, f'/atendimento/{codigos[1]}', 1400)
+        editar_texto(page, 'relato', '')
     COD_2_4['card'] = codigos[0]
     ir(page, f'/atendimento/{codigos[0]}', 1800)
     editar_texto(page, 'relato', 'o cliente ligou dizendo que desde terca os ramais nao tem audio , ninguem escuta nada')
@@ -381,7 +386,7 @@ def roteiro(page):
     bloco = page.locator('#campo-solucao')
     bloco.scroll_into_view_if_needed(); esperar(page, 400)
     legenda(page, next(n), 'O /nia em qualquer campo do card', 'No título, nos textos e na anotação, em todos os painéis: escreva /nia e a lista dos comandos abre ali.', 600)
-    clicar(page, bloco.get_by_role('button').filter(has_text=re.compile('^(Editar|Escrever)$')).first); esperar(page, 500)
+    clicar(page, bloco.get_by_role('button').filter(has_text=re.compile('^ *(Editar|Escrever) *$')).first); esperar(page, 500)
     area = bloco.locator('textarea')
     clicar(page, area, 200)
     page.keyboard.type('/nia', delay=140); esperar(page, 1200)
@@ -425,7 +430,7 @@ def roteiro(page):
     # 6. o chamado a partir da ligação
     if COD_2_4.get('vazio'):
         ir(page, f'/atendimento/{COD_2_4["vazio"]}', 1800)
-        dica = page.locator('#relato-dica-nia')
+        dica = page.locator('#campo-relato button:has([data-nia-dica])')
         dica.scroll_into_view_if_needed(); esperar(page, 400)
         legenda(page, next(n), 'O chamado a partir da ligação', 'No card sem relato, a dica: /nia criar-chamado e o que aconteceu, com as suas palavras.', 600)
         clicar(page, dica); esperar(page, 500)

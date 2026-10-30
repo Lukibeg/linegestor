@@ -127,9 +127,12 @@ export function useNiaNoCampo(o: {
   // os ouvintes no próprio campo: veem a tecla antes dos atalhos da ficha (e a seguram só quando ela é do /nia)
   useEffect(() => {
     if (!el || !disponivel) return;
-    const ler = () => setCursor(el.selectionStart ?? el.value.length);
+    // depois do evento (setTimeout): mudar o estado aqui dentro, no meio da digitação, faria o React redesenhar o campo
+    // controlado ANTES do onChange dele ver a tecla — e a letra digitada sumia
+    const depois = (f: () => void) => { window.setTimeout(f, 0); };
+    const ler = () => depois(() => setCursor(el.selectionStart ?? el.value.length));
     // escrever de novo apaga o erro de antes (e só escrever: o texto que volta depois de um erro não apaga o erro)
-    const escreveu = () => { ler(); setErro(null); };
+    const escreveu = () => { ler(); depois(() => setErro(null)); };
     const tecla = (e: KeyboardEvent) => {
       const a = atual.current;
       if (a.lendo || e.isComposing) return;
@@ -164,8 +167,8 @@ export function useNiaNoCampo(o: {
     alvo.addEventListener('keydown', tecla);
     el.addEventListener('input', escreveu);
     for (const ev of ['click', 'keyup', 'select'] as const) el.addEventListener(ev, ler);
-    const entrou = () => { setFoco(true); ler(); };
-    const saiu = () => setFoco(false);
+    const entrou = () => { depois(() => setFoco(true)); ler(); };
+    const saiu = () => depois(() => setFoco(false));
     el.addEventListener('focus', entrou);
     el.addEventListener('blur', saiu);
     if (document.activeElement === el) entrou();
