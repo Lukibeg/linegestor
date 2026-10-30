@@ -80,8 +80,6 @@ export function useNiaNoCampo(o: {
   const d: ComandoDigitando | null = disponivel && (foco || lendo) ? lerComandoDaNia(o.texto, cursor, acoes) : null;
   const menuAberto = !!d && !lendo && foco && !d.passouDaPalavra && fechado !== d.inicio;
   const sugestoes = menuAberto ? d!.sugestoes : [];
-  // escrever de novo apaga o erro de antes
-  useEffect(() => { setErro(null); }, [o.texto]);
 
   // o campo de agora (o editor abre e fecha: a caixa nasce e some) — os ouvintes vão para o que estiver na tela
   const [el, setEl] = useState<Campo | null>(null);
@@ -130,6 +128,8 @@ export function useNiaNoCampo(o: {
   useEffect(() => {
     if (!el || !disponivel) return;
     const ler = () => setCursor(el.selectionStart ?? el.value.length);
+    // escrever de novo apaga o erro de antes (e só escrever: o texto que volta depois de um erro não apaga o erro)
+    const escreveu = () => { ler(); setErro(null); };
     const tecla = (e: KeyboardEvent) => {
       const a = atual.current;
       if (a.lendo || e.isComposing) return;
@@ -162,7 +162,8 @@ export function useNiaNoCampo(o: {
     };
     const alvo: HTMLElement = el;
     alvo.addEventListener('keydown', tecla);
-    for (const ev of ['input', 'click', 'keyup', 'select'] as const) el.addEventListener(ev, ler);
+    el.addEventListener('input', escreveu);
+    for (const ev of ['click', 'keyup', 'select'] as const) el.addEventListener(ev, ler);
     const entrou = () => { setFoco(true); ler(); };
     const saiu = () => setFoco(false);
     el.addEventListener('focus', entrou);
@@ -170,7 +171,8 @@ export function useNiaNoCampo(o: {
     if (document.activeElement === el) entrou();
     return () => {
       alvo.removeEventListener('keydown', tecla);
-      for (const ev of ['input', 'click', 'keyup', 'select'] as const) el.removeEventListener(ev, ler);
+      el.removeEventListener('input', escreveu);
+      for (const ev of ['click', 'keyup', 'select'] as const) el.removeEventListener(ev, ler);
       el.removeEventListener('focus', entrou);
       el.removeEventListener('blur', saiu);
     };
