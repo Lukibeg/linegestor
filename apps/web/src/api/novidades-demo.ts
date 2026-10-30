@@ -11,7 +11,7 @@ export type VideoDemo = { url: string; nome: string; tamanho: number; tipo: stri
 export const NOTA_DEMO: { version: string; title: string; summary: string; items: ItemDemo[]; video?: VideoDemo } = {
   "version": "2.3",
   "title": "A implantação dos clientes, do Comercial ao Implantado",
-  "summary": "Um painel de Implantação com um card por cliente, com a curadoria, a configuração e os testes de cada produto. A negociação que entra em Em processo de Implantação abre o card sozinha, já com o cliente (criado no cadastro, se é novo) e os produtos. No Implantado, os produtos e os módulos marcados ficam ativos na ficha do cliente, com a data, e a negociação vai para o Implantado do Comercial. Os campos dos painéis ganharam a parte da ficha, o produto e as caixinhas com quem marcou e quando. E mais: os Detalhes da proposta na negociação, o e-mail de todos os contatos e, no Simulador, os valores que vão sozinhos para o card.",
+  "summary": "Um painel de Implantação com um card por cliente: a curadoria, a configuração e os testes de cada produto. A negociação que entra em Em processo de Implantação abre o card sozinha, com o cliente e os produtos. No Implantado, os produtos e os módulos ficam ativos na ficha do cliente, e a negociação vai junto. E mais: os Detalhes da proposta, o e-mail de todos os contatos e, no Simulador, os valores que vão sozinhos para o card.",
   "items": [
     {
       "kind": "atencao",
