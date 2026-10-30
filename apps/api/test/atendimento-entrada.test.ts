@@ -81,7 +81,7 @@ beforeAll(async () => {
   const fila = newId();
   await app.db.insert(ticketSubjects).values([
     { id: ramal, panelId: SUP, name: 'Ramal' },
-    { id: semAudio, panelId: SUP, parentId: ramal, name: 'Sem áudio' },
+    { id: semAudio, panelId: SUP, parentId: ramal, name: 'Sem áudio', description: 'A ligação completa, mas um dos lados não escuta', aliases: ['mudo', 'sem som'] },
     { id: newId(), panelId: SUP, parentId: ramal, name: 'Configuração' },
     { id: fila, panelId: SUP, name: 'Fila' },
     { id: newId(), panelId: SUP, parentId: fila, name: 'Configuração' },
@@ -377,8 +377,9 @@ describe('as opções para a NIA (/integracao/opcoes): só o que está ativo, do
     // os assuntos: o caminho inteiro e a sigla do painel; o desativado fica de fora, e o painel que desligou o
     // assunto (o Desenvolvimento, no teste de cima) não tem o que escolher
     expect(o.assuntos).toEqual(expect.arrayContaining([
-      { id: ramal, nome: 'Ramal', caminho: 'Ramal', painelSigla: 'SUP' },
-      { id: semAudio, nome: 'Sem áudio', caminho: 'Ramal › Sem áudio', painelSigla: 'SUP' },
+      { id: ramal, nome: 'Ramal', caminho: 'Ramal', painelSigla: 'SUP', descricao: null, dePara: [] },
+      // o vocabulário (2.4): a descrição e o de-para (os apelidos), para a NIA entender o jeito de cada um chamar
+      { id: semAudio, nome: 'Sem áudio', caminho: 'Ramal › Sem áudio', painelSigla: 'SUP', descricao: 'A ligação completa, mas um dos lados não escuta', dePara: ['mudo', 'sem som'] },
       expect.objectContaining({ nome: 'Configuração', caminho: 'Ramal › Configuração', painelSigla: 'SUP' }),
       expect.objectContaining({ nome: 'Configuração', caminho: 'Fila › Configuração', painelSigla: 'SUP' }),
     ]));

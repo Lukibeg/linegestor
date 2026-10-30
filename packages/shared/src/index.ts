@@ -24,3 +24,4 @@ export * from './atendimento-relatorios.js';
 export * from './atendimento-visao.js';
 export * from './nia.js';
 export * from './implantacao.js';
+export * from './nia-acoes.js';

@@ -126,7 +126,11 @@ export async function lerChamado(app: FastifyInstance, ref: string): Promise<Cha
  * id, a gravidade e a prioridade pela chave (com o nome e o "quando usar" da tela).
  */
 export type OpcoesParaIntegracao = {
-  assuntos: Array<{ id: string; nome: string; caminho: string; painelSigla: string }>;
+  /**
+   * o caminho é o valor que o PATCH aceita; a descrição e o de-para (os apelidos, 2.4) são o vocabulário de cada assunto,
+   * para a NIA entender o jeito da equipe e do cliente chamarem a mesma coisa
+   */
+  assuntos: Array<{ id: string; nome: string; caminho: string; painelSigla: string; descricao: string | null; dePara: string[] }>;
   produtos: Array<{ id: string; nome: string }>;
   clientes: Array<{ id: string; nome: string }>;
   tipos: Array<{ nome: string; painelSigla: string }>;
@@ -148,7 +152,7 @@ export async function opcoesParaIntegracao(app: FastifyInstance, ator: Ator): Pr
   return {
     // na ordem da árvore, painel por painel (a mesma da tela); o caminho passa pelos de cima
     assuntos: o.assuntos.filter((a) => a.ativo && comAssunto.has(a.painelId))
-      .map((a) => ({ id: a.id, nome: a.nome, caminho: caminhoDoAssunto(a.id, o.assuntos), painelSigla: sigla.get(a.painelId)! })),
+      .map((a) => ({ id: a.id, nome: a.nome, caminho: caminhoDoAssunto(a.id, o.assuntos), painelSigla: sigla.get(a.painelId)!, descricao: a.descricao ?? null, dePara: a.dePara ?? [] })),
     produtos: o.produtos.map((p) => ({ id: p.id, nome: p.nome })),
     clientes: clientes.map((c) => ({ id: c.id, nome: c.name })),
     tipos: usam('tipo').flatMap((p) => p.ajustes.tipos.map((nome) => ({ nome, painelSigla: p.sigla }))),

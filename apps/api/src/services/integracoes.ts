@@ -147,7 +147,7 @@ export const IA_PADRAO: AjustesIa = {
 
 type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel' | 'chamados-relatorios' | 'chamados-relatorios-arrumacao'
   | 'envio-automatico' | 'envio-automatico-marcados' | 'base-ia' | 'atendimento-prazos' | 'atendimento-avisos' | 'atendimento-integracoes'
-  | 'atendimento-robo' | 'atendimento-robo-ultimo' | 'atendimento-relatorios' | 'calendario' | 'comercial-simulador';
+  | 'atendimento-robo' | 'atendimento-robo-ultimo' | 'atendimento-relatorios' | 'calendario' | 'comercial-simulador' | 'atendimento-nia-acoes';
 const PADROES: Record<Assunto, unknown> = {
   backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] },
   // os Relatórios dos Chamados (1.7): sem nada guardado, os campos são achados pelo nome e os clientes, ligados pelo nome
@@ -182,6 +182,8 @@ const PADROES: Record<Assunto, unknown> = {
   calendario: { tipos: TIPOS_DE_EVENTO_PADRAO },
   // o Simulador do Comercial (2.0.2): o imposto, as faixas do sinal e o prazo de fábrica; a tabela e os modelos, vazios
   'comercial-simulador': AJUSTES_DO_SIMULADOR_PADRAO,
+  // o /nia no card (2.4): o endereço da NIA; a chave de serviço fica no cofre (e só vai para o servidor onde foi colada)
+  'atendimento-nia-acoes': { endereco: '', chaveDe: null, configuradoEm: null, configuradoPor: null, ultimoTeste: null },
 };
 
 export async function ler<T>(db: Db, assunto: Assunto): Promise<{ valor: T; secretId: string | null; temSegredo: boolean }> {

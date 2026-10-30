@@ -30,7 +30,7 @@ import {
   instanteLocal, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel, reais, situacaoDaEtapa, textoDoValor,
   trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
   NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
-  valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
+  resumoDoQueAplicou, valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
   VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, tituloQueFica, mensagemDoTitulo, acharCampo, compararNoQuadroDeGestao, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar, painelComOrdemAMao,
   CAMPO_DAS_ETIQUETAS, chaveDaEtiqueta, etiquetasAoPedirANia, horaLocal, NIA_PEDIR_DE_NOVO_MINUTOS, resumoDaNia, temAEtiqueta,
   NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato,
@@ -68,6 +68,8 @@ export type Feito = {
   erro?: string;
   /** as outras linhas da auditoria (2.3, a implantação: o cliente criado, o card aberto, o que ligou no cadastro) */
   auditoriaExtra?: AuditoriaExtra[];
+  /** o Aplicar do /nia (2.4): a frase do Histórico e os campos gravados */
+  nia?: { resumo: string; campos: string[] };
 };
 
 type SetChamado = Partial<typeof tickets.$inferInsert>;
@@ -460,7 +462,7 @@ export async function criarChamado(
  * Muda só os campos que vieram. Cada campo que mudou vira uma linha do histórico com os nomes que a
  * pessoa vê na tela (o texto longo diz só "editou a Solução": o texto está no chamado).
  */
-export async function alterar(app: FastifyInstance, ator: Ator, ref: string, pedido: ChamadoAlterar): Promise<Feito> {
+export async function alterar(app: FastifyInstance, ator: Ator, ref: string, pedido: ChamadoAlterar, opts: { nia?: AplicarDaNia } = {}): Promise<Feito> {
   exigirTrabalhar(ator);
   const db = app.db;
   const e = await carregar(app, ator, ref);
@@ -753,6 +755,10 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   }
 
   if (!eventos.length) return nada(t);
+  // o /nia (2.4): a linha do Histórico diz o que a pessoa aplicou da proposta da NIA, só com o que foi gravado (ela
+  // pode ter desmarcado campos); fica junto das linhas de cada campo, na mesma transação
+  const resumoDaNia = opts.nia ? resumoDoQueAplicou(opts.nia.nome, nomes, opts.nia.entrega) : null;
+  if (opts.nia) eventos.push(['nia', { comando: opts.nia.comando, resumo: resumoDaNia, campos: [...nomes] }]);
   set.updatedAt = agora;
   set.lastActivityAt = agora;
   const clienteFinal = set.clientId !== undefined ? set.clientId : t.clientId;
@@ -786,8 +792,12 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   if (camposMudados.length) await avisarObservadores(app, { chamado, observadores, menos, campos: { quem: ator.nome, nomes: camposMudados } });
   emitir(app, 'chamado.alterado', t.id, { mudancas });
   const { updatedAt: _u, lastActivityAt: _l, ...depois } = set;
-  return { id: t.id, codigo: t.code, titulo, resumo: `Alterou ${t.code} "${titulo}": ${nomes.join(', ')}`, antes, depois };
+  const resumo = resumoDaNia ? `Aplicou a proposta da NIA em ${t.code} "${titulo}": ${resumoDaNia}` : `Alterou ${t.code} "${titulo}": ${nomes.join(', ')}`;
+  return { id: t.id, codigo: t.code, titulo, resumo, antes, depois, ...(resumoDaNia ? { nia: { resumo: resumoDaNia, campos: [...nomes] } } : {}) };
 }
+
+/** O que o Aplicar do /nia (2.4) passa ao `alterar`: o comando e o nome dele (a frase do Histórico). */
+export type AplicarDaNia = { comando: string; nome: string; entrega: 'texto' | 'campos' };
 
 // =====================================================================
 //  MOVER (o coração: escalonar, resolver, fechar, reabrir)
