@@ -77,6 +77,11 @@ input, select, textarea, button { font: inherit; }
   .input { @apply w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none disabled:bg-surface-2; }
   .label { @apply block text-[12.5px] font-semibold text-ink-2 mb-1; }
   .card { @apply bg-surface border border-line rounded-xl; }
+  /*
+   * O detalhe azul no alto de cada cartão da ficha do chamado (2.4, o Luan: "eu quero que todos os widgets tenham esse detalhe em
+   * azul, facilita a visualização"), como o da Empresa: só os cartões das colunas da ficha, não os de dentro deles.
+   */
+  .ficha-cartoes > div > .card { border-top: 4px solid var(--accent); }
   .chip { @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] font-semibold leading-5; }
   .eyebrow { @apply font-mono text-[11px] uppercase tracking-wider text-muted; }
   .kbd { @apply font-mono text-[11px] px-1.5 py-0.5 rounded border border-line-strong bg-surface-2 text-ink-2; }

@@ -436,9 +436,9 @@ describe('os campos de cada painel (o painel sem assuntos, com os campos dele)',
     sistema = r.json();
     expect((await ficha(t.codigo)).campos[sistema.id]).toBe(pbx);
     expect((await abrirCom({ relato: 'PBX', campos: { Sistema: 'LinePBX' } })).json().error).toBe('Sistema: "LinePBX" não é uma das opções (LineReports, LineChat)');
-    // o tipo não muda depois de criado
+    // o tipo da lista não muda depois de criado (só o texto e o documento trocam entre si, 2.4)
     const tipo = await s.put(`/atendimento/campos/${sistema.id}`, { nome: 'Sistema', tipo: 'texto' });
-    expect(tipo.json().error).toBe('O tipo do campo não muda depois de criado (Sistema é Lista (escolhe uma opção)). Crie outro campo e desative este.');
+    expect(tipo.json().error).toBe('O tipo do campo Sistema (Lista (escolhe uma opção)) não muda para Texto curto. Crie outro campo e exclua este.');
   });
 
   it('desativar o campo: sai das regras e da ficha; o valor fica guardado (e volta se reativar)', async () => {

@@ -534,30 +534,33 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         )}
 
         {/* ---------- onde ---------- */}
-        <Secao titulo="Onde">
-          {/* o Registro (Chamado ou Problema) saiu daqui no 2.0.1: o problema nasce pela ficha de um chamado */}
-          <Rotulado rotulo="Painel" id="novo-painel" grupo>
-            {painelFixo ? (
-              // aberto de dentro do painel: ele é o painel do chamado, sem outra opção
-              <p className="flex items-center gap-2 py-1.5 text-[14px] font-semibold text-ink" id="novo-painel" data-fixo="">
-                <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Painel" id="novo-painel">
-                {paineis.map((p) => {
-                  const ativo = p.id === painel.id;
-                  return (
-                    <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
-                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
-                      <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Rotulado>
-          {painel.descricao && <p className="text-[12.5px] text-muted mt-2">{painel.descricao}</p>}
-        </Secao>
+        {/*
+          * Numa faixa fina (2.4, o Luan: "essa parte aqui está ocupando muito espaço, deixe mais fino o onde"): o painel e a
+          * descrição numa linha só, no lugar do cartão com o título. O Registro (Chamado ou Problema) saiu daqui no 2.0.1: o
+          * problema nasce pela ficha de um chamado.
+          */}
+        <section className="card px-3.5 py-2 sm:px-4 min-w-0 flex flex-wrap items-center gap-x-2.5 gap-y-1.5" aria-label="Onde" id="novo-onde">
+          <span className="text-[12px] font-semibold uppercase tracking-wide text-muted shrink-0" id="novo-painel-rotulo">Painel</span>
+          {painelFixo ? (
+            // aberto de dentro do painel: ele é o painel do chamado, sem outra opção
+            <span className="flex items-center gap-2 text-[14px] font-semibold text-ink min-w-0" id="novo-painel" data-fixo="">
+              <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
+            </span>
+          ) : (
+            <div className="flex flex-wrap gap-1.5 min-w-0" role="radiogroup" aria-labelledby="novo-painel-rotulo" id="novo-painel">
+              {paineis.map((p) => {
+                const ativo = p.id === painel.id;
+                return (
+                  <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[13px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                    <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {painel.descricao && <span className="text-[12.5px] text-muted min-w-0 truncate basis-full sm:basis-auto sm:flex-1" title={painel.descricao}>{painel.descricao}</span>}
+        </section>
 
         {/* ---------- quem (o painel sem o cliente e o contato não tem esta parte, 2.1.2) ---------- */}
         {(vendas || usa('cliente')) && <Secao titulo={vendas ? 'Com quem' : 'Quem'}>

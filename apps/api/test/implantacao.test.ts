@@ -65,13 +65,14 @@ describe('o modelo Implantação', () => {
     expect(imp.ajustes.camposDesligados).toEqual(expect.arrayContaining(['assunto', 'prioridade', 'relato', 'solucao']));
     const o: OpcoesAtendimento = (await s.get('/atendimento/opcoes')).json();
     campos = o.campos.filter((c) => c.painelId === imp.id);
-    expect(campos).toHaveLength(19);
-    // os módulos: escolhidos na Curadoria; o checklist da Configuração segue a escolha do mesmo produto
+    expect(campos).toHaveLength(17);
+    // os módulos: escolhidos na Curadoria; a Ativação dos módulos saiu no 2.4 ("vc pode tirar n precisa")
     for (const codigo of ['linechat', 'linepbx'] as const) {
-      const escolha = campo('Módulos a ativar', codigo);
-      expect(escolha).toMatchObject({ parte: 'Curadoria', escolhidosEm: null });
-      expect(campo('Ativação dos módulos', codigo)).toMatchObject({ parte: 'Configuração', escolhidosEm: escolha.id });
+      expect(campo('Módulos a ativar', codigo)).toMatchObject({ parte: 'Curadoria', escolhidosEm: null });
+      expect(campos.some((c) => c.nome === 'Ativação dos módulos')).toBe(false);
     }
+    // os grupos de campos do modelo (2.4), no meio da ficha
+    expect(imp.ajustes.partes).toEqual([{ nome: 'Curadoria', lugar: 'meio' }, { nome: 'Configuração', lugar: 'meio' }, { nome: 'Testes', lugar: 'meio' }]);
     expect(campos.some((c) => c.nome === 'CRM usado')).toBe(false);
     expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
     // o mesmo nome nos dois produtos
@@ -99,17 +100,22 @@ describe('o modelo Implantação', () => {
     const base = { tipo: 'modulos', parte: 'Configuração', produtoId: produto.linepbx };
     expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Módulos a ativar', 'linechat').id })).statusCode).toBe(400);
     expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Configuração do ambiente', 'linepbx').id })).statusCode).toBe(400);
-    expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Ativação dos módulos', 'linepbx').id })).statusCode).toBe(400);
     const checklist = await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Módulos a ativar', 'linepbx').id });
     expect(checklist.statusCode, checklist.body).toBe(201);
     expect(checklist.json().escolhidosEm).toBe(campo('Módulos a ativar', 'linepbx').id);
+    // o checklist não segue outro checklist
+    expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist Y', escolhidosEm: checklist.json().id })).statusCode).toBe(400);
     // a escolha que alguém segue não vira checklist
     const escolha = campo('Módulos a ativar', 'linepbx');
     const vira = await s.put(`/atendimento/campos/${escolha.id}`, { nome: escolha.nome, tipo: 'modulos', parte: escolha.parte, produtoId: produto.linepbx, escolhidosEm: checklist.json().id });
     expect(vira.statusCode).toBe(400);
-    await s.put(`/atendimento/campos/${checklist.json().id}`, { ...base, nome: 'Checklist X', escolhidosEm: escolha.id, ativo: false });
-    // desativa o de teste (o painel volta aos 19)
-    await s.put(`/atendimento/campos/${noOutro.json().id}`, { nome: 'Lista de usuários', tipo: 'texto', parte: 'Curadoria', produtoId: produto.voicenet, ativo: false });
+    // a escolha que alguém segue só se exclui junto com quem a segue (2.4)
+    const excluirEscolha = await s.del(`/atendimento/campos/${escolha.id}`);
+    expect(excluirEscolha.statusCode).toBe(400);
+    expect(excluirEscolha.json().error).toMatch(/Checklist X segue Módulos a ativar/);
+    // exclui os de teste (o painel volta aos 17)
+    expect((await s.del(`/atendimento/campos/${checklist.json().id}`)).statusCode).toBe(200);
+    expect((await s.del(`/atendimento/campos/${noOutro.json().id}`)).statusCode).toBe(200);
   });
 
   it('a etapa que abre a implantação aponta para um painel de Gestão', async () => {
@@ -305,8 +311,8 @@ describe('o card da implantação', () => {
       modulos: [{ id: modulo.id, acao: 'liga', produto: 'LineChat' }],
     });
     expect(plano.cadastro.produtos.map((p: { acao: string }) => p.acao)).toEqual(['ativa', 'ativa']);
-    // o escolhido na Curadoria que o checklist da Configuração ainda não marcou: a janela avisa (não trava)
-    expect(plano.cadastro.semMarcar).toEqual([{ id: modulo.id, nome: modulo.nome, produto: 'LineChat', campo: 'Ativação dos módulos' }]);
+    // sem a Ativação dos módulos (2.4), não há checklist a avisar: o escolhido na Curadoria liga direto
+    expect(plano.cadastro.semMarcar).toBeUndefined();
     // a negociação vai junto para o Implantado do Comercial
     expect(plano.negociacao).toEqual({ id: neg.id, codigo: neg.codigo, titulo: 'Padaria Sol', de: 'Em processo de Implantação', para: 'Implantado' });
     const r = await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: validado.id });
@@ -362,28 +368,42 @@ describe('as caixinhas em pastas (2.3)', () => {
     expect(depois.opcoes.find((o) => o.id === id('Configuração dos ramais'))).toMatchObject({ nome: 'Ramais', pasta: 'Asterisk', ativa: true });
     expect(depois.opcoes.find((o) => o.id === id('Alinhamento do tronco'))!.pasta).toBe('Operadora');
     expect(depois.opcoes.find((o) => o.nome === 'Configuração do Callback')).toMatchObject({ pasta: 'Asterisk', ativa: true });
-    expect(depois.opcoes.find((o) => o.id === id('Configuração dos telefones'))).toMatchObject({ ativa: false, pasta: 'Telefones' });
+    // a que saiu foi excluída (2.4): não fica desativada na lista
+    expect(depois.opcoes.find((o) => o.id === id('Configuração dos telefones'))).toBeUndefined();
+    expect(depois.opcoes.every((o) => o.ativa)).toBe(true);
     // o resto do campo fica como estava
     expect(depois).toMatchObject({ nome: conf.nome, parte: conf.parte, produtoId: conf.produtoId, dica: conf.dica, ativo: true });
     const auds = await auditoria();
     expect(auds.map((a) => a.summary)).toContain(
       'Mudou as caixinhas de Configuração do ambiente (LinePBX) no painel Implantação: incluiu Configuração do Callback (Asterisk); renomeou Configuração dos ramais para Ramais; '
-      + 'levou Alinhamento do tronco para a pasta Operadora; desativou Configuração dos telefones',
+      + 'levou Alinhamento do tronco para a pasta Operadora; excluiu Configuração dos telefones',
     );
   });
 
-  it('a caixinha que o card já marcou continua marcada nele, desativada; os outros campos e quem não cuida, não', async () => {
+  it('a caixinha excluída sai do campo e da conta do card, mesmo marcada (2.4); pode ficar sem nenhuma; os outros campos e quem não cuida, não', async () => {
     const conf = campo('Configuração do ambiente', 'linechat');
     const marcada = conf.opcoes[0]!;
     expect((await ficha(card.id)).campos[conf.id]).toContain(marcada.id);
+    const antes = (await ficha(card.id)).partes.find((p) => p.parte === 'Configuração')!;
     const r = await s.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes: conf.opcoes.slice(1).map((o) => ({ id: o.id, nome: o.nome })) });
     expect(r.statusCode, r.body).toBe(200);
-    expect((r.json() as CampoPersonalizado).opcoes.find((o) => o.id === marcada.id)!.ativa).toBe(false);
-    expect((await ficha(card.id)).campos[conf.id]).toContain(marcada.id);
+    expect((r.json() as CampoPersonalizado).opcoes.some((o) => o.id === marcada.id)).toBe(false);
+    // "aqui eu quero excluir de fato e n desativar": a marcada não conta mais na parte (um feito e um total a menos)
+    const depois = (await ficha(card.id)).partes.find((p) => p.parte === 'Configuração')!;
+    expect(depois).toEqual({ ...antes, feitos: antes.feitos - 1, total: antes.total - 1 });
+    // "quero poder deixar todos os testes desativados": o campo fica sem nenhuma
+    const testes = campo('Testes realizados', 'linechat');
+    const vazio = await s.put(`/atendimento/campos/${testes.id}/caixinhas`, { opcoes: [] });
+    expect(vazio.statusCode, vazio.body).toBe(200);
+    expect((vazio.json() as CampoPersonalizado).opcoes).toEqual([]);
+    expect((await ficha(card.id)).partes.find((p) => p.parte === 'Testes')).toEqual({ parte: 'Testes', feitos: 0, total: 4 });
+    // e as caixinhas voltam (novas) para o resto dos testes
+    const devolta = await s.put(`/atendimento/campos/${testes.id}/caixinhas`, { opcoes: testes.opcoes.map((o) => ({ nome: o.nome })) });
+    expect(devolta.statusCode, devolta.body).toBe(200);
+    campos = campos.map((c) => (c.id === testes.id ? devolta.json() : c));
     // só as caixinhas
     const mods = campo('Módulos a ativar', 'linechat');
     expect((await s.put(`/atendimento/campos/${mods.id}/caixinhas`, { opcoes: [{ nome: 'X' }] })).statusCode).toBe(400);
-    expect((await s.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes: [{ id: marcada.id, nome: marcada.nome, ativa: false }] })).statusCode).toBe(400);
     expect((await s.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes: [{ nome: 'A' }, { nome: 'a' }] })).statusCode).toBe(400);
     // quem só trabalha nos chamados não muda as caixinhas
     const papeis = (await s.get('/admin/roles')).json() as Array<{ id: string; key: string }>;
@@ -445,8 +465,9 @@ describe('os anexos dos campos e das caixinhas (2.3)', () => {
     const op = testes.opcoes[0]!;
     // a caixinha de outro campo, o campo desativado ou de outro painel não recebem
     expect((await anexar(s, testes.id, campo('Configuração do ambiente', 'linechat').opcoes[0]!.id, 'x.png')).statusCode).toBe(400);
-    const desativado = (await s.get('/atendimento/opcoes')).json().campos.find((c: CampoPersonalizado) => c.painelId === imp.id && !c.ativo) as CampoPersonalizado;
+    const desativado = (await s.post(`/atendimento/paineis/${imp.id}/campos`, { nome: 'Campo antigo', tipo: 'texto', anexos: true, ativo: false })).json() as CampoPersonalizado;
     expect((await anexar(s, desativado.id, null, 'x.png')).statusCode).toBe(400);
+    await s.del(`/atendimento/campos/${desativado.id}`);
     const doComercial = (await s.get('/atendimento/opcoes')).json().campos.find((c: CampoPersonalizado) => c.painelId === com.id);
     if (doComercial) expect((await anexar(s, doComercial.id, null, 'x.png')).statusCode).toBe(404);
     // o limite: a caixinha recebe 20, a 21ª não

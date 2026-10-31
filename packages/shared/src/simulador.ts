@@ -438,7 +438,7 @@ export function mudarQuantidadeDoLineChat(c: Pick<CenarioDaSimulacao, 'linhas'>,
 /** O cenário sem o LineChat: as linhas do quadro saem (as outras do modelo, como a instalação, ficam). */
 export const linhasSemOLineChat = (c: Pick<CenarioDaSimulacao, 'linhas'>) => c.linhas.filter((l) => !ehLinhaDoLineChat(l));
 
-export const AJUSTES_DO_SIMULADOR_PADRAO: AjustesDoSimulador = { imposto: 6, verde: 35, vermelho: 20, prazo: 24, custos: CUSTOS_DA_HELENA, modelos: [MODELO_DA_HELENA] };
+export const AJUSTES_DO_SIMULADOR_PADRAO: AjustesDoSimulador = { imposto: 6, verde: 35, vermelho: 20, prazo: 12, custos: CUSTOS_DA_HELENA, modelos: [MODELO_DA_HELENA] };
 
 /** A negociação ligada à simulação, como a pessoa vê. */
 export type NegociacaoDaSimulacao = { id: string; codigo: string; titulo: string; empresa: string | null; resultado: 'ganho' | 'perdido' | null };

@@ -281,7 +281,9 @@ export function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
   const opcao = (id: string) => c.opcoes.find((o) => o.id === id);
   let controle: ReactNode;
   let extra: ReactNode = null;
-  if (!pode) controle = <p className="text-[14px] break-words">{textoDoValor(c, valor) || <span className="text-muted">—</span>}</p>;
+  // o documento (2.4): o que vale é o arquivo anexado — embaixo, as miniaturas; sem nenhum, o aviso
+  if (c.tipo === 'documento') controle = anexos.length ? null : <p className="text-[13px] text-muted italic">Nenhum arquivo ainda.</p>;
+  else if (!pode) controle = <p className="text-[14px] break-words">{textoDoValor(c, valor) || <span className="text-muted">—</span>}</p>;
   else if (c.tipo === 'lista' && c.incluirNaHora) {
     // a lista em que se inclui na hora (a Indicação, 2.0.3): a caixa de escolher, com o "Incluir" no fim
     const atual = typeof valor === 'string' ? valor : '';
@@ -325,7 +327,9 @@ export function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
   // o Anexar de cada campo (2.3): o clipe no fim da linha, as miniaturas embaixo
   return (
     <Linha id={`campo-c-${c.id}`} campo={chaveDoCampo(c.id)} rotulo={c.nome} ocupado={acao.ocupado} erro={acao.erro}
-      extra={pode ? <span className="flex items-center gap-1">{extra}<BotaoAnexar campoId={c.id} rotulo={`Anexar em ${c.nome}`} soIcone /></span> : null}>
+      extra={pode ? <span className="flex items-center gap-1">{extra}{c.tipo === 'documento'
+        ? <BotaoAnexar campoId={c.id} rotulo={`Anexar em ${c.nome}`} />
+        : <BotaoAnexar campoId={c.id} rotulo={`Anexar em ${c.nome}`} soIcone />}</span> : null}>
       {controle}
       {c.dica && <p className="text-[12px] text-muted mt-1">{c.dica}</p>}
       <ListaDeAnexos anexos={anexos} pequeno />

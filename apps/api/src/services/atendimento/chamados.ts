@@ -37,7 +37,9 @@ import {
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO,
+  type CampoPersonalizado, condicoesGuardadas, mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES,
 } from '@gestor/shared';
+import type { Tx } from './ajustes.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
 import { lerConteudo } from '../projects.js';
 import { tipoDaImagem } from '../portal.js';
@@ -672,6 +674,15 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
       if (conta.valor !== x.valorAntes) {
         set[x.colunas[0]] = conta.valor;
         campo(x.chave, x.nome, x.valorAntes === null ? null : reais(x.valorAntes), conta.valor === null ? null : reais(conta.valor), x.valorAntes);
+      }
+    }
+    // as condições combinadas (2.4: o desconto por um tempo, a ativação mais tarde e em vezes): uma linha no histórico
+    if (d.condicoes !== undefined) {
+      const antes = condicoesGuardadas(t.negotiationTerms);
+      const depois = semCondicoes(d.condicoes) ? null : d.condicoes;
+      if (!mesmasCondicoes(antes, depois)) {
+        set.negotiationTerms = depois;
+        campo('condicoes', NOME_CONDICOES, textoDasCondicoes(antes), textoDasCondicoes(depois), antes);
       }
     }
   }
@@ -1347,6 +1358,22 @@ function campoParaAnexo(e: Estado, campoId: string, opcaoId: string | null) {
 }
 
 /**
+ * O valor do campo Documento (2.4) é quantos arquivos ele tem: conta como feito na parte, sai no histórico e no filtro como
+ * qualquer campo preenchido. Recontado dentro da transação de quem anexa ou tira (a linha do chamado já está travada ou vai
+ * ser gravada junto). Nos outros tipos, nada muda.
+ */
+async function valorDoDocumento(tx: Tx, t: typeof tickets.$inferSelect, c: CampoPersonalizado): Promise<{ customFields?: ValoresDosCampos }> {
+  if (c.tipo !== 'documento') return {};
+  const [r] = await tx.select({ n: count() }).from(ticketAttachments)
+    .where(and(eq(ticketAttachments.ticketId, t.id), eq(ticketAttachments.fieldId, c.id), isNull(ticketAttachments.deletedAt)));
+  const n = Number(r?.n ?? 0);
+  const [linha] = await tx.select({ campos: tickets.customFields }).from(tickets).where(eq(tickets.id, t.id)).limit(1);
+  const campos: ValoresDosCampos = { ...((linha?.campos as ValoresDosCampos | null) ?? {}) };
+  if (n) campos[c.id] = n; else delete campos[c.id];
+  return { customFields: campos };
+}
+
+/**
  * Anexar num campo do card ou numa caixinha (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs que
  * vão ter pré visualização"): até 5 arquivos de 10 MB por vez, até 20 em cada campo (ou caixinha). O histórico conta.
  */
@@ -1376,7 +1403,7 @@ export async function anexarNoCampo(app: FastifyInstance, ator: Ator, ref: strin
       id: newId(), ticketId: t.id, noteId: null, fieldId: c.id, optionId: opcao?.id ?? null, ...a, uploadedById: pessoa, createdAt: new Date(agora.getTime() + i),
     })));
     await registrarEvento(tx, t.id, 'anexo', ator, { acao: 'anexou', campo: nome, opcao: opcao?.nome ?? null, arquivos: guardar.map((a) => a.fileName) }, e.quando());
-    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora, ...(await valorDoDocumento(tx, t, c)) }).where(eq(tickets.id, t.id));
   });
   await camposAosObservadores(app, ator, t, [nome]);
   return {
@@ -1403,7 +1430,7 @@ export async function tirarAnexoDoCampo(app: FastifyInstance, ator: Ator, ref: s
   await app.db.transaction(async (tx) => {
     await tx.update(ticketAttachments).set({ deletedAt: agora }).where(eq(ticketAttachments.id, a.id));
     await registrarEvento(tx, t.id, 'anexo', ator, { acao: 'tirou', campo: nome, opcao, arquivos: [a.fileName] }, e.quando());
-    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora, ...(c ? await valorDoDocumento(tx, t, c) : {}) }).where(eq(tickets.id, t.id));
   });
   const autor = a.uploadedById ? pessoaCurta(e.ctx, a.uploadedById)?.nome ?? null : null;
   return {

@@ -377,6 +377,13 @@ export type Api = {
     salvarCaixinhas(campoId: string, d: T.CaixinhasGravarEntrada): Promise<T.CampoPersonalizado>;
     /** a ordem dos campos do painel (todos os ids) */
     ordenarCampos(painelId: string, ids: string[]): Promise<T.CampoPersonalizado[]>;
+    /** excluir um campo (2.4): sai de tudo; o que os chamados preencheram fica guardado e volta com o Restaurar */
+    excluirCampo(campoId: string): Promise<{ ok: true }>;
+    /** os campos excluídos do painel (2.4), do mais recente para o mais antigo */
+    camposExcluidos(painelId: string): Promise<Array<T.CampoPersonalizado & { excluidoEm: string }>>;
+    restaurarCampo(campoId: string): Promise<T.CampoPersonalizado>;
+    /** os grupos de campos do painel (2.4): a lista inteira, na ordem da ficha; o que não vier é excluído com os campos */
+    salvarGrupos(painelId: string, d: T.GruposGravarEntrada): Promise<T.GrupoDeCampos[]>;
     /** incluir uma opção numa lista do painel ali mesmo (2.0.3, só nas listas que incluem na hora: a Indicação) */
     incluirOpcaoDoCampo(campoId: string, d: T.OpcaoIncluirEntrada): Promise<T.OpcaoDoCampo>;
     /** as etiquetas de cada painel, com a cor (Ajustes › Etiquetas): criar, editar (o nome e a cor) e tirar a que nenhum chamado do painel usa */

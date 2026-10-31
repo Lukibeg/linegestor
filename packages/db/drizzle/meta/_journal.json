@@ -218,6 +218,13 @@
       "when": 1793311658715,
       "tag": "0030_principal_da_negociacao",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793486967460,
+      "tag": "0031_excluir_campos_e_condicoes",
+      "breakpoints": true
     }
   ]
 }
