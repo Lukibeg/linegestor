@@ -114,28 +114,53 @@ export function escalaRedonda(max: number, min: number, alvo: number, justa = fa
 /** De quantos em quantos meses o eixo escreve o número. */
 const passoDoEixo = (n: number) => (n <= 13 ? 1 : n <= 25 ? 3 : n <= 49 ? 6 : 12);
 
-/** O detalhe de um mês: o faturamento e os custos, parte a parte, o lucro e o acumulado. */
-function DetalheDoMes({ m, pagou, deQual }: { m: MesDoContrato; pagou: number | null; deQual: (p: { produto?: string | null }) => string }) {
+/** Uma parte do faturamento ou dos custos: o nome que quebra fica recuado (a continuação não parece outra linha) e o valor não quebra. */
+function Parte({ rotulo, valor }: { rotulo: string; valor: number }) {
+  return (
+    <li className="flex justify-between gap-3">
+      <span className="min-w-0 pl-3 -indent-3">{rotulo}</span>
+      <span className="tabular-nums whitespace-nowrap shrink-0">{reaisLimpo(valor)}</span>
+    </li>
+  );
+}
+
+/**
+ * O detalhe de um mês: o faturamento e os custos, parte a parte, o lucro e o acumulado. `largo` (o detalhe por cima do
+ * gráfico, com espaço): o faturamento e os custos lado a lado, para a caixa não ficar mais alta que o gráfico.
+ */
+function DetalheDoMes({ m, pagou, deQual, largo = false }: { m: MesDoContrato; pagou: number | null; deQual: (p: { produto?: string | null }) => string; largo?: boolean }) {
+  const linha = 'flex justify-between gap-4';
+  const lucro = <div className={linha}><span className="text-ink-2">Lucro do mês</span><b className={`tabular-nums whitespace-nowrap ${m.lucro < 0 ? 'text-bad' : 'text-ok'}`}>{reaisLimpo(m.lucro)}</b></div>;
+  const acumulado = <div className={linha}><span className="text-ink-2">Acumulado</span><b className={`tabular-nums whitespace-nowrap ${m.acumulado < 0 ? 'text-bad' : 'text-ink'}`}>{reaisLimpo(m.acumulado)}</b></div>;
   return (
     <div className="flex flex-col gap-1">
       <div className="font-semibold text-ink flex flex-wrap items-baseline gap-x-2">
         Mês {m.mes}{m.mes === 1 && <span className="font-normal text-muted">· o da assinatura</span>}
         {m.mes === pagou && <span className="text-[11.5px] font-semibold text-ok">se paga</span>}
       </div>
-      <div className="flex justify-between gap-4"><span className="text-ink-2 inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-accent" aria-hidden />Faturamento</span><b className="tabular-nums text-ink">{reaisLimpo(m.faturamento)}</b></div>
-      {m.entra.length > 0 && (
-        <ul className="text-[12px] text-muted pl-4 -mt-0.5">
-          {m.entra.map((p) => <li key={p.rotulo} className="flex justify-between gap-4"><span className="min-w-0">{p.rotulo}</span><span className="tabular-nums">{reaisLimpo(p.valor)}</span></li>)}
-        </ul>
+      <div className={largo ? 'grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-5 items-start' : 'flex flex-col gap-1'}>
+        <div className="flex flex-col gap-1 min-w-0">
+          <div className={linha}><span className="text-ink-2 inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-accent" aria-hidden />Faturamento</span><b className="tabular-nums whitespace-nowrap text-ink">{reaisLimpo(m.faturamento)}</b></div>
+          {m.entra.length > 0 && (
+            <ul className="text-[12px] text-muted pl-4 -mt-0.5 flex flex-col gap-0.5">
+              {m.entra.map((p) => <Parte key={p.rotulo} rotulo={p.rotulo} valor={p.valor} />)}
+            </ul>
+          )}
+        </div>
+        <div className="flex flex-col gap-1 min-w-0">
+          <div className={linha}><span className="text-ink-2 inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-signal" aria-hidden />Custos</span><b className="tabular-nums whitespace-nowrap text-ink">{reaisLimpo(m.custos)}</b></div>
+          {m.sai.length > 0 && (
+            <ul className="text-[12px] text-muted pl-4 -mt-0.5 flex flex-col gap-0.5">
+              {m.sai.map((p, i) => <Parte key={`${p.rotulo}${i}`} rotulo={`${p.rotulo}${deQual(p)}`} valor={p.valor} />)}
+            </ul>
+          )}
+        </div>
+      </div>
+      {largo ? (
+        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-5 pt-1 border-t border-line">{lucro}{acumulado}</div>
+      ) : (
+        <div className="flex flex-col gap-1 pt-1 border-t border-line">{lucro}{acumulado}</div>
       )}
-      <div className="flex justify-between gap-4"><span className="text-ink-2 inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-signal" aria-hidden />Custos</span><b className="tabular-nums text-ink">{reaisLimpo(m.custos)}</b></div>
-      {m.sai.length > 0 && (
-        <ul className="text-[12px] text-muted pl-4 -mt-0.5">
-          {m.sai.map((p, i) => <li key={`${p.rotulo}${i}`} className="flex justify-between gap-4"><span className="min-w-0">{p.rotulo}{deQual(p)}</span><span className="tabular-nums">{reaisLimpo(p.valor)}</span></li>)}
-        </ul>
-      )}
-      <div className="flex justify-between gap-4 pt-1 border-t border-line"><span className="text-ink-2">Lucro do mês</span><b className={`tabular-nums ${m.lucro < 0 ? 'text-bad' : 'text-ok'}`}>{reaisLimpo(m.lucro)}</b></div>
-      <div className="flex justify-between gap-4"><span className="text-ink-2">Acumulado</span><b className={`tabular-nums ${m.acumulado < 0 ? 'text-bad' : 'text-ink'}`}>{reaisLimpo(m.acumulado)}</b></div>
     </div>
   );
 }
@@ -188,6 +213,13 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
   };
   const fim = serie[n - 1] ?? 0;
   const escolhido = mes != null && noGrafico ? meses[mes] ?? null : null;
+  // o detalhe por cima do gráfico (2.4.1, o Luan: "essa parte ta dadno uma bugada" — a caixa, mais alta que o gráfico, descia
+  // por cima da tabela, e o cabeçalho dela, que fica preso no alto, passava por cima da caixa): fica do lado do mês, por cima de
+  // tudo, e com espaço, o faturamento e os custos lado a lado (a caixa fica baixa)
+  const aDireita = mes != null && x(mes) > W / 2;
+  const espaco = mes == null ? 0 : aDireita ? x(mes) - banda / 2 - 8 : W - (x(mes) + banda / 2 + 8);
+  const largo = espaco >= 500;
+  const larguraDoDetalhe = largo ? Math.min(580, espaco) : Math.min(300, Math.max(240, espaco));
 
   return (
     <section className="card p-4 min-w-0" aria-label="O mês a mês do contrato" id="simulador-mes-a-mes">
@@ -258,9 +290,10 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
           ))}
         </svg>
         {escolhido && !estreito && (
-          <div className="absolute top-1 pointer-events-none card shadow-lg px-3 py-2 text-[12.5px] w-[290px] max-w-[60%]" role="status" id="simulador-mes-a-mes-valor"
-            style={x(mes!) > W / 2 ? { right: Math.max(0, W - x(mes!) + banda / 2 + 8) } : { left: x(mes!) + banda / 2 + 8 }}>
-            <DetalheDoMes m={escolhido} pagou={pagou} deQual={deQual} />
+          <div className="absolute top-1 z-30 pointer-events-none card shadow-lg px-3 py-2 text-[12.5px]" role="status" id="simulador-mes-a-mes-valor"
+            data-largo={largo ? '' : undefined}
+            style={{ width: larguraDoDetalhe, ...(aDireita ? { right: Math.max(0, W - x(mes!) + banda / 2 + 8) } : { left: x(mes!) + banda / 2 + 8 }) }}>
+            <DetalheDoMes m={escolhido} pagou={pagou} deQual={deQual} largo={largo} />
           </div>
         )}
       </div>
