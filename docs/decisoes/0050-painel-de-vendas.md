@@ -306,3 +306,11 @@ ordem dos cards dentro da etapa, hj ele ficam ordenados fixos"*. É a extensão 
 
 **Escolha que fiz.** O Suporte (e todo painel que conta prazo) ficou de fora, pelo motivo do 2.1. Se o Luan quiser a
 ordem à mão também lá, é trocar o `painelComOrdemAMao`.
+
+## Revisto no 2.4 (03/11/2026): as colunas do quadro com uma largura só, mais larga, em todos os painéis
+
+O Luan: *"o lance de alargar os cards vc colocou como padrão para todos os paineis, achei mais finos os cards do comercial"* e,
+depois, *"no caso eu quero q todos sejam mais largos, deixe como padrão isso em todos os paineis de agora e os que forem ser
+criados no futuro"*. A coluna do 2.1.3 ia de 272 a 340 px conforme sobrava tela: o painel com muitas etapas (o Comercial)
+ficava sempre nos 272, e os outros alargavam. Agora a coluna tem **320 px fixos em todo painel** (de Gestão, de Vendas, o da
+Implantação e os que forem criados — a largura é da tela, não do painel); o quadro com mais colunas rola para o lado.

@@ -84,6 +84,8 @@ const DICA_DO_TIPO: Record<CampoPersonalizado['tipo'], (c: CampoPersonalizado) =
   lista_varios: (c) => `As opções, separadas por vírgula: ${opcoesAtivas(c)}.`,
   caixinhas: (c) => `As caixinhas marcadas, separadas por ponto e vírgula: ${opcoesAtivas(c)}.`,
   modulos: (c) => `Os módulos, separados por ponto e vírgula: ${opcoesAtivas(c)}.`,
+  // o documento (2.4) é o arquivo anexado na ficha: o robô não preenche
+  documento: () => 'Um arquivo anexado na ficha: o robô não preenche.',
 };
 const opcoesAtivas = (c: CampoPersonalizado) => c.opcoes.filter((o) => o.ativa).map((o) => o.nome).join(', ') || '(nenhuma ativa)';
 

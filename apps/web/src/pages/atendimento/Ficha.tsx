@@ -46,7 +46,8 @@ import { Tempo } from './ficha/Tempo.js';
 import { NaAgenda } from './ficha/Agenda.js';
 import { SimulacoesDaNegociacao } from './ficha/Simulacoes.js';
 import { Negociacao } from './ficha/Negociacao.js';
-import { ImplantacoesDaNegociacao, PartesDoChamado } from './ficha/Implantacao.js';
+import { GruposDaLateral, ImplantacoesDaNegociacao, PartesDoChamado } from './ficha/Implantacao.js';
+import { CondicoesDaNegociacao } from './ficha/Condicoes.js';
 
 /**
  * A rota. O código escrito de qualquer jeito (sup-12, SUP 12) vira o do sistema; ir de um chamado
@@ -155,7 +156,8 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
       <div className="flex flex-col gap-4 min-w-0">
         <Cabecalho emJanela={emJanela} />
         {aberta.pode && <BarraDeAcoes />}
-        <div className="grid grid-cols-1 gap-4 items-start lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr]">
+        {/* ficha-cartoes: o detalhe azul no alto de cada cartão (2.4) */}
+        <div className="ficha-cartoes grid grid-cols-1 gap-4 items-start lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr]">
           {/* no celular a empresa vem antes de tudo; no computador, no alto da coluna do lado */}
           <div className="min-w-0 lg:col-start-2 lg:row-start-1">
             <Empresa />
@@ -173,11 +175,15 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
           <div className="min-w-0 flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
             {/* a negociação (o painel de Vendas): o valor e o resultado — sem prazo, operadora e tempo gasto */}
             <Negociacao />
+            {/* as condições combinadas (2.4): o desconto por um tempo, a ativação mais tarde e em vezes */}
+            <CondicoesDaNegociacao />
             {/* os cards que a negociação abriu na implantação (2.3) */}
             <ImplantacoesDaNegociacao />
             {/* as simulações ligadas (o Simulador do Comercial, 2.0.2): a margem e o sinal */}
             <SimulacoesDaNegociacao />
             <Classificacao />
+            {/* os grupos de campos da lateral (2.4) */}
+            <GruposDaLateral />
             <Responsavel />
             {/* sem a prioridade no painel (2.1.2), não há prazo: o bloco sai */}
             {aberta.painel?.tipo !== 'vendas' && (!aberta.painel || campoLigado(aberta.painel.ajustes, 'prioridade')) && <Prazos />}

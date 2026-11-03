@@ -224,3 +224,16 @@ de fim resolvem ou fecham o chamado ("Concluído" resolve, "Validado" fecha; sem
 traz; dá para mudar em **Painéis › Ajustes**. Não tem valor, ganhos nem a planilha: a prévia mostra quantos
 chamados ficam abertos, resolvidos e fechados e o que cada etapa vira. No painel de Gestão que já existe,
 nenhuma etapa dele sai: as do Helena que faltam entram antes das de fim.
+
+## As condições combinadas (2.4)
+
+Na ficha da negociação, abaixo de **A negociação**, o cartão **Condições combinadas** guarda o que foi acertado com o
+cliente além do valor: **Combinar** (ou **Mudar**) abre a janela com:
+
+- **Desconto na mensalidade**: o valor por mês, de um mês (opcional) até o último mês com o desconto — até 5 descontos;
+- **A ativação**: "começa a ser paga depois, ou em vezes" — o mês da 1ª parcela e em quantas vezes (até 24);
+- **O que mais foi combinado**, em texto.
+
+Embaixo, **Como fica a cobrança** mostra mês a mês a mensalidade com o desconto e a parcela da ativação, até a
+mensalidade voltar cheia. As condições não mudam o valor: a mensalidade e a ativação continuam as que contam no quadro, na
+meta, no Ganho e no relatório. Mudar vai para o histórico (uma linha) e para a auditoria; **Tirar as condições** apaga.

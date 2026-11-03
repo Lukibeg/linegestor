@@ -1617,6 +1617,12 @@ export const ticketFields = pgTable(
     acceptsAttachments: boolean('accepts_attachments').notNull().default(false),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
+    /**
+     * Excluído (2.4, o Luan: "eu quero poder excluir os campos e n só desativar"): some dos Ajustes, da ficha, do Abrir chamado e
+     * das regras, e o nome fica livre para outro campo. O que os chamados tinham fica guardado; volta com o Restaurar
+     * (Ajustes › Campos › Excluídos). Nulo: no painel.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -1722,6 +1728,12 @@ export const tickets = pgTable(
     setupCents: bigint('setup_cents', { mode: 'number' }),
     /** A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma */
     productSetup: jsonb('product_setup').$type<Record<string, number>>().notNull().default({}),
+    /**
+     * A negociação: as CONDIÇÕES combinadas (2.4, o Luan: "concedi um desconto de 200 reais até março do ano que vem, além disso a
+     * ativação só vai ser paga a partir de março tbm e dividida em 6 vezes") — {descontos: [{valor, de, ate}], ativacao:
+     * {aPartirDe, vezes}, observacao}. Dizem como a mensalidade e a ativação vão ser cobradas; não mudam o valor. Nulo: nada combinado.
+     */
+    negotiationTerms: jsonb('negotiation_terms'),
     /** A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) */
     prospect: text('prospect'),
     /** Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) */

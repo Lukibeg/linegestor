@@ -17,7 +17,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   AjustesDaNiaSchema, AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CaixinhasGravarSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
-  EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, ExperimentarRoboSchema,
+  EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, ExperimentarRoboSchema, GruposGravarSchema,
   LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, parametrosDoEndereco, SitesIframeSchema, WebhookGravarSchema,
   EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO,
 } from '@gestor/shared';
@@ -123,6 +123,39 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   }, async (req) => {
     const r = await ajustes.alterarCaixinhas(app.db, req.params.id, req.body);
     await app.audit(req, { action: 'update', entityType: 'ticket_field', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
+    return r.valor;
+  });
+
+  // 2.4: excluir um campo (não só desativar), a lista dos excluídos e o Restaurar
+  app.delete('/campos/:id', {
+    ...cuidar,
+    schema: { tags, summary: 'Excluir um campo do painel: sai dos Ajustes, da ficha, do Abrir chamado e das regras; o que os chamados preencheram fica guardado e volta com o Restaurar', params: Id },
+  }, async (req) => {
+    const r = await ajustes.excluirCampo(app, req.params.id);
+    await app.audit(req, { action: 'delete', entityType: 'ticket_field', entityId: req.params.id, summary: r.resumo, before: r.antes });
+    return r.valor;
+  });
+
+  app.get('/paineis/:id/campos/excluidos', {
+    ...cuidar,
+    schema: { tags, summary: 'Os campos excluídos do painel (para restaurar), do mais recente para o mais antigo', params: Id },
+  }, async (req) => ajustes.camposExcluidos(app.db, req.params.id));
+
+  app.post('/campos/:id/restaurar', {
+    ...cuidar,
+    schema: { tags, summary: 'Restaurar um campo excluído: volta no fim da lista, com o que os chamados tinham; não é pedido em lugar nenhum', params: Id },
+  }, async (req) => {
+    const r = await ajustes.restaurarCampo(app, req.params.id);
+    await app.audit(req, { action: 'restore', entityType: 'ticket_field', entityId: req.params.id, summary: r.resumo, after: r.depois });
+    return r.valor;
+  });
+
+  app.put('/paineis/:id/grupos', {
+    ...cuidar,
+    schema: { tags, summary: 'Os grupos de campos do painel (a lista inteira, na ordem da ficha): criar, renomear (antes), no meio ou na lateral, ativar ou desativar todos os campos do grupo; o que não vier é excluído com os campos', params: Id, body: GruposGravarSchema },
+  }, async (req) => {
+    const r = await ajustes.gravarGrupos(app, req.params.id, req.body);
+    await app.audit(req, { action: 'update', entityType: 'ticket_panel', entityId: req.params.id, summary: r.resumo, before: r.antes, after: r.depois });
     return r.valor;
   });
 

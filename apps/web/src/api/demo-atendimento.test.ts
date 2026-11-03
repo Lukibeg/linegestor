@@ -614,7 +614,7 @@ describe('as regras do servidor valem na prévia', () => {
     await api.salvarCampo(sup.id, campo.id, { nome: 'Ramal afetado', tipo: 'numero', ativo: true });
     expect((await api.chamado(t.codigo)).campos[campo.id]).toBe(203);
     // o tipo não muda; o Operador não mexe
-    expect((await erroDe(api.salvarCampo(sup.id, campo.id, { nome: 'Ramal afetado', tipo: 'texto' }))).message).toMatch(/^O tipo do campo não muda/);
+    expect((await erroDe(api.salvarCampo(sup.id, campo.id, { nome: 'Ramal afetado', tipo: 'texto' }))).message).toMatch(/^O tipo do campo Ramal afetado \(Número\) não muda para Texto curto/);
     await entrar('operador');
     expect((await erroDe(api.salvarCampo(sup.id, null, { nome: 'Outro', tipo: 'texto' }))).status).toBe(403);
   }, DEMORA);
@@ -1011,7 +1011,8 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     ]);
     // o mês: comparado com o mesmo pedaço do mês passado (que tem as três negociações do começo dele)
     const doMes = await api.relatorioDeVendas({ painel: 'COM', de: `${hoje.slice(0, 7)}-01`, ate: hoje });
-    expect(doMes.anterior.nome).toMatch(/^o mesmo período de /);
+    // no último dia do mês, o período é o mês inteiro: comparado com o mês passado inteiro
+    expect(doMes.anterior.nome).toMatch(somarDias(hoje, 1).endsWith('-01') ? /^[a-zç]+$/ : /^o mesmo período de /);
     // os ganhos mês a mês: os 12 meses, o último é o de hoje; cada mês com as ganhas dele (a janela acha todas)
     expect(doMes.meses).toHaveLength(12);
     expect(doMes.meses.at(-1)).toMatchObject({ mes: hoje.slice(0, 7), ganho: doMes.numeros.ganhos.valor });
@@ -1216,9 +1217,9 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
     expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado']);
     expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
-    // os 19 campos do modelo, em três partes, de dois produtos
+    // os 17 campos do modelo (sem a Ativação dos módulos, 2.4), em três partes, de dois produtos
     const campos = op.campos.filter((c) => c.painelId === imp.id);
-    expect(campos).toHaveLength(19);
+    expect(campos).toHaveLength(17);
     expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
 
     const q = await api.quadro({ painel: imp.id });
@@ -1226,8 +1227,8 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Implantado: ['Ótica Visão Clara'] });
     // o cartão mostra a conta da parte da etapa (a Configuração do LineChat: 3 de 5)
     const movimento = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados[0]!;
-    // 3 de 5 caixinhas + 1 de 2 módulos escolhidos na Curadoria (o checklist conta)
-    expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 4, total: 7 });
+    // 3 de 5 caixinhas (sem a Ativação dos módulos desde o 2.4)
+    expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 3, total: 5 });
 
     const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado')!.chamados[0]!.codigo);
     expect(vc.origem).toBe('comercial');
@@ -1341,32 +1342,64 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     });
     expect(novo.opcoes.at(-1)).toMatchObject({ nome: 'Configuração do Callback', pasta: 'Asterisk', ativa: true });
     expect(novo).toMatchObject({ nome: conf.nome, parte: conf.parte, produtoId: conf.produtoId });
-    // a que não veio fica desativada; o card que a marcou continua com ela
+    // a que não veio é excluída (2.4): some do campo e da conta do card que a marcou
     const semTelefones = await api.salvarCaixinhas(conf.id, { opcoes: novo.opcoes.filter((o) => o.nome !== 'Configuração dos telefones').map((o) => ({ id: o.id, nome: o.nome, pasta: o.pasta ?? null })) });
-    const telefones = semTelefones.opcoes.find((o) => o.nome === 'Configuração dos telefones')!;
-    expect(telefones.ativa).toBe(false);
-    expect((await api.chamado(visao.codigo)).campos[conf.id]).toContain(telefones.id);
+    expect(semTelefones.opcoes.some((o) => o.nome === 'Configuração dos telefones')).toBe(false);
+    const conta = (await api.chamado(visao.codigo)).partes.find((p) => p.parte === 'Configuração')!;
+    expect(conta.feitos).toBe(9);
     expect((await erroDe(api.salvarCaixinhas(campoDe(op, imp.id, 'Módulos a ativar', pbx).id, { opcoes: [{ nome: 'X' }] }))).status).toBe(400);
     await entrar('operador');
     expect((await erroDe(api.salvarCaixinhas(conf.id, { opcoes: [{ nome: 'X' }] }))).status).toBe(403);
   });
 
-  it('os módulos: a Curadoria escolhe, o checklist da Configuração mostra só os escolhidos, o Implantado avisa o que falta', async () => {
+  it('os módulos: a Curadoria escolhe e o Implantado liga os escolhidos (a Ativação dos módulos saiu no 2.4)', async () => {
     await entrar('admin');
     const op = await api.opcoes();
     const imp = painel(op, 'IMP');
     const pbx = produto(op, 'LinePBX');
     const escolha = campoDe(op, imp.id, 'Módulos a ativar', pbx);
-    const checklist = campoDe(op, imp.id, 'Ativação dos módulos', pbx);
     expect(escolha.parte).toBe('Curadoria');
-    expect(checklist).toMatchObject({ parte: 'Configuração', escolhidosEm: escolha.id });
+    expect(op.campos.some((c) => c.painelId === imp.id && c.nome === 'Ativação dos módulos')).toBe(false);
     const horizonte = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Construtora Horizonte')!;
-    // o checklist conta os escolhidos: o FOP2 marcado, o Callback faltando
-    const ficha = await api.chamado(horizonte.codigo);
-    expect(contaDoCampo(checklist, ficha.campos[checklist.id], ficha.campos)).toEqual({ feitos: 1, total: 2 });
     const plano = (await api.aoMover(horizonte.id, { etapaId: imp.etapas.find((e) => e.nome === 'Implantado')!.id })).cadastro!;
     expect(plano.modulos.map((m) => m.nome)).toEqual(['FOP2', 'Callback']);
-    expect(plano.semMarcar).toEqual([expect.objectContaining({ nome: 'Callback', produto: 'LinePBX', campo: 'Ativação dos módulos' })]);
+    expect(plano.semMarcar).toBeUndefined();
+  });
+
+  it('2.4: excluir o campo e a caixinha, os grupos de campos, o documento e as condições da negociação, como o servidor', async () => {
+    await entrar('admin');
+    let op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const chat = produto(op, 'LineChat');
+    // as caixinhas: excluir de verdade, e pode ficar sem nenhuma
+    const testes = campoDe(op, imp.id, 'Testes realizados', chat);
+    const vazio = await api.salvarCaixinhas(testes.id, { opcoes: [] });
+    expect(vazio.opcoes).toEqual([]);
+    // os grupos: o modelo vem com os três, no meio; um grupo novo na lateral
+    expect(imp.ajustes.partes.map((g) => g.nome)).toEqual(['Curadoria', 'Configuração', 'Testes']);
+    await api.salvarGrupos(imp.id, { grupos: [...imp.ajustes.partes.map((g) => ({ nome: g.nome, antes: g.nome, lugar: g.lugar })), { nome: 'Contrato', lugar: 'lateral' }] });
+    op = await api.opcoes();
+    expect(painel(op, 'IMP').ajustes.partes.at(-1)).toEqual({ nome: 'Contrato', lugar: 'lateral' });
+    // o documento: um campo do grupo novo; excluir e restaurar
+    const doc = await api.salvarCampo(imp.id, null, { nome: 'Contrato assinado', tipo: 'documento', parte: 'Contrato' });
+    expect(doc).toMatchObject({ tipo: 'documento', anexos: true });
+    await api.excluirCampo(doc.id);
+    expect((await api.opcoes()).campos.some((c) => c.id === doc.id)).toBe(false);
+    expect((await api.camposExcluidos(imp.id)).map((c) => c.nome)).toContain('Contrato assinado');
+    await api.restaurarCampo(doc.id);
+    expect((await api.opcoes()).campos.some((c) => c.id === doc.id)).toBe(true);
+    // excluir o grupo leva o campo junto
+    await api.salvarGrupos(imp.id, { grupos: imp.ajustes.partes.map((g) => ({ nome: g.nome, antes: g.nome, lugar: g.lugar })) });
+    expect((await api.opcoes()).campos.some((c) => c.id === doc.id)).toBe(false);
+    // as condições: o Hotel Beira Mar já vem com o desconto e a ativação em 6 vezes
+    await entrar('camila');
+    const com = painel(await api.opcoes(), 'COM');
+    const beira = (await api.lista({ painel: com.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.empresa === 'Hotel Beira Mar' || c.cliente?.nome === 'Hotel Beira Mar')!;
+    const ficha = await api.chamado(beira.codigo);
+    expect(ficha.condicoes?.descontos[0]).toMatchObject({ valor: 20_000 });
+    expect(ficha.condicoes?.ativacao?.vezes).toBe(6);
+    const sem = await api.alterar(ficha.id, { condicoes: null });
+    expect(sem.condicoes).toBeNull();
   });
 
   it('os anexos dos campos e das caixinhas: anexar, ver na ficha e no histórico, tirar (o seu, ou quem cuida)', async () => {
@@ -1404,7 +1437,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(novo.etapas.map((e) => [e.nome, !!e.ligaNoCadastro])).toEqual([['Stand By', false], ['Curadoria', false], ['Configuração', false], ['Testes', false], ['Concluído', false], ['Implantado', true]]);
     expect(novo.ajustes.contaPrazo).toBe(false);
     const op = await api.opcoes();
-    expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(19);
+    expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(17);
     const pbx = produto(op, 'LinePBX');
     const chat = produto(op, 'LineChat');
     // os módulos precisam do produto

@@ -484,6 +484,24 @@ export function ordemDoDia(a: EventoDoCalendario, b: EventoDoCalendario): number
 /** Os eventos de um dia, em ordem. */
 export const eventosDoDia = (eventos: readonly EventoDoCalendario[], dia: string) => eventos.filter((e) => cobreODia(e, dia)).sort(ordemDoDia);
 
+/**
+ * A hora de terminar quando a de começar muda (2.4, o Luan: "quando eu alterar o horário de inicio aqui tipo pra 18, ele já
+ * tem q automaticamente tbm já mudar o de final"): a duração fica a mesma (16:00–17:00 → 18:00–19:00). Sem a hora de terminar
+ * (ou antes da de começar), uma hora. No evento de um dia só, não passa das 23:59 (a virada que entra na madrugada termina no
+ * dia seguinte); no de vários dias, dá a volta no relógio.
+ */
+export function fimQueAcompanha(inicioAntes: string, fimAntes: string, inicioNovo: string, umDiaSo: boolean): string {
+  const min = (h: string) => { const m = /^(\d{2}):(\d{2})$/.exec(h); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+  const novo = min(inicioNovo);
+  if (novo === null) return fimAntes;
+  const a = min(inicioAntes);
+  const f = min(fimAntes);
+  const duracao = a !== null && f !== null && (f > a || !umDiaSo) ? (f - a + 1440) % 1440 || 60 : 60;
+  const fim = umDiaSo ? Math.min(novo + duracao, 1439) : (novo + duracao) % 1440;
+  if (umDiaSo && fim <= novo) return fimAntes;
+  return `${String(Math.floor(fim / 60)).padStart(2, '0')}:${String(fim % 60).padStart(2, '0')}`;
+}
+
 /** "Dia inteiro", "14:00–16:00" ou "às 14:00". */
 export function textoDoHorario(e: Pick<EventoDoCalendario, 'diaInteiro' | 'horaInicio' | 'horaFim'>): string {
   if (e.diaInteiro || !e.horaInicio) return 'Dia inteiro';

@@ -197,7 +197,7 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       nome: 'Padaria Estrela — 40 ramais', negociacaoId: negociacao('PABX em nuvem — 40 ramais'), principal: 'a',
       criadoPorId: pessoa('camila'), criadoEm: dias(9), alteradoEm: dias(1, 16),
       cenarios: [
-        cenario('a', 'Comodato, 24 meses', 'linepbx', { mensalidade: 125_000, ativacao: 190_000 }, (x2) => telefone(39_000)(quarenta(x2))),
+        cenario('a', 'Comodato, 24 meses', 'linepbx', { mensalidade: 125_000, ativacao: 190_000, prazo: 24 }, (x2) => telefone(39_000)(quarenta(x2))),
         cenario('b', 'Telefones vendidos, 12 meses', 'linepbx', { mensalidade: 125_000, ativacao: 190_000, prazo: 12, parcelas: 3 },
           (x2) => telefone(39_000, { modalidade: 'venda', preco: 45_000 })(quarenta(x2))),
         cenario('c', '10% de desconto, 36 meses', 'linepbx', { mensalidade: 112_500, ativacao: 171_000, prazo: 36 }, (x2) => telefone(39_000)(quarenta(x2))),

@@ -7,13 +7,13 @@
  * `@gestor/shared/atendimento.ts` — as mesmas da prévia. São alguns milhares de chamados por ano (o
  * painel antigo tinha 3.200 em três anos): cabe com folga, e a regra fica escrita uma vez só.
  */
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   carriers, clients, newId, productModules, products, roles, ticketEvents, ticketFields, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
-  ajustesDaNiaCompletos, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, estadoDosPrazos, progressoDasPartes, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
+  ajustesDaNiaCompletos, condicoesGuardadas, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, estadoDosPrazos, progressoDasPartes, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
   valoresVisiveis,
   type AjustesDaNia, type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
   type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type PessoaCurta, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
@@ -168,8 +168,9 @@ export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonal
  * Os campos dos painéis, na ordem de cada painel (o painel que saiu leva os dele). Os módulos do produto (2.3) ganham as
  * opções do catálogo: os módulos do produto do campo (o da lixeira fica desativado — quem já o marcou continua com ele).
  */
-export async function carregarCampos(db: Db, painelId?: string): Promise<CampoPersonalizado[]> {
-  const linhas = await db.select().from(ticketFields).where(painelId ? eq(ticketFields.panelId, painelId) : sql`true`);
+export async function carregarCampos(db: Db, painelId?: string, excluidos = false): Promise<CampoPersonalizado[]> {
+  // o excluído (2.4) fica fora de tudo; só a lista dos Excluídos (o Restaurar) pede por eles
+  const linhas = await db.select().from(ticketFields).where(and(painelId ? eq(ticketFields.panelId, painelId) : sql`true`, excluidos ? isNotNull(ticketFields.deletedAt) : isNull(ticketFields.deletedAt)));
   const campos = linhas.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR')).map(campoDaLinha);
   if (!campos.some((c) => c.tipo === 'modulos')) return campos;
   const mods = await db.select({ id: productModules.id, nome: productModules.name, produtoId: productModules.productId, ativo: productModules.active, saiu: productModules.deletedAt })
@@ -281,11 +282,13 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     // a ativação (à parte: não soma no quadro nem na meta; o relatório tem as contas dela)
     ativacao: t.setupCents ?? null,
     ativacoesDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.productSetup ?? {}).filter(([id]) => t.productIds.includes(id))) : {},
+    // o que foi combinado além do valor (2.4): só na negociação
+    condicoes: painel?.tipo === 'vendas' ? condicoesGuardadas(t.negotiationTerms) : null,
     resultado: e?.etapa.resultado ?? null, motivoPerda: e?.etapa.resultado === 'perdido' ? t.lostReason ?? null : null,
     // o lugar que a equipe escolheu arrastando (2.1: só vale onde a ordem é à mão)
     ordemNoQuadro: t.boardPosition ?? null,
     // as partes da ficha (2.3, a implantação), com a conta de cada uma: só dos campos do produto que o chamado tem
-    partes: progressoDasPartes(camposDoPainel(ctx, t.panelId, true), usa('produtos') ? t.productIds : [], t.customFields as ValoresDosCampos | null),
+    partes: progressoDasPartes(camposDoPainel(ctx, t.panelId, true), usa('produtos') ? t.productIds : [], t.customFields as ValoresDosCampos | null, painel?.ajustes.partes),
   };
 }
 
