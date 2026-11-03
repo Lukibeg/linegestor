@@ -62,6 +62,11 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
     },
     {
       "kind": "melhorou",
+      "title": "O quadro do Comercial com as colunas finas de novo",
+      "text": "O Comercial voltou às colunas mais finas: cabem mais etapas do funil na tela. Os painéis de chamados continuam com as colunas mais largas do 2.1.3."
+    },
+    {
+      "kind": "melhorou",
       "title": "O Simulador começa com 12 meses",
       "text": "A simulação nova traz 12 meses de contrato. E o painel desativado não aparece mais na escolha dos Ajustes."
     }
