@@ -57,6 +57,11 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
     },
     {
       "kind": "melhorou",
+      "title": "O agendamento já vem com a hora",
+      "text": "O evento novo (no Calendário e no Agendar da ficha) começa com o Dia inteiro desmarcado, das 9h às 10h: é só trocar a hora. A folga e o home office continuam do dia inteiro."
+    },
+    {
+      "kind": "melhorou",
       "title": "O Simulador começa com 12 meses",
       "text": "A simulação nova traz 12 meses de contrato. E o painel desativado não aparece mais na escolha dos Ajustes."
     }

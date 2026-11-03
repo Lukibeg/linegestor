@@ -63,6 +63,16 @@ function doEvento(e: EventoDoCalendario): Rascunho {
   };
 }
 
+/** O horário do evento novo: o que veio (o calendário, a ficha) ou, sem nada, das 9h às 10h — o dia inteiro só nos tipos da equipe. */
+function horarioDoNovo(n: NovoEvento, tipo: { daEquipe: boolean } | undefined): Pick<Rascunho, 'diaInteiro' | 'horaInicio' | 'horaFim'> {
+  const diaInteiro = n.diaInteiro ?? !!tipo?.daEquipe;
+  return {
+    diaInteiro,
+    horaInicio: n.horaInicio ?? (diaInteiro ? '' : '09:00'),
+    horaFim: n.horaFim ?? (diaInteiro ? '' : '10:00'),
+  };
+}
+
 function novoRascunho(n: NovoEvento, opcoes: CalendarioOpcoes, nomes: ReadonlyMap<string, string>): Rascunho {
   const ativos = opcoes.tipos.filter((t) => t.ativo);
   const tipo = ativos.find((t) => t.id === n.tipoId) ?? ativos.find((t) => !t.daEquipe) ?? ativos[0];
@@ -74,7 +84,9 @@ function novoRascunho(n: NovoEvento, opcoes: CalendarioOpcoes, nomes: ReadonlyMa
     // um painel só: já vem marcado; mais de um, a pessoa escolhe (é ele que diz quem vê o evento)
     paineis: n.paineis ?? (paineisAtivos.length === 1 ? [paineisAtivos[0]!.id] : []),
     pessoas: n.pessoas ?? [], clienteId: n.clienteId ?? '', chamado: n.chamado ?? null,
-    inicio, fim: n.fim && n.fim >= inicio ? n.fim : inicio, diaInteiro: n.diaInteiro ?? true, horaInicio: n.horaInicio ?? '', horaFim: n.horaFim ?? '',
+    // com a hora por padrão (2.4, o Luan: "pra fazer um agendamento eu quero q o padrão seja desmarcado o dia inteiro"): das 9h às
+    // 10h, que a pessoa troca; a folga e o home office (os tipos da equipe) continuam do dia inteiro
+    inicio, fim: n.fim && n.fim >= inicio ? n.fim : inicio, ...horarioDoNovo(n, tipo),
     local: n.local ?? '', observacao: n.observacao ?? '', situacao: 'agendado',
     // os lembretes do tipo (a Visita, 1 dia antes e 1 hora antes) acompanham o tipo até a pessoa mexer neles
     lembretes: n.lembretes ?? [...(tipo?.lembretes ?? [])], lembretesMexidos: !!n.lembretes, lembrarQuem: n.lembrarQuem ?? 'pessoas',
