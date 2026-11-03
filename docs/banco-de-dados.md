@@ -27,6 +27,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [carriers](#carriers) — Catálogo: operadoras que fornecem circuitos (ALGAR, VC1...).
 - [circuits](#circuits) — Um circuito (feixe) contratado junto a uma operadora.
 - [dids](#dids) — Um número telefônico.
+- [circuit_movements](#circuit_movements) — As movimentações dos circuitos e dos DIDs (2.4.1): cada mudança numa linha — o circuito novo, alterado, na lixeira ou restaurado; os DIDs novos, alterados, na lixeira ou restaurados; a importação da planilha.
 - [device_categories](#device_categories) — Catálogo: categoria de aparelho (Telefone IP, Periférico, ATA...).
 - [device_models](#device_models) — Um modelo de aparelho (ex.: Grandstream GXP1610).
 - [device_model_images](#device_model_images) — A foto do modelo, no próprio banco (como a logo do cliente).
@@ -373,6 +374,21 @@ Um número telefônico. "Linha" no Nexus; DID aqui (decisão V2).
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## circuit_movements
+
+As movimentações dos circuitos e dos DIDs (2.4.1): cada mudança numa linha — o circuito novo, alterado, na lixeira ou restaurado; os DIDs novos, alterados, na lixeira ou restaurados; a importação da planilha. A aba Movimentações (Circuitos e DIDs) e a ficha do circuito leem daqui. As linhas de antes do 2.4.1 vieram da auditoria (a migração 0033).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `user_id` | texto | Quem fez (nulo: o sistema, ou a pessoa que não existe mais) | liga com **users** |
+| `kind` | texto | O que aconteceu: circuito_criado | circuito_editado | circuito_lixeira | circuito_restaurado | dids_criados | did_editado | dids_editados | dids_lixeira | did_restaurado | importacao | obrigatório |
+| `circuit_ids` | texto | Os circuitos envolvidos (o DID que trocou de circuito: o de antes e o de depois) | obrigatório · padrão: [] · lista |
+| `did_numbers` | texto | Os números envolvidos, só com dígitos | obrigatório · padrão: [] · lista |
+| `summary` | texto | A frase do que aconteceu, escrita na hora ("Atribuiu o DID (71) 3034-8350 a Clínica Aurora") | obrigatório |
+| `details` | JSON | Os fatos, crus (os nomes são escritos na hora de mostrar): o antes e o depois do circuito, a senha definida ou trocada (nunca a senha), cada DID com o antes e o depois, as contas da importação. Ver DetalhesDaMovimentacao no @gestor/shared. | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
 
 
 ---

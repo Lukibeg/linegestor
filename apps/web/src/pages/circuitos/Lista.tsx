@@ -16,14 +16,15 @@ import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 import { Numeracao } from '../dids/Lista.js';
+import { MovimentacoesDosCircuitos } from './Movimentacoes.js';
 
-type Aba = 'circuitos' | 'numeracao';
+type Aba = 'circuitos' | 'numeracao' | 'movimentacoes';
 
 export function CircuitosLista() {
   const [sp, setSp] = useSearchParams();
   useLembrarFiltros('/circuitos'); // o botão Voltar do detalhe traz estes filtros de volta
   const nav = useNavigate();
-  const aba = (sp.get('aba') === 'numeracao' ? 'numeracao' : 'circuitos') as Aba;
+  const aba = (sp.get('aba') === 'numeracao' || sp.get('aba') === 'movimentacoes' ? sp.get('aba') : 'circuitos') as Aba;
   const q = sp.get('q') ?? ''; const carrierId = sp.get('operadora') ?? ''; const ownerClientId = sp.get('titular') ?? ''; const page = Number(sp.get('p') ?? 1);
   // o interruptor dos links de terceiros vale para as DUAS abas e fica no endereço, como os filtros
   const terceiros = sp.get('terceiros') === '1';
@@ -39,7 +40,7 @@ export function CircuitosLista() {
   // é modo de exibição, não filtro: ele atravessa as duas abas
   const trocarAba = (a: Aba) => {
     const n = new URLSearchParams();
-    if (a === 'numeracao') n.set('aba', 'numeracao');
+    if (a !== 'circuitos') n.set('aba', a);
     if (terceiros) n.set('terceiros', '1');
     setSp(n, { replace: true });
   };
@@ -60,11 +61,11 @@ export function CircuitosLista() {
         {/* "DIDs sem circuito" saiu: todo DID nasce dentro de um circuito (rodada 23) */}
         <Kpi label="DIDs livres" valor={r ? r.dids.free.toLocaleString('pt-BR') : '…'} sub="sem cliente, prontos para alocar" tone={r && r.dids.free === 0 && r.dids.total > 0 ? 'signal' : 'neutral'} />
       </div>
-      {temFiltro && <p className="text-[12.5px] text-muted -mt-3 mb-4">Os cartões acima estão somando apenas o que o filtro deixou passar. <button className="link" onClick={() => setSp(aba === 'numeracao' ? { aba: 'numeracao' } : {}, { replace: true })}>limpar filtros</button></p>}
+      {temFiltro && <p className="text-[12.5px] text-muted -mt-3 mb-4">Os cartões acima estão somando apenas o que o filtro deixou passar. <button className="link" onClick={() => setSp(aba !== 'circuitos' ? { aba } : {}, { replace: true })}>limpar filtros</button></p>}
 
-      <Abas atual={aba} onChange={trocarAba} abas={[{ id: 'circuitos', label: 'Circuitos' }, { id: 'numeracao', label: <>Numeração <span className="text-muted">(todos os DIDs)</span></> }]} />
+      <Abas atual={aba} onChange={trocarAba} abas={[{ id: 'circuitos', label: 'Circuitos' }, { id: 'numeracao', label: <>Numeração <span className="text-muted">(todos os DIDs)</span></> }, { id: 'movimentacoes', label: 'Movimentações' }]} />
 
-      {aba === 'numeracao' ? <Numeracao /> : (<>
+      {aba === 'movimentacoes' ? <MovimentacoesDosCircuitos /> : aba === 'numeracao' ? <Numeracao /> : (<>
         <div className="card p-3 mb-4 flex flex-wrap gap-2">
           <input className="input max-w-xs" placeholder="Buscar por nome, N° do circuito ou operadora" value={q} onChange={(e) => set('q', e.target.value)} />
           <select className="input w-auto" value={carrierId} onChange={(e) => set('operadora', e.target.value || null)}><option value="">Todas as operadoras</option>{carriers.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>

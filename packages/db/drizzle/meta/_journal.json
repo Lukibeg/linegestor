@@ -232,6 +232,13 @@
       "when": 1793730703780,
       "tag": "0032_ativacao_dos_modulos_de_volta",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793731986149,
+      "tag": "0033_movimentacoes_dos_circuitos",
+      "breakpoints": true
     }
   ]
 }

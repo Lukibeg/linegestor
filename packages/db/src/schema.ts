@@ -440,6 +440,38 @@ export const dids = pgTable(
   ],
 );
 
+/**
+ * As movimentações dos circuitos e dos DIDs (2.4.1): cada mudança numa linha — o circuito novo, alterado, na lixeira ou
+ * restaurado; os DIDs novos, alterados, na lixeira ou restaurados; a importação da planilha. A aba Movimentações (Circuitos
+ * e DIDs) e a ficha do circuito leem daqui. As linhas de antes do 2.4.1 vieram da auditoria (a migração 0033).
+ */
+export const circuitMovements = pgTable(
+  'circuit_movements',
+  {
+    id: id(),
+    /** Quem fez (nulo: o sistema, ou a pessoa que não existe mais) */
+    userId: text('user_id').references(() => users.id),
+    /**
+     * O que aconteceu: circuito_criado | circuito_editado | circuito_lixeira | circuito_restaurado | dids_criados |
+     * did_editado | dids_editados | dids_lixeira | did_restaurado | importacao
+     */
+    kind: text('kind').notNull(),
+    /** Os circuitos envolvidos (o DID que trocou de circuito: o de antes e o de depois) */
+    circuitIds: text('circuit_ids').array().notNull().default([]),
+    /** Os números envolvidos, só com dígitos */
+    didNumbers: text('did_numbers').array().notNull().default([]),
+    /** A frase do que aconteceu, escrita na hora ("Atribuiu o DID (71) 3034-8350 a Clínica Aurora") */
+    summary: text('summary').notNull(),
+    /**
+     * Os fatos, crus (os nomes são escritos na hora de mostrar): o antes e o depois do circuito, a senha definida ou trocada
+     * (nunca a senha), cada DID com o antes e o depois, as contas da importação. Ver DetalhesDaMovimentacao no @gestor/shared.
+     */
+    details: jsonb('details'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('circuit_movements_created_idx').on(t.createdAt)],
+);
+
 // ---------------------------------------------------------------------
 // 3. INVENTÁRIO (modelos, aparelhos, movimentações)
 // ---------------------------------------------------------------------

@@ -4,6 +4,7 @@
  */
 import type * as T from './types.js';
 import type {
+  PaginaDeMovimentacoes,
   AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
   AoMoverEntrada, LeituraDoHelenaNaTela, OQueAEtapaFaz, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
@@ -72,6 +73,8 @@ export type Api = {
     update(id: string, d: Record<string, unknown>): Promise<T.Circuit>;
     remove(id: string): Promise<{ ok: boolean }>;
     createRange(id: string, d: Record<string, unknown>): Promise<{ created: number; first: string; last: string }>;
+    /** As movimentações dos circuitos e dos DIDs (2.4.1): o que mudou, quem e quando, com os filtros */
+    movimentacoes(q: Record<string, unknown>): Promise<PaginaDeMovimentacoes>;
   };
   dids: {
     list(q: Record<string, unknown>): Promise<T.Page<T.Did>>;

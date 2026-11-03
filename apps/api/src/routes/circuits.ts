@@ -1,9 +1,10 @@
 /** Circuitos. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CircuitoAtualizarSchema, CircuitoGravarSchema, CircuitoListarSchema, DidCriarFaixaSchema, PaginacaoSchema, Booleano } from '@gestor/shared';
+import { CircuitoAtualizarSchema, CircuitoGravarSchema, CircuitoListarSchema, DidCriarFaixaSchema, MovimentacoesDosCircuitosSchema, PaginacaoSchema, Booleano } from '@gestor/shared';
 import * as svc from '../services/circuits.js';
 import * as didsSvc from '../services/dids.js';
+import * as mov from '../services/movimentacoesCircuitos.js';
 
 const Id = z.object({ id: z.string() });
 
@@ -17,6 +18,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/owners', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Titulares que têm pelo menos um circuito (para o filtro)', querystring: z.object({ includeThirdParty: Booleano.default(false) }) } },
     async (req) => svc.owners(app.db, req.query.includeThirdParty));
 
+  app.get('/movimentacoes', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'As movimentações dos circuitos e dos DIDs (2.4.1): o que mudou, quem e quando', querystring: MovimentacoesDosCircuitosSchema } },
+    async (req) => mov.listar(app.db, req.query));
+
   app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Lista curta para seletores' } }, async () => svc.options(app.db));
 
   app.get('/:id', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Detalhe do circuito', params: Id } }, async (req) => svc.get(app.db, req.params.id));
@@ -29,6 +33,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req, reply) => {
       const row = await svc.create(app.db, app.vault, req.body, req.user!.id);
       await app.audit(req, { action: 'create', entityType: 'circuit', entityId: row.id, summary: `Criou o circuito ${row.name}`, after: row });
+      await mov.aoCriarCircuito(app.db, req.user!.id, row);
       return reply.status(201).send(await svc.get(app.db, row.id));
     });
 
@@ -36,6 +41,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const { before, after } = await svc.update(app.db, app.vault, req.params.id, req.body, req.user!.id);
       await app.audit(req, { action: 'update', entityType: 'circuit', entityId: after.id, summary: `Editou o circuito ${after.name}`, before, after });
+      await mov.aoEditarCircuito(app.db, req.user!.id, before, after, !!req.body.authPassword);
       return svc.get(app.db, after.id);
     });
 
@@ -43,6 +49,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const row = await svc.softDelete(app.db, req.params.id);
       await app.audit(req, { action: 'delete', entityType: 'circuit', entityId: row.id, summary: `Mandou o circuito ${row.name} para a lixeira` });
+      await mov.aoMexerNaLixeiraDoCircuito(app.db, req.user!.id, row, 'circuito_lixeira');
       return { ok: true };
     });
 
@@ -50,13 +57,15 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const row = await svc.restore(app.db, req.params.id);
       await app.audit(req, { action: 'restore', entityType: 'circuit', entityId: row.id, summary: `Restaurou o circuito ${row.name}` });
+      await mov.aoMexerNaLixeiraDoCircuito(app.db, req.user!.id, row, 'circuito_restaurado');
       return svc.get(app.db, row.id);
     });
 
   app.post('/:id/dids/range', { preHandler: app.requirePermission('dids.assign'), schema: { tags: ['Circuitos'], summary: 'Criar uma faixa de DIDs dentro do circuito', params: Id, body: DidCriarFaixaSchema.omit({ circuitId: true }) } },
     async (req, reply) => {
-      const r = await didsSvc.createRange(app.db, { ...req.body, circuitId: req.params.id });
+      const { numbers, ...r } = await didsSvc.createRange(app.db, { ...req.body, circuitId: req.params.id });
       await app.audit(req, { action: 'bulk_create', entityType: 'did', entityId: req.params.id, summary: `Criou ${r.created} DIDs (${r.first}–${r.last}) no circuito ${req.params.id}` });
+      await mov.aoCriarDids(app.db, req.user!.id, { numeros: numbers, circuitId: req.params.id, clientId: req.body.clientId, note: req.body.note });
       return reply.status(201).send(r);
     });
 };

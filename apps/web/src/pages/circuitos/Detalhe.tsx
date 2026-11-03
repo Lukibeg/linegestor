@@ -16,6 +16,7 @@ import { didFormatado, reais } from '../../lib/format.js';
 import { CircuitoForm } from './Lista.js';
 import { Voltar } from '../../lib/voltar.js';
 import { Numeracao } from '../dids/Lista.js';
+import { MovimentacoesDosCircuitos } from './Movimentacoes.js';
 import { ArtigosLigados } from '../base/partes.js';
 
 export function CircuitoDetalhe() {
@@ -65,6 +66,11 @@ export function CircuitoDetalhe() {
         <section className="min-w-0" aria-label="DIDs deste circuito">
           <h2 className="font-display font-semibold mb-2">DIDs deste circuito</h2>
           <Numeracao circuito={{ id: c.id, nome: c.name }} />
+        </section>
+        {/* as movimentações deste circuito (2.4.1): a mesma lista da aba Movimentações, com o circuito fixo */}
+        <section className="min-w-0 mt-2" aria-label="Movimentações deste circuito">
+          <h2 className="font-display font-semibold mb-2">Movimentações deste circuito</h2>
+          <MovimentacoesDosCircuitos circuito={{ id: c.id, nome: c.name }} />
         </section>
       </div>
       <CircuitoForm open={editar} onClose={() => setEditar(false)} circuito={c} onSaved={() => setEditar(false)} />
