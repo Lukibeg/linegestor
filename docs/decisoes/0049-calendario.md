@@ -170,7 +170,8 @@ no WhatsApp entrou.
 ## Revisto no 2.4.1 (03/11/2026): a Semana
 
 O Luan, com o print da semana do Outlook: *"no calendário eu quero q tenha a opção de visualização somente da semana tbm, como
-no outlook aqui"*. O **Como ver** ganhou a **Semana**, entre o Mês e a Lista (`Semana.tsx`):
+no outlook aqui"*; e, vendo a prévia, *"ficou bom, eu quero q a visualização padrão seja essa"*. O **Como ver** ganhou a
+**Semana** (`Semana.tsx`), que passou a ser **a que abre** (a primeira do botão, antes do Mês e da Lista):
 
 - os sete dias lado a lado, de segunda a domingo, com o número e o nome do dia (o de hoje em azul, com a tira no alto); o fim de
   semana mais escuro;
@@ -184,7 +185,8 @@ no outlook aqui"*. O **Como ver** ganhou a **Semana**, entre o Mês e a Lista (`
 - **dois cliques numa hora vazia** abrem o evento novo naquela meia hora, com uma hora de duração; o **+** do dia, um para o dia;
 - o alto diz a semana e o número dela, como o Outlook (**02–08 de novembro de 2026 (Semana 45)**; o número é o ISO 8601,
   `numeroDaSemana`); as setas andam uma semana; o Hoje volta para a semana de hoje; o mês acompanha, e o Mês abre no mesmo dia;
-- **o jeito de ver escolhido por último fica lembrado** no navegador de cada um (o endereço com `?ver=` continua mandando);
+- **o jeito de ver escolhido por último fica lembrado** no navegador de cada um (quem nunca escolheu, ou num navegador novo,
+  abre na Semana; o endereço com `?ver=mes` ou `?ver=lista` continua mandando);
 - no celular, uma rolagem só nos dois sentidos: os dias e o dia inteiro ficam no alto, e as horas, à esquerda.
 
 Os filtros (os painéis, os tipos, o Só os meus, a busca e os cancelados) valem igual. Sem migração e sem mudança no servidor.

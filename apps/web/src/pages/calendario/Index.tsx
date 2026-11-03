@@ -8,7 +8,7 @@
  * com a lista de caixas de marcar —, os tipos — o mesmo botão desde o 2.1, com a cor de cada um —, só os
  * meus e a busca) ficam no endereço, como nos chamados (o filtro de cliente saiu no 2.0.2: "n precisa de filtro por
  * cliente"; a busca acha o cliente); a visão Mês (a grade, com o dia escolhido ao lado ou embaixo) e a
- * Lista (o mês dia a dia); desde o 2.4.1, a Semana (Semana.tsx, como no Outlook). O evento abre numa janela (Janela.tsx); quem trabalha nos chamados cria e
+ * Lista (o mês dia a dia); desde o 2.4.1, a Semana (Semana.tsx, como no Outlook), que é a que abre. O evento abre numa janela (Janela.tsx); quem trabalha nos chamados cria e
  * muda; quem cuida deles muda os tipos. O endereço com `?evento=` (o lembrete do sininho e do WhatsApp,
  * 2.0.2) abre o calendário no dia, com a janela do evento.
  */
@@ -36,12 +36,15 @@ const NO_DIA = 3;
 const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
 const listaDoEndereco = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
 
-/** Como ver: o Mês, a Semana (2.4.1, "como no outlook") ou a Lista. A última escolhida fica lembrada neste navegador. */
+/**
+ * Como ver: a Semana (2.4.1, "como no outlook"; a que abre, o Luan: "eu quero q a visualização padrão seja essa"), o Mês ou a
+ * Lista. A última escolhida fica lembrada neste navegador.
+ */
 type Ver = 'mes' | 'semana' | 'lista';
 const VER_GUARDADO = 'gestor:calendario-ver';
 const ehVer = (v: string | null | undefined): v is Ver => v === 'mes' || v === 'semana' || v === 'lista';
 function verGuardado(): Ver {
-  try { const v = localStorage.getItem(VER_GUARDADO); return ehVer(v) ? v : 'mes'; } catch { return 'mes'; }
+  try { const v = localStorage.getItem(VER_GUARDADO); return ehVer(v) ? v : 'semana'; } catch { return 'semana'; }
 }
 function guardarVer(v: Ver) { try { localStorage.setItem(VER_GUARDADO, v); } catch { /* sem o navegador guardar, vale o do endereço */ } }
 
@@ -94,7 +97,7 @@ export function Calendario() {
   // na semana, as setas andam sete dias (o mês acompanha, para o Mês abrir no mesmo dia)
   const irParaDia = (d: string) => mudar({ mes: mesDoDia(d) === mesDoDia(hoje) ? null : mesDoDia(d), dia: d === hoje ? null : d });
   const andar = (n: number) => (ver === 'semana' ? irParaDia(somarDias(diaEscolhido, 7 * n)) : irParaMes(somarMeses(mes, n)));
-  const verComo = (v: Ver) => { guardarVer(v); mudar({ ver: v === 'mes' ? null : v }); };
+  const verComo = (v: Ver) => { guardarVer(v); mudar({ ver: v === 'semana' ? null : v }); };
   const novo = (dia: string, horario?: { horaInicio: string; horaFim: string }) =>
     setJanela({ novo: { inicio: dia, fim: dia, paineis: filtro.paineis.length ? filtro.paineis : undefined, ...(horario ? { diaInteiro: false, ...horario } : {}) } });
 
@@ -131,7 +134,7 @@ export function Calendario() {
             <SlidersHorizontal size={14} aria-hidden /> Filtros{ligados ? ` (${ligados})` : ''}
           </button>
           <div className="inline-flex rounded-lg border border-line-strong p-0.5 bg-surface" role="radiogroup" aria-label="Como ver">
-            {([['mes', 'Mês', LayoutGrid], ['semana', 'Semana', Columns3], ['lista', 'Lista', List]] as const).map(([v, nome, Icone]) => (
+            {([['semana', 'Semana', Columns3], ['mes', 'Mês', LayoutGrid], ['lista', 'Lista', List]] as const).map(([v, nome, Icone]) => (
               <button key={v} type="button" role="radio" aria-checked={ver === v} onClick={() => verComo(v)} id={`calendario-ver-${v}`}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[13px] font-semibold ${ver === v ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}>
                 <Icone size={14} aria-hidden />{nome}
