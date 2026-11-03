@@ -62,8 +62,8 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
     },
     {
       "kind": "melhorou",
-      "title": "O quadro do Comercial com as colunas finas de novo",
-      "text": "O Comercial voltou às colunas mais finas: cabem mais etapas do funil na tela. Os painéis de chamados continuam com as colunas mais largas do 2.1.3."
+      "title": "As colunas do quadro mais largas em todos os painéis",
+      "text": "Todas as colunas do quadro têm agora a mesma largura, mais larga, em todos os painéis, inclusive nos que forem criados. Antes, o painel com muitas etapas, como o Comercial, ficava com as colunas mais finas que os outros."
     },
     {
       "kind": "melhorou",

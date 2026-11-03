@@ -439,10 +439,11 @@ function Coluna({ col, painel, filtros, arrastando, sobre, linha, arrastado, onP
       // min-w-0, a coluna com um texto comprido numa linha só (o título cortado com "…", o nome da etapa)
       // alargava até o máximo e as outras ficavam no mínimo. A largura subiu no 2.1.3 (o Luan, 27/10: "to achando
       // muito estreito os cards, deixe um pouco mais largo"): com 236 px, o título do cartão quebrava cedo e era
-      // cortado com "…" na segunda linha; com 272 px, cabem umas cinco letras a mais por linha. O Comercial voltou às finas
-      // no 2.4 (o Luan, 03/11: "o lance de alargar os cards vc colocou como padrão para todos os paineis, achei mais finos os
-      // cards do comercial"): o cartão da negociação é curto (a empresa e o valor) e o funil cabe mais na tela
-      className={`snap-start shrink-0 w-[85vw] sm:w-auto ${vendas ? 'sm:flex-[1_0_236px] sm:max-w-[290px]' : 'sm:flex-[1_0_272px] sm:max-w-[340px]'} sm:min-w-0 sm:min-h-0 rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
+      // cortado com "…" na segunda linha; com 272 px, cabem umas cinco letras a mais por linha. No 2.4, uma largura só, fixa, em
+      // todos os painéis (o Luan, 03/11: "eu quero q todos sejam mais largos, deixe como padrão isso em todos os paineis de agora
+      // e os que forem ser criados no futuro"): antes, a coluna ia de 272 a 340 px conforme sobrava tela, e o painel com muitas
+      // etapas (o Comercial) ficava sempre no mínimo, mais fino que os outros
+      className={`snap-start shrink-0 w-[85vw] sm:w-[320px] sm:flex-none sm:min-w-0 sm:min-h-0 rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
         sobre ? 'border-accent bg-accent-soft' : arrastando ? 'border-dashed border-line-strong bg-surface-2' : 'border-line bg-surface-2'}`}
     >
       <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={vendas ? undefined : DICA_TIPO_ETAPA[etapa.tipo]}>
