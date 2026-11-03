@@ -72,6 +72,11 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
     },
     {
       "kind": "melhorou",
+      "title": "As novidades só com os cartões",
+      "text": "A janela do login e a página Novidades mostram só os cartões, com o texto e o print de cada mudança: o vídeo do patch saiu."
+    },
+    {
+      "kind": "melhorou",
       "title": "O Simulador começa com 12 meses",
       "text": "A simulação nova traz 12 meses de contrato. E o painel desativado não aparece mais na escolha dos Ajustes."
     }

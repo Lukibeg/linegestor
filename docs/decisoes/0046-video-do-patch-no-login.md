@@ -69,3 +69,13 @@ Luan foi avisado antes, com o motivo; a obrigação continua, só que pelo víde
 - **Ficou de fora, para quando ele pedir**: legenda em texto (o vídeo do 1.9 não tem som — as
   legendas estão na imagem), contar até onde cada pessoa assistiu (hoje fica só o "assistiu"), e o
   vídeo em mais de uma língua.
+
+## Revisto no 2.4 (03/11/2026): o vídeo saiu — as novidades só com os cartões
+
+O Luan: *"n quero mais que tenha o lance do vídeo, ta atrapalhando, vamo deixar os patch notes somente com o cards mesmo"*.
+A janela do login volta a mostrar os cartões (passar por todos e marcar "Li e entendi", como antes do 1.9), mesmo na nota que
+tem vídeo; a página Novidades mostra só os cartões; e Administração › Novidades não tem mais o campo do vídeo. Nada se apaga:
+os vídeos do 1.9, do 2.0 e do 2.3 continuam no repositório e no servidor (a tabela `release_note_videos`, o volume `portal`), e
+a API continua aceitando o `videoId` — só a tela deixou de usar. O patch não leva mais vídeo (o roteiro
+`scripts/gravar-video-do-patch.py` fica, sem uso).
+
