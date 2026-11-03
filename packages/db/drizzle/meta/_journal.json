@@ -225,6 +225,13 @@
       "when": 1793486967460,
       "tag": "0031_excluir_campos_e_condicoes",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793730703780,
+      "tag": "0032_ativacao_dos_modulos_de_volta",
+      "breakpoints": true
     }
   ]
 }

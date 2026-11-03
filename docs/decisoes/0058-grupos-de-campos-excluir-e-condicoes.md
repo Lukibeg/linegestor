@@ -78,3 +78,23 @@ O documento do Luan de 31/10 ("melhorias 3110"), com doze prints:
 
 - As condições no relatório do Comercial (as ativações mês a mês pelas parcelas combinadas, e não pelo dia do Ganho).
 - O lugar do grupo dentro da lateral (hoje, sempre abaixo da Classificação).
+
+## Revisto no 2.4.1 (03/11/2026): a Ativação dos módulos volta
+
+Com o 2.4 no ar, o Luan mandou o print da Configuração com a Ativação dos módulos: *"gostaria de retroceder uma questão"* e, à
+pergunta (que ela suma ou que volte), *"Que ela volte"*. Desfaz o item 5:
+
+- **O modelo Implantação** volta a criar a **Ativação dos módulos** na Configuração, de cada produto (o LinePBX e o LineChat),
+  seguindo o Módulos a ativar da Curadoria: os 19 campos do 2.3.
+- **Nos painéis que existem**, a migração `0032` traz de volta os checklists que a `0031` excluiu, com o que os cards já tinham
+  marcado (nada tinha sido apagado). Só volta o que ainda faz sentido: a escolha que ele segue continua no painel, o grupo
+  dele ainda tem campo, nenhum outro campo ativo do painel tem o mesmo nome no mesmo produto, e ninguém o excluiu pela tela (a
+  auditoria diria).
+- **As regras de etapa** que a `0031` tirou (o checklist pedido para entrar numa etapa ou para abrir) **não voltam sozinhas**:
+  a `0031` não guardou quais eram, e o modelo não pedia nenhuma. Quem tinha ligado uma liga de novo em Painéis › Ajustes ›
+  Campos (Editar o campo).
+- **No Implantado**, a janela volta a avisar o módulo escolhido na Curadoria que o checklist ainda não marcou (sem travar),
+  como no 2.3.
+
+O resto do 2.4 continua: o Excluir o campo, a caixinha excluída de verdade, os grupos de campos, todos os produtos nas partes,
+o tipo Documento e as condições da negociação.

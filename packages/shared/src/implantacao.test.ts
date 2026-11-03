@@ -211,10 +211,12 @@ describe('o modelo do painel Implantação', () => {
     for (const c of MODELO_DA_IMPLANTACAO.campos) expect(!!c.anexos, c.nome).toBe(c.parte === 'Curadoria' && c.tipo !== 'modulos');
     // sem o CRM usado ("n precisa disso n")
     expect(MODELO_DA_IMPLANTACAO.campos.some((c) => c.nome === 'CRM usado')).toBe(false);
-    // os módulos: escolhidos na Curadoria; a Ativação dos módulos saiu no 2.4 ("vc pode tirar n precisa")
+    // os módulos: escolhidos na Curadoria, o checklist na Configuração (de cada produto); saiu no 2.4 e voltou no 2.4.1
     for (const produto of ['linechat', 'linepbx'] as const) {
       const doProduto = MODELO_DA_IMPLANTACAO.campos.filter((c) => c.produto === produto && c.tipo === 'modulos');
-      expect(doProduto.map((c) => [c.nome, c.parte, c.escolhidosEm ?? null])).toEqual([['Módulos a ativar', 'Curadoria', null]]);
+      expect(doProduto.map((c) => [c.nome, c.parte, c.escolhidosEm ?? null])).toEqual([
+        ['Módulos a ativar', 'Curadoria', null], ['Ativação dos módulos', 'Configuração', 'Módulos a ativar'],
+      ]);
     }
     // os grupos de campos, na ordem das etapas
     expect(MODELO_DA_IMPLANTACAO.ajustes.partes.map((g) => [g.nome, g.lugar])).toEqual([['Curadoria', 'meio'], ['Configuração', 'meio'], ['Testes', 'meio']]);

@@ -1513,7 +1513,7 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
           { produto: 'linepbx', nome: 'Horário de atendimento', valor: 'Seg a sex, 9h às 19h; sáb, 9h às 13h. Fora do horário: a mensagem com o horário e o WhatsApp da loja.' },
           { produto: 'linepbx', nome: 'Números da rota de entrada', valor: '(71) 3322-1500 → URA\n(71) 3322-1501 → direto no laboratório' },
           { produto: 'linepbx', nome: 'Estrutura da URA', valor: '"Bem-vindo à Ótica Visão Clara."\n1 Vendas → fila Vendedores\n2 Óculos prontos e consertos → Laboratório\n3 Falar com a gerência → 202' },
-          // a curadoria escolhe os módulos (no Implantado, ficam ligados na ficha do cliente)
+          // a curadoria escolhe os módulos; a configuração marca conforme ativa
           { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['Line Reports', 'NPS'] },
         ],
       },
@@ -1527,6 +1527,7 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
               'Instalação do LineReports', 'Configuração dos telefones',
             ],
           },
+          { produto: 'linepbx', nome: 'Ativação dos módulos', valor: ['Line Reports', 'NPS'] },
         ],
       },
       {
@@ -1559,6 +1560,8 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
               'Alinhamento do tronco', 'Configuração dos usuários', 'Configuração dos telefones',
             ],
           },
+          // o Callback ainda falta ativar
+          { produto: 'linepbx', nome: 'Ativação dos módulos', valor: ['FOP2'] },
         ],
       },
       {
@@ -1586,6 +1589,7 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
         dias: 2, hora: '11:30', por: 'lucio',
         campos: [
           { produto: 'linechat', nome: 'Configuração do ambiente', valor: ['Criação dos usuários', 'Criação das equipes', 'Configuração dos chatbots'] },
+          { produto: 'linechat', nome: 'Ativação dos módulos', valor: ['WebChat'] },
         ],
       },
     ],
