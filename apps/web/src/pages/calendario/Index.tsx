@@ -56,8 +56,14 @@ export function Calendario() {
     cancelados: valor('cancelados') !== '0', busca: valor('q'),
   };
   const filtrados = filtrarEventos(eventos.data ?? [], filtro, nomes);
-  const ligados = [filtro.paineis.length > 0, filtro.tipos.length > 0, !!filtro.pessoa, !filtro.cancelados, !!filtro.busca].filter(Boolean).length;
-  const filtrando = ligados > 0;
+  // no celular, o "Só os meus" fica à vista, fora do botão Filtros (2.4): o número do botão conta só o que está atrás dele
+  const ligados = [filtro.paineis.length > 0, filtro.tipos.length > 0, !filtro.cancelados, !!filtro.busca].filter(Boolean).length;
+  const filtrando = ligados > 0 || !!filtro.pessoa;
+  const soOsMeus = (className: string, id: string) => (
+    <BotaoDeFiltro ativo={!!filtro.pessoa} onClick={() => mudar({ meus: filtro.pessoa ? null : '1' })} titulo="Só os eventos de que você participa" id={id} className={className}>
+      <UserRoundCheck size={13} aria-hidden /> Só os meus
+    </BotaoDeFiltro>
+  );
 
   // o endereço com o evento (o lembrete do sininho e do WhatsApp, 2.0.2): abre a janela dele quando o mês chega
   const toast = useToast();
@@ -98,7 +104,10 @@ export function Calendario() {
         </div>
         <h2 className="font-display text-[17px] font-semibold first-letter:uppercase min-w-[150px]" aria-live="polite" id="calendario-mes">{textoDoMes(mes)}</h2>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button type="button" className={`sm:hidden btn-secondary btn-sm ${filtrando ? 'border-accent text-accent' : ''}`} aria-expanded={filtrosAbertos} aria-controls="calendario-filtros"
+          {/* no celular, o "Só os meus" à vista, ao lado do Filtros (2.4, o Luan: "n aparece de cara o botão 'só os meus' no
+              calendário, fica só no filtro, quero que esse botão já fique na cara tbm"); no computador, ele fica nos filtros */}
+          {soOsMeus('sm:hidden !py-1.5', 'calendario-so-meus-celular')}
+          <button type="button" className={`sm:hidden btn-secondary btn-sm ${ligados ? 'border-accent text-accent' : ''}`} aria-expanded={filtrosAbertos} aria-controls="calendario-filtros"
             onClick={() => setFiltrosAbertos((v) => !v)} id="calendario-botao-filtros">
             <SlidersHorizontal size={14} aria-hidden /> Filtros{ligados ? ` (${ligados})` : ''}
           </button>
@@ -118,7 +127,7 @@ export function Calendario() {
 
       {deHoje.data && <ForaDoEscritorio eventos={deHoje.data} opcoes={op} nomes={nomes} dia={hoje} className="mb-3 rounded-xl border border-line bg-surface px-3 py-2" />}
 
-      <Filtros op={op} filtro={filtro} mudar={mudar} eventos={eventos.data ?? []} filtrando={filtrando} aberto={filtrosAbertos} />
+      <Filtros op={op} filtro={filtro} mudar={mudar} eventos={eventos.data ?? []} filtrando={filtrando} aberto={filtrosAbertos} soOsMeus={soOsMeus('hidden sm:inline-flex', 'calendario-so-meus')} />
 
       {eventos.isError && (
         <div className="card p-3 text-sm mb-3" role="alert">
@@ -148,17 +157,19 @@ export function Calendario() {
 //  OS FILTROS (e a legenda dos tipos)
 // =====================================================================
 
-function BotaoDeFiltro({ ativo, onClick, children, titulo, id }: { ativo: boolean; onClick: () => void; children: ReactNode; titulo?: string; id?: string }) {
+function BotaoDeFiltro({ ativo, onClick, children, titulo, id, className = '' }: { ativo: boolean; onClick: () => void; children: ReactNode; titulo?: string; id?: string; className?: string }) {
   return (
     <button type="button" aria-pressed={ativo} onClick={onClick} title={titulo} id={id}
-      className={`chip border py-1 px-2.5 text-[12.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line bg-surface text-ink-2 hover:bg-surface-2'}`}>
+      className={`chip border py-1 px-2.5 text-[12.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line bg-surface text-ink-2 hover:bg-surface-2'} ${className}`}>
       {children}
     </button>
   );
 }
 
-function Filtros({ op, filtro, mudar, eventos, filtrando, aberto }: {
+function Filtros({ op, filtro, mudar, eventos, filtrando, aberto, soOsMeus }: {
   op: CalendarioOpcoes; filtro: FiltroDoCalendario; mudar: (o: Record<string, string | null>) => void; eventos: EventoDoCalendario[]; filtrando: boolean; aberto: boolean;
+  /** o "Só os meus" (no computador, aqui; no celular, no alto, à vista) */
+  soOsMeus: ReactNode;
 }) {
   // os painéis: um botão que abre a lista com caixas de marcar (2.0.2, o pedido do Luan: "clicar em painéis e
   // aparecer uma multisseleção para eu selecionar os que eu quero ver"); nada marcado = todos
@@ -184,9 +195,7 @@ function Filtros({ op, filtro, mudar, eventos, filtrando, aberto }: {
           onChange={(v) => mudar({ tipo: v.length && v.length < tipos.length ? v.join(',') : null })}
           dica={tiposEscolhidos.length ? `Mostrando só: ${tiposEscolhidos.join(', ')}` : 'Mostrando os eventos de todos os tipos (a lista tem a cor de cada um)'} />
       </div>
-      <BotaoDeFiltro ativo={!!filtro.pessoa} onClick={() => mudar({ meus: filtro.pessoa ? null : '1' })} titulo="Só os eventos de que você participa" id="calendario-so-meus">
-        <UserRoundCheck size={13} aria-hidden /> Só os meus
-      </BotaoDeFiltro>
+      {soOsMeus}
       <CampoBusca valor={filtro.busca} onChange={(v) => mudar({ q: v || null })} placeholder="Buscar no calendário" titulo="Busca no título, no cliente, no local, na observação, no chamado e nas pessoas"
         className="basis-full sm:basis-auto sm:flex-1 sm:min-w-[180px] sm:max-w-[320px]" id="calendario-busca" />
       <label className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-2 cursor-pointer select-none">

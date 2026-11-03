@@ -258,3 +258,18 @@ describe('o aviso de que o evento entrou (2.0.2, opcional)', () => {
     expect(quemRecebeAInclusao({ paineis: ['p-sup'], pessoas: ['luan'], avisar: 'pessoas' }, quemVe, null)).toEqual(['luan']);
   });
 });
+
+describe('a hora de terminar acompanha a de começar (2.4)', () => {
+  it('a mesma duração; sem fim, uma hora; no mesmo dia, até 23:59', async () => {
+    const { fimQueAcompanha } = await import('./calendario.js');
+    expect(fimQueAcompanha('16:00', '17:00', '18:00', true)).toBe('19:00');
+    expect(fimQueAcompanha('09:00', '10:30', '14:15', true)).toBe('15:45');
+    expect(fimQueAcompanha('', '', '08:00', true)).toBe('09:00');
+    expect(fimQueAcompanha('10:00', '09:00', '11:00', true)).toBe('12:00');
+    expect(fimQueAcompanha('16:00', '18:00', '23:00', true)).toBe('23:59');
+    expect(fimQueAcompanha('16:00', '17:00', '23:59', true)).toBe('17:00');
+    // vários dias: dá a volta
+    expect(fimQueAcompanha('22:00', '02:00', '23:00', false)).toBe('03:00');
+    expect(fimQueAcompanha('16:00', '17:00', '', true)).toBe('17:00');
+  });
+});

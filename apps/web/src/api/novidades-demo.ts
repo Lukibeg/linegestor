@@ -57,8 +57,13 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
     },
     {
       "kind": "melhorou",
-      "title": "O agendamento já vem com a hora",
-      "text": "O evento novo (no Calendário e no Agendar da ficha) começa com o Dia inteiro desmarcado, das 9h às 10h: é só trocar a hora. A folga e o home office continuam do dia inteiro."
+      "title": "O agendamento já vem com a hora, e o fim acompanha o começo",
+      "text": "O evento novo (no Calendário e no Agendar da ficha) começa com o Dia inteiro desmarcado, das 9h às 10h. Mudou a hora de começar, a de terminar vai junto, com a mesma duração (16h às 17h, começando às 18h, vira 18h às 19h). A folga e o home office continuam do dia inteiro."
+    },
+    {
+      "kind": "melhorou",
+      "title": "O Só os meus à vista no celular",
+      "text": "No celular, o Só os meus do Calendário fica no alto, ao lado do Filtros, sem precisar abrir os filtros."
     },
     {
       "kind": "melhorou",

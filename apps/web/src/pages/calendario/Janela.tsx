@@ -19,7 +19,7 @@ import {
   Ban, Bell, Building2, CalendarDays, Check, Copy, Link2, MapPin, Pencil, StickyNote, Ticket, Trash2, Undo2, Users, X,
 } from 'lucide-react';
 import {
-  diaPorExtenso, diasEntre, EventoGravarSchema, lerCodigo, NOME_QUEM_RECEBE_O_LEMBRETE, NOME_SITUACAO_DO_EVENTO, pessoasPossiveis, QUEM_RECEBE_O_LEMBRETE,
+  diaPorExtenso, diasEntre, fimQueAcompanha, EventoGravarSchema, lerCodigo, NOME_QUEM_RECEBE_O_LEMBRETE, NOME_SITUACAO_DO_EVENTO, pessoasPossiveis, QUEM_RECEBE_O_LEMBRETE,
   SITUACOES_DO_EVENTO, somarDias, textoDoHorario, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tituloSugerido,
   type CalendarioOpcoes, type CorPainel, type EventoDoCalendario, type EventoGravarEntrada, type QuemRecebeOLembrete, type SituacaoDoEvento,
 } from '@gestor/shared';
@@ -407,7 +407,9 @@ function Formulario({ r, mudar, opcoes, nomes, existente, onSalvar }: {
           <div className="flex flex-wrap items-end gap-x-3 gap-y-2 mt-2">
             <label className="flex flex-col gap-1 text-[12.5px] text-muted">
               <span>Começa</span>
-              <input type="time" className="input py-1.5 w-[130px]" value={r.horaInicio} onChange={(e) => mudar({ horaInicio: e.target.value })} id="evento-hora-inicio" />
+              <input type="time" className="input py-1.5 w-[130px]" value={r.horaInicio} id="evento-hora-inicio"
+                // a hora de terminar vem junto, com a mesma duração (2.4: "pra 18, ele já tem q automaticamente tbm já mudar o de final")
+                onChange={(e) => mudar({ horaInicio: e.target.value, horaFim: fimQueAcompanha(r.horaInicio, r.horaFim, e.target.value, r.inicio === r.fim) })} />
             </label>
             <label className="flex flex-col gap-1 text-[12.5px] text-muted">
               <span>Termina</span>
