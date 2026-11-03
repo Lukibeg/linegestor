@@ -1761,9 +1761,11 @@ export const tickets = pgTable(
     /** A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma */
     productSetup: jsonb('product_setup').$type<Record<string, number>>().notNull().default({}),
     /**
-     * A negociação: as CONDIÇÕES combinadas (2.4, o Luan: "concedi um desconto de 200 reais até março do ano que vem, além disso a
-     * ativação só vai ser paga a partir de março tbm e dividida em 6 vezes") — {descontos: [{valor, de, ate}], ativacao:
-     * {aPartirDe, vezes}, observacao}. Dizem como a mensalidade e a ativação vão ser cobradas; não mudam o valor. Nulo: nada combinado.
+     * A negociação: as CONDIÇÕES ESPECIAIS (2.4, o Luan: "concedi um desconto de 200 reais até março do ano que vem, além disso a
+     * ativação só vai ser paga a partir de março tbm e dividida em 6 vezes"; refeitas no 2.4.1) — {descontos: [{valor, ate}],
+     * ativacao: {desconto, vezes, aPartirDe}, observacao}. Os descontos vêm em sequência, do 1º mês de faturamento (o do Ganho);
+     * ate nulo: sem prazo (só o último); aPartirDe nulo: no 1º mês. As do 2.4 (com o "de") são lidas sem ele. Dizem como a
+     * mensalidade e a ativação vão ser cobradas; não mudam o valor. Nulo: nada combinado.
      */
     negotiationTerms: jsonb('negotiation_terms'),
     /** A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) */

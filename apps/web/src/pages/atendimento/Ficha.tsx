@@ -175,7 +175,7 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
           <div className="min-w-0 flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
             {/* a negociação (o painel de Vendas): o valor e o resultado — sem prazo, operadora e tempo gasto */}
             <Negociacao />
-            {/* as condições combinadas (2.4): o desconto por um tempo, a ativação mais tarde e em vezes */}
+            {/* as condições especiais (2.4; refeitas no 2.4.1): o desconto na mensalidade e na ativação, a ativação em vezes ou mais tarde */}
             <CondicoesDaNegociacao />
             {/* os cards que a negociação abriu na implantação (2.3) */}
             <ImplantacoesDaNegociacao />

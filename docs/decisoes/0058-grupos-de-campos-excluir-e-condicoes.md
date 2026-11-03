@@ -98,3 +98,26 @@ pergunta (que ela suma ou que volte), *"Que ela volte"*. Desfaz o item 5:
 
 O resto do 2.4 continua: o Excluir o campo, a caixinha excluída de verdade, os grupos de campos, todos os produtos nas partes,
 o tipo Documento e as condições da negociação.
+
+## Revisto no 2.4.1 (03/11/2026): as Condições especiais
+
+Antes de o 2.4.1 subir, o Luan mandou o print da janela das condições: *"essa parte aqui n ficou legal n, o formato n ta legal
+e tem outras coisa, n precisa ter o de, pq subentendesse que vai ser a partir do primeiro mes de faturameno que é quando eu
+marco cmo ganho, se eu quiser fornecer um desconto sem prazo, temq ter essa opção tbm, a ativação tbm n ficou legal o formato,
+se dar um desconto na aticvação? e o nome tem q ser condições especiais"*. Muda o item 8:
+
+- **O nome** passa a ser **Condições especiais** (o cartão, a janela e a linha do histórico).
+- **O 1º mês de faturamento é o mês do Ganho** (o dia que ficou no Ganho, em Brasília). Antes do Ganho, as contas usam o mês
+  de hoje, de exemplo, e a janela diz isso.
+- **Sem o "De"**: os descontos na mensalidade vêm **em sequência** — o primeiro começa no 1º mês de faturamento e cada um
+  seguinte começa quando o anterior acaba ("R$ 200 até março, depois R$ 100 sem prazo"). Cada um tem o valor por mês e **até
+  que mês** vai, ou **Sem prazo** (só o último). Até 5.
+- **A ativação**: o **desconto** nela (em reais, até o valor dela), o que **fica para pagar**, **em quantas vezes** (de 1 a 24,
+  com o valor da parcela na escolha) e **quando começa a pagar** (no 1º mês ou num mês escolhido). Sem nada diferente disso
+  (sem desconto, à vista, no 1º mês), não há ativação combinada.
+- **Como fica a cobrança**: uma coluna para cada coisa (Mês, Mensalidade, Desconto, Ativação com a parcela, Total do mês), do
+  1º mês até a mensalidade voltar cheia (com o sem prazo, o mês em que ele começa e mais dois). Sem a ativação combinada, a
+  ativação vai inteira no 1º mês (antes, ela ficava fora da tabela).
+- **O que foi guardado no 2.4 continua valendo**, sem migração: o "de" fica de fora (o desconto começa no 1º mês), os descontos
+  vão na ordem do mês em que acabam e a ativação de antes é a mesma, sem desconto.
+

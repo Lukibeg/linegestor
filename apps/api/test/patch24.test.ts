@@ -160,16 +160,17 @@ describe('as condições da negociação (2.4)', () => {
     const r = await s.patch(`/atendimento/chamados/${neg.id}`, { condicoes });
     expect(r.statusCode, r.body).toBe(200);
     const f: FichaChamado = r.json();
-    expect(f.condicoes).toEqual({ ...condicoes, descontos: [{ valor: 20_000, de: null, ate: '2027-03' }], observacao: null });
-    expect(f.historico.at(-1)!.texto.replace(/ /g, ' ')).toContain('Desconto de R$ 200,00/mês até mar/2027 · Ativação a partir de mar/2027, em 6 vezes');
+    // no formato do 2.4.1 (as Condições especiais): a ativação com o desconto (nenhum) e o mês da 1ª parcela
+    expect(f.condicoes).toEqual({ descontos: [{ valor: 20_000, ate: '2027-03' }], ativacao: { desconto: null, vezes: 6, aPartirDe: '2027-03' }, observacao: null });
+    expect(f.historico.at(-1)!.texto.replace(/ /g, ' ')).toContain('Desconto de R$ 200,00/mês até mar/2027 · Ativação em 6 vezes, a partir de mar/2027');
     // o valor não muda
     expect([f.valor, f.ativacao]).toEqual([99_000, 300_000]);
     // o mesmo de novo não vai para o histórico
     const n = (await ficha(neg.codigo)).historico.length;
     await s.patch(`/atendimento/chamados/${neg.id}`, { condicoes });
     expect((await ficha(neg.codigo)).historico).toHaveLength(n);
-    // o desconto que termina antes de começar: 400
-    expect((await s.patch(`/atendimento/chamados/${neg.id}`, { condicoes: { descontos: [{ valor: 100, de: '2027-04', ate: '2027-03' }] } })).statusCode).toBe(400);
+    // o desconto que termina antes do anterior: 400 (2.4.1: eles vêm em sequência)
+    expect((await s.patch(`/atendimento/chamados/${neg.id}`, { condicoes: { descontos: [{ valor: 100, ate: '2027-04' }, { valor: 50, ate: '2027-03' }] } })).statusCode).toBe(400);
     // tirar
     const sem = await s.patch(`/atendimento/chamados/${neg.id}`, { condicoes: null });
     expect((sem.json() as FichaChamado).condicoes).toBeNull();
