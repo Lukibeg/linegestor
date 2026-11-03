@@ -20,8 +20,14 @@ use os chamados.
 
 - **Mês** mostra a grade, de segunda a domingo, com cada evento na cor do tipo. Clique num dia para ver
   a lista dele ao lado (no celular, embaixo). Passando de três eventos, o dia mostra "+2 outros".
+- **Semana** (desde o 2.4.1) mostra a semana como no Outlook: os sete dias lado a lado, de segunda a domingo; em cima, o dia
+  inteiro (a folga, o home office, a virada que entra na madrugada); embaixo, as horas, com cada evento na altura da hora dele
+  (os que se encontram ficam lado a lado) e a linha azul da hora de agora no dia de hoje. O alto diz a semana e o número dela
+  ("02–08 de novembro de 2026 (Semana 45)"). Dois cliques numa hora vazia abrem um evento novo naquela hora; o **+** no dia
+  abre um para o dia. No celular, a semana corre para o lado, e as horas ficam à vista.
 - **Lista** mostra o mês dia a dia, com tudo escrito.
-- As setas trocam o mês; **Hoje** volta para o mês de hoje.
+- As setas trocam o mês (na Semana, a semana); **Hoje** volta para hoje. O jeito de ver escolhido por último fica lembrado neste
+  navegador.
 - Em cima, **Hoje, fora do escritório** mostra quem está de folga e em home office hoje.
 
 ### Filtrar
