@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 COMPOSE="docker compose -f docker-compose.prod.yml"
 
-# as pastas que o sistema enxerga por dentro (backups, a cópia dos ajustes de aviso e, desde o 2.4, os certificados
+# as pastas que o sistema enxerga por dentro (backups, a cópia dos ajustes de aviso e, desde o 2.4.2, os certificados
 # que ele precisa confiar: o nia-ca.crt da NIA)
 mkdir -p backups config certs && chmod 700 backups config
 

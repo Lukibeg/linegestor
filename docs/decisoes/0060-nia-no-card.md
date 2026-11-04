@@ -1,6 +1,6 @@
-# 0058 — O /nia no card: a NIA propõe, a pessoa aplica
+# 0060 — O /nia no card: a NIA propõe, a pessoa aplica
 
-**Data:** 30/10/2026 · **Patch:** 2.4 · **Situação:** aceita
+**Data:** 30/10/2026 · **Patch:** 2.4.2 · **Situação:** aceita
 
 ## O pedido
 

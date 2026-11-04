@@ -378,7 +378,7 @@ describe('as opções para a NIA (/integracao/opcoes): só o que está ativo, do
     // assunto (o Desenvolvimento, no teste de cima) não tem o que escolher
     expect(o.assuntos).toEqual(expect.arrayContaining([
       { id: ramal, nome: 'Ramal', caminho: 'Ramal', painelSigla: 'SUP', descricao: null, dePara: [] },
-      // o vocabulário (2.4): a descrição e o de-para (os apelidos), para a NIA entender o jeito de cada um chamar
+      // o vocabulário (2.4.2): a descrição e o de-para (os apelidos), para a NIA entender o jeito de cada um chamar
       { id: semAudio, nome: 'Sem áudio', caminho: 'Ramal › Sem áudio', painelSigla: 'SUP', descricao: 'A ligação completa, mas um dos lados não escuta', dePara: ['mudo', 'sem som'] },
       expect.objectContaining({ nome: 'Configuração', caminho: 'Ramal › Configuração', painelSigla: 'SUP' }),
       expect.objectContaining({ nome: 'Configuração', caminho: 'Fila › Configuração', painelSigla: 'SUP' }),

@@ -14,6 +14,7 @@
  */
 import { z } from 'zod';
 import { numeroWhatsApp, paraBusca, reais, telefoneLegivel } from './formatos.js';
+import { CondicoesDaNegociacaoSchema, type CondicoesDaNegociacao } from './negociacao.js';
 import {
   ALCANCES, ESPERA_PARA_O_PRAZO, GRAVIDADES, NOME_ALCANCE, NOME_ESPERA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_PRAZO, PESO_PRIORIDADE, PRIORIDADES, RegraAgendadoSchema,
   diaLocal, sugestaoPelosCampos,
@@ -168,7 +169,20 @@ export type AjustesDoPainel = {
   motivosDePerda: string[];
   /** no painel de Vendas: a meta de cada mês, em centavos (nulo = sem meta) */
   metaMensal: number | null;
+  /**
+   * Os grupos de campos do painel (2.4), na ordem da ficha: cada um é uma parte com nome — no meio da ficha (um cartão
+   * por grupo, com um bloco por produto: a Curadoria, os Detalhes da proposta) ou na lateral (um cartão abaixo da
+   * Classificação). O campo diz o grupo pelo nome (`parte`); o grupo que só existe nos campos entra no fim, no meio.
+   */
+  partes: GrupoDeCampos[];
 };
+
+/** Onde o grupo de campos fica na ficha (2.4): no meio (a coluna larga) ou na lateral (abaixo da Classificação). */
+export const LUGARES_DO_GRUPO = ['meio', 'lateral'] as const;
+export type LugarDoGrupo = (typeof LUGARES_DO_GRUPO)[number];
+export const NOME_LUGAR_DO_GRUPO: Record<LugarDoGrupo, string> = { meio: 'No meio da ficha', lateral: 'Na lateral' };
+/** Um grupo de campos (2.4: "incluir novos grupo de campos"): o nome e onde fica na ficha. */
+export type GrupoDeCampos = { nome: string; lugar: LugarDoGrupo };
 
 export type Painel = {
   id: string;
@@ -196,7 +210,7 @@ export type Painel = {
  */
 export const AJUSTES_PAINEL_PADRAO: AjustesDoPainel = {
   tipos: TIPOS_PADRAO, contaPrazo: true, fecharSozinhoDias: 3, obrigatoriosAoAbrir: [], paiEsperaFilhos: true, supervisores: [], camposDesligados: ['alcance'],
-  motivosDePerda: [], metaMensal: null,
+  motivosDePerda: [], metaMensal: null, partes: [],
 };
 
 /** Os motivos de perda com que o painel de Vendas nasce (a equipe muda nos Ajustes do painel). */
@@ -246,7 +260,9 @@ export const CAMPOS_DO_PAINEL_DE_VENDAS: ReadonlyArray<{ nome: string; tipo: Tip
 
 /** Os ajustes guardados podem ser de antes de um campo novo: completa com o padrão. */
 export function ajustesDoPainelCompletos(v: Partial<AjustesDoPainel> | null | undefined): AjustesDoPainel {
-  return { ...AJUSTES_PAINEL_PADRAO, ...(v ?? {}) };
+  const a = { ...AJUSTES_PAINEL_PADRAO, ...(v ?? {}) };
+  // os grupos (2.4): só os bem formados (o guardado antes do 2.4 não tem nenhum)
+  return { ...a, partes: Array.isArray(a.partes) ? a.partes.filter((g) => g && typeof g.nome === 'string' && g.nome.trim()).map((g) => ({ nome: g.nome.trim(), lugar: g.lugar === 'lateral' ? 'lateral' : 'meio' })) : [] };
 }
 
 type EtapaInicial = Omit<EtapaPainel, 'id' | 'avisar' | 'resultado'> & { chave: string };
@@ -376,12 +392,12 @@ export function prioridadeSugeridaDoPainel(
 export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'>) => ajustes.contaPrazo && campoLigado(ajustes, 'prioridade');
 
 /** Os campos que quem cuida dos chamados cria em cada painel. O tipo não muda depois de criado. */
-export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios', 'caixinhas', 'modulos'] as const;
+export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios', 'caixinhas', 'modulos', 'documento'] as const;
 export type TipoCampo = (typeof TIPOS_CAMPO)[number];
 export const NOME_TIPO_CAMPO: Record<TipoCampo, string> = {
   texto: 'Texto curto', texto_longo: 'Texto longo', numero: 'Número', data: 'Data', sim_nao: 'Sim ou não',
   lista: 'Lista (escolhe uma opção)', lista_varios: 'Lista (escolhe várias)',
-  caixinhas: 'Caixinhas (o que já foi feito)', modulos: 'Módulos do produto',
+  caixinhas: 'Caixinhas (o que já foi feito)', modulos: 'Módulos do produto', documento: 'Documento (arquivo)',
 };
 export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   texto: 'Uma linha (até 300 letras): um protocolo, uma versão, um número de série.',
@@ -393,7 +409,15 @@ export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   lista_varios: 'Uma ou mais das opções que você escrever.',
   caixinhas: 'Uma lista de tarefas: cada opção é uma caixinha, e a ficha mostra quem marcou e quando (a configuração, os testes).',
   modulos: 'Os módulos do produto escolhido abaixo (Administração › Produtos), para marcar os que o cliente vai usar. Na etapa que liga no cadastro, os marcados ficam ativos na ficha do cliente (o checklist, que segue outro campo de módulos, só confere o que foi ativado).',
+  documento: 'Um ou mais arquivos anexados (a planilha dos ramais, o desenho da URA): PDF, imagem, Word ou Excel, de até 10 MB. Conta como feito com o primeiro arquivo.',
 };
+/**
+ * Os tipos que trocam entre si depois de criado (2.4, o Luan no campo Estrutura da URA: "aqui tem q ter o tipo, documento"):
+ * o texto curto, o longo e o documento. O texto escrito fica guardado quando vira documento (e volta se voltar a ser texto).
+ * Os outros não trocam: as opções e as marcas não teriam para onde ir.
+ */
+export const TIPOS_QUE_TROCAM: readonly TipoCampo[] = ['texto', 'texto_longo', 'documento'];
+export const tipoTroca = (de: TipoCampo, para: TipoCampo) => de === para || (TIPOS_QUE_TROCAM.includes(de) && TIPOS_QUE_TROCAM.includes(para));
 export const ehLista = (t: TipoCampo) => t === 'lista' || t === 'lista_varios';
 /**
  * As caixinhas (2.3): cada opção marcada guarda quem marcou e quando (`marcas` do chamado). Os módulos do produto são
@@ -446,9 +470,12 @@ export function mudancasDasCaixinhas(antes: readonly OpcaoDoCampo[], depois: rea
     if (v.ativa && !o.ativa) desativou.push(o.nome);
     if (!v.ativa && o.ativa) reativou.push(o.nome);
   }
+  // a que sumiu da lista foi excluída (2.4: as caixinhas não ficam desativadas)
+  const ficam = new Set(depois.map((o) => o.id));
+  const excluiu = antes.filter((o) => !ficam.has(o.id)).map((o) => o.nome);
   const partes = [
     incluiu.length ? `incluiu ${e(incluiu)}` : '', renomeou.length ? `renomeou ${e(renomeou)}` : '', mudouDePasta.length ? `levou ${e(mudouDePasta)}` : '',
-    desativou.length ? `desativou ${e(desativou)}` : '', reativou.length ? `reativou ${e(reativou)}` : '',
+    desativou.length ? `desativou ${e(desativou)}` : '', reativou.length ? `reativou ${e(reativou)}` : '', excluiu.length ? `excluiu ${e(excluiu)}` : '',
   ].filter(Boolean);
   if (!partes.length && antes.map((o) => o.id).join() !== depois.map((o) => o.id).join()) partes.push('mudou a ordem');
   return partes;
@@ -628,6 +655,9 @@ export function normalizarValorDoCampo(campo: Pick<CampoPersonalizado, 'nome' | 
       if (campo.tipo === 'lista' && ids.length > 1) return erro('escolha uma opção só');
       return { ok: true, valor: campo.tipo === 'lista' ? ids[0]! : ids };
     }
+    // o documento (2.4) é o que foi anexado: o Gestor conta os arquivos sozinho
+    case 'documento':
+      return erro('anexe o arquivo pela ficha (o Anexar do campo)');
     default:
       return erro('tipo de campo desconhecido');
   }
@@ -640,6 +670,7 @@ export function textoDoValor(campo: Pick<CampoPersonalizado, 'tipo' | 'opcoes'>,
     case 'numero': return typeof v === 'number' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 6 }) : String(v);
     case 'data': { const m = DATA_ISO.exec(String(v)); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v); }
     case 'sim_nao': return v === true ? 'Sim' : v === false ? 'Não' : String(v);
+    case 'documento': return typeof v === 'number' ? `${v} ${v === 1 ? 'arquivo' : 'arquivos'}` : String(v);
     case 'lista':
     case 'lista_varios':
     case 'caixinhas':
@@ -1374,20 +1405,45 @@ export const CampoGravarSchema = z.object({
   if (c.tipo === 'modulos' && !c.produtoId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['produtoId'], message: 'Escolha o produto: os módulos são os dele' });
   if (c.escolhidosEm && c.tipo !== 'modulos') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['escolhidosEm'], message: 'Só os módulos do produto seguem outro campo' });
   if (!temOpcoesEscritas(c.tipo)) return;
-  // a que se inclui na hora pode começar vazia: as opções nascem nos chamados
-  if (!c.opcoes.some((o) => o.ativa) && !(c.tipo === 'lista' && c.incluirNaHora)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: c.tipo === 'caixinhas' ? 'As caixinhas precisam de pelo menos uma opção' : 'A lista precisa de pelo menos uma opção' });
+  // a que se inclui na hora pode começar vazia: as opções nascem nos chamados; as caixinhas também (2.4, o Luan: "quero poder
+  // deixar todos os testes desativados" — o campo sem caixinha nenhuma não conta na parte)
+  if (!c.opcoes.some((o) => o.ativa) && !(c.tipo === 'lista' && c.incluirNaHora) && c.tipo !== 'caixinhas') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'A lista precisa de pelo menos uma opção' });
   }
+  opcoesSemRepetir(c.opcoes, ctx);
+}).transform((c) => (c.tipo === 'documento' ? { ...c, anexos: true, opcoes: [] } : c));
+/**
+ * Só as caixinhas do campo (2.3, o "Editar as caixinhas" do card: criar, renomear, tirar, mudar a ordem e as pastas), sem
+ * mexer no resto do campo. Vale para todos os cards do painel. Desde o 2.4 a que sai é excluída de verdade (o Luan: "aqui eu
+ * quero excluir de fato e n desativar"): some de todos os cards, mesmo dos que a marcaram; a auditoria guarda a lista de antes.
+ * Pode ficar sem nenhuma.
+ */
+export const CaixinhasGravarSchema = z.object({ opcoes: OpcoesGravarSchema }).superRefine((c, ctx) => {
   opcoesSemRepetir(c.opcoes, ctx);
 });
 /**
- * Só as caixinhas do campo (2.3, o "Editar as caixinhas" do card: criar, renomear, tirar, mudar a ordem e as pastas), sem
- * mexer no resto do campo. Vale para todos os cards do painel; a que sai fica desativada (o card que a marcou continua com ela).
+ * Os grupos de campos do painel (2.4, o Luan: "tem q ter um conjunto para eu alterar as abas laterais, desativar ou ativar,
+ * incluir novos grupo de campos, ou excluir/desativar"): a lista inteira, na ordem da ficha. `antes` é o nome que o grupo
+ * tinha (renomear leva os campos junto); `ativo` liga ou desliga todos os campos do grupo de uma vez. O grupo que existia e
+ * não veio é excluído, com os campos dele.
  */
-export const CaixinhasGravarSchema = z.object({ opcoes: OpcoesGravarSchema }).superRefine((c, ctx) => {
-  if (!c.opcoes.some((o) => o.ativa)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'As caixinhas precisam de pelo menos uma opção' });
-  opcoesSemRepetir(c.opcoes, ctx);
+export const GruposGravarSchema = z.object({
+  grupos: z.array(z.object({
+    nome: z.string().trim().min(1, 'Dê um nome ao grupo').max(40, 'O nome do grupo vai até 40 letras'),
+    antes: z.string().trim().max(40).nullish().transform((v) => v || null),
+    lugar: z.enum(LUGARES_DO_GRUPO).default('meio'),
+    ativo: z.boolean().default(true),
+  })).max(20, 'Um painel vai até 20 grupos de campos'),
+}).superRefine((g, ctx) => {
+  const vistos = new Set<string>();
+  for (const x of g.grupos) {
+    const k = paraBusca(x.nome);
+    if (vistos.has(k)) { ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['grupos'], message: `Dois grupos com o nome ${x.nome}` }); return; }
+    vistos.add(k);
+  }
 });
+export type GruposGravar = z.infer<typeof GruposGravarSchema>;
+export type GruposGravarEntrada = z.input<typeof GruposGravarSchema>;
 /** Os campos do sistema que o painel usa (desligados) e as opções do Tipo. */
 export const CamposDoSistemaSchema = z.object({
   desligados: z.array(z.enum(CAMPOS_DO_SISTEMA)).max(CAMPOS_DO_SISTEMA.length).default([]),
@@ -1506,6 +1562,8 @@ export const ChamadoAlterarSchema = z.object({
   valoresDosProdutos: ValoresDosProdutosSchema.nullable().optional(),
   ativacao: ValorEmCentavosSchema.nullable().optional(),
   ativacoesDosProdutos: ValoresDosProdutosSchema.nullable().optional(),
+  /** as condições especiais da negociação (2.4; 2.4.1: o desconto na mensalidade, com prazo ou sem, e na ativação, a ativação em vezes ou mais tarde); nulo tira */
+  condicoes: CondicoesDaNegociacaoSchema.nullable().optional(),
   empresa: TextoOpcional(120).optional(),
   motivoPerda: TextoOpcional(200).optional(),
 });
@@ -1989,6 +2047,8 @@ export type CartaoChamado = {
   ativacao: number | null;
   /** a ativação de cada produto, pelo id */
   ativacoesDosProdutos: ValoresDosProdutos;
+  /** a negociação: o que foi combinado além do valor (as Condições especiais: o desconto na mensalidade e na ativação, a ativação em vezes ou mais tarde) */
+  condicoes: CondicoesDaNegociacao | null;
   empresa: string | null;
   /** como acabou (a etapa final do painel de Vendas: Ganho ou Perdido) e, no Perdido, o motivo */
   resultado: ResultadoDaVenda | null;
@@ -2022,7 +2082,7 @@ export const TIPOS_EVENTO = [
   'implantacao', 'cadastro',
   // o anexo de um campo do card ou de uma caixinha (2.3)
   'anexo',
-  // o /nia no card (2.4): a pessoa aplicou o que a NIA propôs (a frase é o resumo do que foi gravado)
+  // o /nia no card (2.4.2): a pessoa aplicou o que a NIA propôs (a frase é o resumo do que foi gravado)
   'nia',
 ] as const;
 export type TipoEvento = (typeof TIPOS_EVENTO)[number];
@@ -2317,7 +2377,7 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'reaberto': return `reabriu ${d.venda ? 'a negociação' : 'o chamado'}${d.motivo ? `: ${d.motivo}` : ''}`;
     case 'painel': return `passou do painel ${d.de} para ${d.para}`;
     case 'ia': return `preencheu com a IA: ${(d.campos as string[] | undefined)?.join(', ') || 'nada mudou'}`;
-    // o /nia (2.4): "aplicou a NIA (Corrigir o português): mudou Relato do cliente e Causa" — a frase é o resumo
+    // o /nia (2.4.2): "aplicou a NIA (Corrigir o português): mudou Relato do cliente e Causa" — a frase é o resumo
     case 'nia': {
       const resumo = typeof d.resumo === 'string' && d.resumo.trim() ? d.resumo.trim() : `NIA: ${emLista((d.campos as string[] | undefined) ?? []) || 'nada mudou'}`;
       return `aplicou a ${/^NIA\b/.test(resumo) ? resumo : `NIA: ${resumo}`}`;

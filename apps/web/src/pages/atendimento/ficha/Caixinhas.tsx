@@ -37,8 +37,9 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
   const checklist = c.tipo === 'modulos' && !!c.escolhidosEm;
   const fonte = checklist ? doModulo.campos.find((x) => x.id === c.escolhidosEm) : undefined;
   const doChecklist = checklist ? modulosDoChecklist(c, { ...f.campos, [c.id]: marcados }) : null;
-  // as ativas e as desativadas que ficaram marcadas (o módulo que foi para a lixeira, por exemplo)
-  const opcoes = doChecklist ? doChecklist.opcoes : c.opcoes.filter((o) => o.ativa || marcados.includes(o.id));
+  // as ativas e, nos módulos, as desativadas que ficaram marcadas (o módulo que foi para a lixeira); a caixinha excluída (2.4) sai
+  // de todos os cards
+  const opcoes = doChecklist ? doChecklist.opcoes : c.opcoes.filter((o) => o.ativa || (c.tipo === 'modulos' && marcados.includes(o.id)));
   const fora = doChecklist?.foraDaEscolha ?? new Set<string>();
   const pastas = c.tipo === 'caixinhas' ? pastasDasCaixinhas(opcoes) : [{ pasta: null, opcoes }];
   const emPastas = pastas.some((p) => p.pasta !== null);
@@ -87,7 +88,7 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
       {!opcoes.length ? (
         <p className="text-[13px] text-muted italic">
           {checklist ? `Nenhum módulo escolhido em ${fonte?.nome ?? 'a escolha dos módulos'}${fonte?.parte ? ` (${fonte.parte})` : ''}.`
-            : c.tipo === 'modulos' ? 'O produto ainda não tem módulos no catálogo (Administração › Produtos).' : podeEditar ? 'Nenhuma caixinha: crie no Editar as caixinhas.' : 'Nenhuma caixinha: as opções são criadas em Painéis › Ajustes › Campos.'}
+            : c.tipo === 'modulos' ? 'O produto ainda não tem módulos no catálogo (Administração › Produtos).' : podeEditar ? 'Nenhuma caixinha por enquanto: inclua no Editar as caixinhas.' : 'Nenhuma caixinha por enquanto.'}
         </p>
       ) : emPastas ? (
         <div className="flex flex-col gap-1.5">
@@ -205,7 +206,7 @@ function JanelaDasCaixinhas({ c, onFechar }: { c: CampoPersonalizado; onFechar: 
         <button type="button" className="btn-primary" id="caixinhas-salvar" disabled={salvando} onClick={() => void salvar()}>{salvando ? <Spinner className="text-white" /> : 'Salvar'}</button>
       </>}>
       <p className="text-[13px] text-ink-2 mb-3">
-        Vale para todos os cards{painel ? ` do painel ${painel.nome}` : ''}. A caixinha que um card já marcou continua marcada nele, mesmo desativada.
+        Vale para todos os cards{painel ? ` do painel ${painel.nome}` : ''}. A caixinha excluída some de todos eles, mesmo dos que já a marcaram; o campo pode ficar sem nenhuma.
       </p>
       <EditorDasCaixinhas id="ficha-caixinhas" pastas={pastas} onChange={(p) => { setPastas(p); setErro(''); }} />
     </Modal>

@@ -140,7 +140,7 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
   const acao = useAcao();
   const falta = faltando.has(chave);
   const caixa = useRef<HTMLTextAreaElement>(null);
-  // o /nia (2.4): em qualquer campo de texto do card; a NIA lê o que está gravado, e o editor fecha quando ela aceita o pedido
+  // o /nia (2.4.2): em qualquer campo de texto do card; a NIA lê o que está gravado, e o editor fecha quando ela aceita o pedido
   const nia = useNiaNoCampo({ campo: chave, caixa, texto, setTexto, salvo: valor, aoMandar: () => { setEditando(false); acao.limpar(); } });
   // o card sem relato (o card novo, a ligação): a dica do /nia criar-chamado
   const dicaDaNia = nia.disponivel && chave === 'relato' && !valor.trim();

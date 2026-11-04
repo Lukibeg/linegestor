@@ -311,8 +311,10 @@ describe('o quadro, o resumo, o relatório e o CSV', () => {
     expect(rel.negociacoes.find((n) => n.id === rel.numeros.perdidos.ids[0])).toMatchObject({
       titulo: '10 ramais a mais', empresa: 'Escola Aprender', responsavel: 'Diego Farias', resultado: 'perdido', motivoPerda: 'Preço', valor: 300_000,
     });
-    // trinta dias para trás não é um mês: comparado com os trinta dias de antes
-    expect(rel.anterior).toMatchObject({ nome: 'o período anterior', ate: somarDias(de, -1) });
+    // trinta dias para trás não é um mês: comparado com os trinta dias de antes (no dia 31, o período é o mês inteiro, e a
+    // comparação é com o mês passado inteiro)
+    if (de.endsWith('-01') && somarDias(hoje(), 1).endsWith('-01')) expect(rel.anterior.ate).toBe(somarDias(de, -1));
+    else expect(rel.anterior).toMatchObject({ nome: 'o período anterior', ate: somarDias(de, -1) });
   });
 
   it('o relatório do mês: comparado com o mesmo pedaço do mês passado', async () => {
@@ -320,7 +322,8 @@ describe('o quadro, o resumo, o relatório e o CSV', () => {
     const r = (await camila.get(`/atendimento/vendas?painel=COM&de=${mes}-01&ate=${hoje()}`)).json() as RelatorioDeVendas;
     const ontemNoMes = somarDias(hoje(), -1).startsWith(mes);
     expect(r.numeros.ganhos.valor).toBe((ontemNoMes ? 1_250_000 : 0) + 900_000 + 600_000);
-    expect(r.anterior.nome).toMatch(/^o mesmo período de /);
+    // no último dia do mês, o período é o mês inteiro: comparado com o mês passado inteiro
+    expect(r.anterior.nome).toMatch(somarDias(hoje(), 1).endsWith('-01') ? /^[a-zç]+$/ : /^o mesmo período de /);
     expect(r.anterior.numeros.ganhos.qtd).toBe(0);
     // os ganhos mês a mês: os 12 meses até o de hoje; o de hoje com as ganhas do período, e a janela acha cada uma
     expect(r.meses).toHaveLength(12);

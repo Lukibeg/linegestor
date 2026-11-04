@@ -127,7 +127,7 @@ export async function lerChamado(app: FastifyInstance, ref: string): Promise<Cha
  */
 export type OpcoesParaIntegracao = {
   /**
-   * o caminho é o valor que o PATCH aceita; a descrição e o de-para (os apelidos, 2.4) são o vocabulário de cada assunto,
+   * o caminho é o valor que o PATCH aceita; a descrição e o de-para (os apelidos, 2.4.2) são o vocabulário de cada assunto,
    * para a NIA entender o jeito da equipe e do cliente chamarem a mesma coisa
    */
   assuntos: Array<{ id: string; nome: string; caminho: string; painelSigla: string; descricao: string | null; dePara: string[] }>;

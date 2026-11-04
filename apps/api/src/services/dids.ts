@@ -106,7 +106,7 @@ export async function createRange(db: Db, data: DidCriarFaixa) {
   }
   const rows = numbers.map((n) => ({ id: newId(), number: n, circuitId: data.circuitId, clientId: data.clientId ?? null, inUse: false, ownerClientId: data.ownerClientId ?? null, note: data.note ?? null }));
   for (let i = 0; i < rows.length; i += 500) await db.insert(dids).values(rows.slice(i, i + 500));
-  return { created: rows.length, first: numbers[0]!, last: numbers[numbers.length - 1]! };
+  return { created: rows.length, first: numbers[0]!, last: numbers[numbers.length - 1]!, numbers };
 }
 
 /**
@@ -143,7 +143,7 @@ export async function bulkUpdate(db: Db, data: DidEditarEmMassa) {
 
 export async function bulkDelete(db: Db, ids: string[]) {
   const rows = await db.update(dids).set({ deletedAt: new Date() }).where(and(inArray(dids.id, ids), isNull(dids.deletedAt))).returning({ id: dids.id });
-  return { affected: rows.length };
+  return { affected: rows.length, ids: rows.map((r) => r.id) };
 }
 
 export async function restore(db: Db, id: string) {

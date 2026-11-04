@@ -166,7 +166,7 @@ O `publicar.sh` faz backup antes, baixa o código, reconstrói, aplica as migra�
 considera pronto quando o sistema responde. Se não responder, ele mostra o registro e diz como
 voltar à versão anterior (`git reset --hard HEAD~1 && ./scripts/publicar.sh`).
 
-### O certificado da NIA (o /nia no card, 2.4)
+### O certificado da NIA (o /nia no card, 2.4.2)
 
 O /nia do card fala com a **NIA** (a IA do suporte) pelo servidor do Gestor. Enquanto o painel da NIA
 não tiver domínio, o HTTPS dela é da **CA interna do Caddy de lá** — um certificado que nenhum sistema

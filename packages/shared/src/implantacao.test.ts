@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
+import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
 import {
   etapaDoFimDaImplantacao,
+  gruposDoPainel, gruposNaLateral, mesmoGrupo,
   MODELO_DA_IMPLANTACAO, opcaoDoModelo, modulosDoChecklist, modulosSemMarcar, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
   planoDaImplantacao, planoDoCadastro, progressoDasPartes, tituloDaImplantacao,
 } from './implantacao.js';
@@ -46,6 +47,51 @@ describe('as partes da ficha', () => {
     expect(p[0]!.blocos.map((b) => b.produtoId)).toEqual([null, 'pbx', 'chat']);
   });
 
+  it('a parte de produto mostra todos os produtos do chamado, mesmo sem campo (2.4: "era pra ter um campo da voicenet mesmo que vazio")', () => {
+    const p = partesDoChamado(CAMPOS, ['chat', 'voz'], {});
+    expect(p.map((x) => [x.nome, x.blocos.map((b) => [b.produtoId, b.campos.length])])).toEqual([
+      ['Curadoria', [[null, 1], ['chat', 1], ['voz', 0]]],
+      ['Configuração', [['chat', 2], ['voz', 0]]],
+    ]);
+    // só com a VoiceNet: a Curadoria aparece (o geral e o bloco vazio); a Configuração, só com o bloco vazio
+    expect(partesDoChamado(CAMPOS, ['voz'], {}).map((x) => [x.nome, x.blocos.map((b) => [b.produtoId, b.campos.length])])).toEqual([
+      ['Curadoria', [[null, 1], ['voz', 0]]],
+      ['Configuração', [['voz', 0]]],
+    ]);
+    // sem produto nenhum, a parte só de produto não aparece
+    expect(partesDoChamado(CAMPOS, [], {}).map((x) => x.nome)).toEqual(['Curadoria']);
+  });
+
+  it('seguem a ordem dos grupos do painel; os da lateral vão para baixo da Classificação (2.4)', () => {
+    const grupos = [{ nome: 'configuracao', lugar: 'meio' as const }, { nome: 'Curadoria', lugar: 'meio' as const }];
+    expect(partesDoChamado(CAMPOS, ['chat'], {}, grupos).map((x) => x.nome)).toEqual(['Configuração', 'Curadoria']);
+    const lateral = [{ nome: 'Curadoria', lugar: 'lateral' as const }];
+    expect(partesDoChamado(CAMPOS, ['chat'], {}, lateral).map((x) => x.nome)).toEqual(['Configuração']);
+    expect(gruposNaLateral(CAMPOS, ['chat'], lateral).map((g) => [g.nome, g.campos.map((c) => c.id)])).toEqual([['Curadoria', ['geral', 'usuarios']]]);
+  });
+
+  it('os grupos do painel: os guardados primeiro, os dos campos depois; ativo com algum campo ativo (2.4)', () => {
+    const g = gruposDoPainel([{ nome: 'Testes', lugar: 'lateral' }, { nome: 'curadoria', lugar: 'meio' }], CAMPOS);
+    expect(g.map((x) => [x.nome, x.lugar, x.campos.length, x.ativo])).toEqual([
+      ['Testes', 'lateral', 0, true], ['curadoria', 'meio', 4, true], ['Configuração', 'meio', 3, true],
+    ]);
+    const tudoDesligado = CAMPOS.map((c) => (c.parte === 'Configuração' ? { ...c, ativo: false } : c));
+    expect(gruposDoPainel([], tudoDesligado).find((x) => x.nome === 'Configuração')?.ativo).toBe(false);
+    expect(mesmoGrupo('Configuração', 'configuracao')).toBe(true);
+    expect(mesmoGrupo('', '')).toBe(false);
+  });
+
+  it('o documento conta feito com o primeiro arquivo e não se escreve à mão (2.4)', () => {
+    const doc = campo('ura', { tipo: 'documento', parte: 'Curadoria' });
+    expect(contaDoCampo(doc, null)).toEqual({ feitos: 0, total: 1 });
+    expect(contaDoCampo(doc, 2)).toEqual({ feitos: 1, total: 1 });
+    expect(textoDoValor(doc, 2)).toBe('2 arquivos');
+    expect(normalizarValorDoCampo(doc, 'oi').ok).toBe(false);
+    expect(CampoGravarSchema.parse({ nome: 'URA', tipo: 'documento' }).anexos).toBe(true);
+    expect(tipoTroca('texto_longo', 'documento')).toBe(true);
+    expect(tipoTroca('lista', 'documento')).toBe(false);
+  });
+
   it('o cartão mostra a parte com o nome da etapa', () => {
     const partes = progressoDasPartes(CAMPOS, ['chat'], {});
     expect(parteDaEtapa(partes, 'configuracao')?.parte).toBe('Configuração');
@@ -87,10 +133,12 @@ describe('as caixinhas', () => {
 });
 
 describe('o campo e a etapa nos Ajustes', () => {
-  it('os módulos pedem o produto; as caixinhas, uma opção', () => {
+  it('os módulos pedem o produto; as caixinhas podem ficar sem nenhuma (2.4)', () => {
     expect(CampoGravarSchema.safeParse({ nome: 'Módulos', tipo: 'modulos' }).success).toBe(false);
     expect(CampoGravarSchema.safeParse({ nome: 'Módulos', tipo: 'modulos', produtoId: 'p' }).success).toBe(true);
-    expect(CampoGravarSchema.safeParse({ nome: 'Testes', tipo: 'caixinhas' }).success).toBe(false);
+    // "quero poder deixar todos os testes desativados"
+    expect(CampoGravarSchema.safeParse({ nome: 'Testes', tipo: 'caixinhas' }).success).toBe(true);
+    expect(CampoGravarSchema.safeParse({ nome: 'Sistema', tipo: 'lista' }).success).toBe(false);
     const ok = CampoGravarSchema.parse({ nome: 'Testes', tipo: 'caixinhas', opcoes: [{ nome: 'Login' }], parte: ' ', produtoId: '' });
     expect(ok.parte).toBeNull();
     expect(ok.produtoId).toBeNull();
@@ -163,13 +211,15 @@ describe('o modelo do painel Implantação', () => {
     for (const c of MODELO_DA_IMPLANTACAO.campos) expect(!!c.anexos, c.nome).toBe(c.parte === 'Curadoria' && c.tipo !== 'modulos');
     // sem o CRM usado ("n precisa disso n")
     expect(MODELO_DA_IMPLANTACAO.campos.some((c) => c.nome === 'CRM usado')).toBe(false);
-    // os módulos: escolhidos na Curadoria, o checklist na Configuração (de cada produto)
+    // os módulos: escolhidos na Curadoria, o checklist na Configuração (de cada produto); saiu no 2.4 e voltou no 2.4.1
     for (const produto of ['linechat', 'linepbx'] as const) {
       const doProduto = MODELO_DA_IMPLANTACAO.campos.filter((c) => c.produto === produto && c.tipo === 'modulos');
       expect(doProduto.map((c) => [c.nome, c.parte, c.escolhidosEm ?? null])).toEqual([
         ['Módulos a ativar', 'Curadoria', null], ['Ativação dos módulos', 'Configuração', 'Módulos a ativar'],
       ]);
     }
+    // os grupos de campos, na ordem das etapas
+    expect(MODELO_DA_IMPLANTACAO.ajustes.partes.map((g) => [g.nome, g.lugar])).toEqual([['Curadoria', 'meio'], ['Configuração', 'meio'], ['Testes', 'meio']]);
   });
 
   it('a Configuração do ambiente do LinePBX vem em pastas: Servidor, Asterisk, LinePBX Web, Módulos e Telefones', () => {
@@ -196,10 +246,10 @@ describe('as pastas das caixinhas (2.3)', () => {
     expect(mudancasDasCaixinhas(antes, [antes[1]!, antes[0]!, antes[2]!, antes[3]!])).toEqual(['mudou a ordem']);
     expect(mudancasDasCaixinhas(antes, antes)).toEqual([]);
   });
-  it('o Editar as caixinhas: pelo menos uma ativa, sem nome repetido, a pasta até 40 letras', () => {
+  it('o Editar as caixinhas: pode ficar vazio (2.4), sem nome repetido, a pasta até 40 letras', () => {
     expect(CaixinhasGravarSchema.safeParse({ opcoes: [{ nome: 'Ramais', pasta: 'Asterisk' }] }).success).toBe(true);
     expect(CaixinhasGravarSchema.parse({ opcoes: [{ nome: 'Ramais', pasta: '' }] }).opcoes[0]!.pasta).toBeNull();
-    expect(CaixinhasGravarSchema.safeParse({ opcoes: [{ nome: 'Ramais', ativa: false }] }).success).toBe(false);
+    expect(CaixinhasGravarSchema.safeParse({ opcoes: [] }).success).toBe(true);
     expect(CaixinhasGravarSchema.safeParse({ opcoes: [{ nome: 'Ramais' }, { nome: 'ramais' }] }).success).toBe(false);
     expect(CaixinhasGravarSchema.safeParse({ opcoes: [{ nome: 'Ramais', pasta: 'x'.repeat(41) }] }).success).toBe(false);
   });

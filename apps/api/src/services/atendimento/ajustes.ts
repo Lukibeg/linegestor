@@ -15,7 +15,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
-import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { newId, products, ticketFields, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, MODELO_DA_IMPLANTACAO, temOpcoesEscritas,
@@ -28,6 +28,7 @@ import {
   type CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
   type Painel, type PainelGravarSchema, type TipoEtapa,
   mudancasDasCaixinhas, nomeCompletoDoCampo, opcaoDoModelo, type CaixinhasGravarSchema, type OpcaoDoModelo,
+  gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO, type GrupoDeCampos, type GruposGravar,
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
@@ -165,6 +166,8 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     // os motivos de perda e a meta (do painel de Vendas): sem o campo no pedido, ficam como estão
     motivosDePerda: etiquetasUnicas(d.ajustes.motivosDePerda ?? guardados?.motivosDePerda ?? deFabrica.motivosDePerda),
     metaMensal: d.ajustes.metaMensal !== undefined ? d.ajustes.metaMensal : guardados?.metaMensal ?? null,
+    // os grupos de campos (2.4) mudam na aba Campos: salvar o painel não mexe neles (o novo do modelo nasce com os do modelo)
+    partes: guardados?.partes ?? modelo?.ajustes.partes ?? [],
     // a negociação não tem prazo nem fecha sozinha
     ...(tipo === 'vendas' ? { contaPrazo: false, fecharSozinhoDias: null } : {}),
     // a implantação também não (2.3: leva o tempo dela)
@@ -688,7 +691,8 @@ function conferirCampo(p: typeof ticketPanels.$inferSelect, outros: CampoPersona
   // o mesmo nome pode estar em produtos diferentes (2.3: o Horário de atendimento do LineChat e o do LinePBX)
   const igual = outros.find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome) && (c.produtoId ?? null) === (d.produtoId ?? null));
   if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
-  if (atual && atual.tipo !== d.tipo) throw new BadRequest(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
+  // o texto curto, o longo e o documento trocam entre si (2.4: "aqui tem q ter o tipo, documento"); os outros não
+  if (atual && !tipoTroca(atual.tipo, d.tipo)) throw new BadRequest(`O tipo do campo ${atual.nome} (${NOME_TIPO_CAMPO[atual.tipo]}) não muda para ${NOME_TIPO_CAMPO[d.tipo]}. Crie outro campo e exclua este.`);
   if (!temOpcoesEscritas(d.tipo)) return [];
   return opcoesConferidas(d.tipo, d.opcoes, atual?.opcoes ?? []);
 }
@@ -710,15 +714,19 @@ function conferirEscolhidosEm(outros: CampoPersonalizado[], d: CampoGravar, atua
 /**
  * As opções gravadas: a que vem com id é do campo; a sem id é nova; a que não veio fica desativada (o chamado que já a tem
  * continua com ela). A pasta (2.3) só nas caixinhas. O nome não repete (a desativada conta).
+ *
+ * As caixinhas (2.4, o Luan: "aqui eu quero excluir de fato e n desativar"): a que não veio é excluída — some do campo e dos
+ * cards que a marcaram (a auditoria guarda a lista de antes); não há caixinha desativada.
  */
 function opcoesConferidas(tipo: CampoPersonalizado['tipo'], vindas: CampoGravar['opcoes'], existentes: OpcaoDoCampo[]): OpcaoDoCampo[] {
   const pasta = (p: string | null | undefined) => (tipo === 'caixinhas' && p ? { pasta: p } : {});
-  const opcoes: OpcaoDoCampo[] = vindas.map((o) => {
-    if (!o.id) return { id: newId(), nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
+  const caixinhas = tipo === 'caixinhas';
+  const opcoes: OpcaoDoCampo[] = vindas.filter((o) => !caixinhas || o.ativa).map((o) => {
+    if (!o.id) return { id: newId(), nome: o.nome, ativa: caixinhas || o.ativa, ...pasta(o.pasta) };
     if (!existentes.some((x) => x.id === o.id)) throw new BadRequest(`A opção ${o.nome} não é deste campo. Recarregue a tela e tente de novo.`);
-    return { id: o.id, nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
+    return { id: o.id, nome: o.nome, ativa: caixinhas || o.ativa, ...pasta(o.pasta) };
   });
-  for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
+  if (!caixinhas) for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
   const vistas = new Set<string>();
   for (const o of opcoes) {
     if (vistas.has(paraBusca(o.nome))) throw new BadRequest(`Duas opções com o nome ${o.nome} (uma delas pode estar desativada).`);
@@ -737,7 +745,9 @@ async function gravarOndeEPedido(tx: Tx, p: typeof ticketPanels.$inferSelect, ca
   const etapas = await tx.select().from(ticketStages).where(and(eq(ticketStages.panelId, p.id), isNull(ticketStages.deletedAt))).orderBy(asc(ticketStages.sortOrder));
   const pedidas = new Set(ativo ? d.etapas : []);
   for (const id of pedidas) if (!etapas.some((e) => e.id === id)) throw new BadRequest('Uma das etapas escolhidas não é deste painel. Recarregue a tela e tente de novo.');
-  const ajustes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
+  // os ajustes relidos na transação: excluir vários campos de uma vez (2.4, um grupo) chama aqui uma vez por campo
+  const [fresco] = await tx.select({ settings: ticketPanels.settings }).from(ticketPanels).where(eq(ticketPanels.id, p.id)).limit(1);
+  const ajustes = ajustesDoPainelCompletos((fresco?.settings ?? p.settings) as Partial<AjustesDoPainel>);
   const abrir = ativo && d.obrigatorioAoAbrir;
   const obrigatoriosAoAbrir = [...ajustes.obrigatoriosAoAbrir.filter((k) => k !== chave), ...(abrir ? [chave] : [])];
   await tx.update(ticketPanels).set({ settings: { ...ajustes, obrigatoriosAoAbrir } }).where(eq(ticketPanels.id, p.id));
@@ -792,7 +802,7 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
   let pedido: string[] = [];
   await db.transaction(async (tx) => {
     await tx.update(ticketFields).set({
-      name: d.nome, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date(),
+      name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date(),
       section: d.parte, productId: d.produtoId, followsFieldId: antes.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos,
     }).where(eq(ticketFields.id, id));
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
@@ -801,7 +811,7 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
   const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
   return {
     valor: c,
-    resumo: `${como} o campo ${c.nome} no painel ${p.name}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}`,
+    resumo: `${como} o campo ${c.nome} no painel ${p.name}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}${antes.tipo !== c.tipo ? ` (era ${NOME_TIPO_CAMPO[antes.tipo]}; agora ${NOME_TIPO_CAMPO[c.tipo]})` : ''}`,
     antes: campoParaAuditoria(antes), depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
   };
 }
@@ -877,6 +887,145 @@ export async function ordenarCampos(app: FastifyInstance, painelId: string, ids:
   });
   const depois = await carregarCampos(db, painelId);
   return { valor: depois, resumo: `Mudou a ordem dos campos do painel ${p.name}: ${depois.map((c) => c.nome).join(', ')}` };
+}
+
+// =====================================================================
+//  EXCLUIR UM CAMPO E OS GRUPOS DE CAMPOS (2.4)
+// =====================================================================
+
+/** Os nomes dos campos com o produto ("Testes realizados (LinePBX)"), para o resumo da auditoria. */
+async function nomesDosCampos(db: Db, campos: readonly CampoPersonalizado[]): Promise<string[]> {
+  const doCatalogo = await db.select({ id: products.id, nome: products.name }).from(products);
+  return campos.map((c) => nomeCompletoDoCampo(c, doCatalogo));
+}
+
+/**
+ * Exclui campos do painel, dentro da transação de quem chamou (2.4, o Luan: "eu quero poder excluir os campos e n só
+ * desativar"): saem dos Ajustes, da ficha, do Abrir chamado e das regras (para abrir e de cada etapa), e o nome fica livre. O
+ * que os chamados preencheram fica guardado e volta com o Restaurar. O campo que outro segue (a escolha dos módulos de um
+ * checklist) só sai junto com quem o segue.
+ */
+async function excluirCamposNaTransacao(tx: Tx, p: typeof ticketPanels.$inferSelect, todos: readonly CampoPersonalizado[], ids: readonly string[], agora: Date) {
+  const sai = new Set(ids);
+  const seguidor = todos.find((c) => c.escolhidosEm && sai.has(c.escolhidosEm) && !sai.has(c.id));
+  if (seguidor) throw new BadRequest(`O campo ${seguidor.nome} segue ${todos.find((c) => c.id === seguidor.escolhidosEm)?.nome ?? 'este campo'}: exclua os dois, ou mude ${seguidor.nome} antes.`);
+  for (const id of sai) await gravarOndeEPedido(tx, p, id, false, { obrigatorioAoAbrir: false, etapas: [] });
+  if (sai.size) await tx.update(ticketFields).set({ deletedAt: agora, updatedAt: agora }).where(inArray(ticketFields.id, [...sai]));
+}
+
+export async function excluirCampo(app: FastifyInstance, id: string): Promise<Gravado<{ ok: true }>> {
+  const db = app.db;
+  const [linha] = await db.select().from(ticketFields).where(and(eq(ticketFields.id, id), isNull(ticketFields.deletedAt))).limit(1);
+  if (!linha) throw new NotFound('Campo');
+  const p = await linhaDoPainel(db, linha.panelId).catch(() => { throw new NotFound('Campo'); });
+  const todos = await carregarCampos(db, p.id);
+  const c = todos.find((x) => x.id === id) ?? campoDaLinha(linha);
+  await db.transaction((tx) => excluirCamposNaTransacao(tx, p, todos, [id], new Date()));
+  const [nome] = await nomesDosCampos(db, [c]);
+  return {
+    valor: { ok: true },
+    resumo: `Excluiu o campo ${nome} (${NOME_TIPO_CAMPO[c.tipo]}) do painel ${p.name}${c.parte ? `, do grupo ${c.parte}` : ''}`,
+    antes: campoParaAuditoria(c),
+  };
+}
+
+/** Os campos excluídos do painel (a lista dos Excluídos, com o Restaurar), do mais recente para o mais antigo. */
+export async function camposExcluidos(db: Db, painelId: string): Promise<Array<CampoPersonalizado & { excluidoEm: string }>> {
+  await linhaDoPainel(db, painelId);
+  const linhas = await db.select({ id: ticketFields.id, em: ticketFields.deletedAt }).from(ticketFields).where(and(eq(ticketFields.panelId, painelId), isNotNull(ticketFields.deletedAt)));
+  const quando = new Map(linhas.map((l) => [l.id, l.em!]));
+  return (await carregarCampos(db, painelId, true)).map((c) => ({ ...c, excluidoEm: quando.get(c.id)!.toISOString() }))
+    .sort((a, b) => b.excluidoEm.localeCompare(a.excluidoEm));
+}
+
+/**
+ * Restaura o campo excluído: volta como estava (ativo ou não, no grupo dele), no fim da lista do painel, e o que os chamados
+ * tinham volta a aparecer. Não é pedido em lugar nenhum (as regras se marcam de novo). O nome não pode estar em uso.
+ */
+export async function restaurarCampo(app: FastifyInstance, id: string): Promise<Gravado<CampoPersonalizado>> {
+  const db = app.db;
+  const [linha] = await db.select().from(ticketFields).where(and(eq(ticketFields.id, id), isNotNull(ticketFields.deletedAt))).limit(1);
+  if (!linha) throw new NotFound('Campo');
+  const p = await linhaDoPainel(db, linha.panelId).catch(() => { throw new NotFound('Campo'); });
+  const c0 = campoDaLinha(linha);
+  const outros = await carregarCampos(db, p.id);
+  const igual = outros.find((c) => paraBusca(c.nome) === paraBusca(c0.nome) && (c.produtoId ?? null) === (c0.produtoId ?? null));
+  if (igual) throw new Conflict(`O painel ${p.name} já tem um campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}: renomeie ou exclua esse antes de restaurar.`);
+  if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw new BadRequest(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos: exclua um antes de restaurar.`);
+  // a escolha dos módulos que ele seguia pode ter saído: volta sem seguir ninguém
+  const segue = c0.escolhidosEm && outros.some((c) => c.id === c0.escolhidosEm) ? c0.escolhidosEm : null;
+  await db.update(ticketFields).set({ deletedAt: null, updatedAt: new Date(), sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, followsFieldId: segue })
+    .where(eq(ticketFields.id, id));
+  const c = (await carregarCampos(db, p.id)).find((x) => x.id === id)!;
+  const [nome] = await nomesDosCampos(db, [c]);
+  return { valor: c, resumo: `Restaurou o campo ${nome} no painel ${p.name}`, depois: campoParaAuditoria(c) };
+}
+
+/**
+ * Os grupos de campos do painel (2.4, o Luan: "tem q ter um conjunto para eu alterar as abas laterais, desativar ou ativar,
+ * incluir novos grupo de campos, ou excluir/desativar"). Vem a lista inteira, na ordem da ficha:
+ *  - o grupo novo entra vazio (os campos chegam pelo Novo campo, ou mudando a parte de um campo);
+ *  - renomear (`antes`) leva os campos junto;
+ *  - o lugar diz se o grupo fica no meio da ficha ou na lateral;
+ *  - desativar desliga todos os campos do grupo de uma vez (deixam de ser pedidos); ativar liga todos de novo;
+ *  - o grupo que existia e não veio é excluído com os campos dele (o que os chamados preencheram fica guardado; cada campo
+ *    volta pelo Restaurar).
+ */
+export async function gravarGrupos(app: FastifyInstance, painelId: string, d: GruposGravar): Promise<Gravado<GrupoDeCampos[]>> {
+  const db = app.db;
+  const p = await linhaDoPainel(db, painelId);
+  const ajustes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
+  const campos = await carregarCampos(db, painelId);
+  const antes = gruposDoPainel(ajustes.partes, campos);
+  // cada grupo que veio aponta para um que existia (pelo `antes`, ou pelo próprio nome) ou é novo
+  const usados = new Set<string>();
+  const planos = d.grupos.map((g) => {
+    const velho = antes.find((x) => mesmoGrupo(x.nome, g.antes ?? g.nome) && !usados.has(x.nome)) ?? null;
+    if (g.antes && !velho) throw new BadRequest(`O grupo ${g.antes} não existe mais. Recarregue a tela e tente de novo.`);
+    if (velho) usados.add(velho.nome);
+    return { g, velho };
+  });
+  const saem = antes.filter((x) => !usados.has(x.nome));
+  // o nome novo não pode ser o de um grupo que fica com outro nome (dois grupos virando um)
+  for (const { g, velho } of planos) {
+    const outro = antes.find((x) => x !== velho && mesmoGrupo(x.nome, g.nome) && usados.has(x.nome));
+    if (outro) throw new BadRequest(`Já existe o grupo ${outro.nome}.`);
+  }
+  const agora = new Date();
+  const mudou: string[] = [];
+  await db.transaction(async (tx) => {
+    for (const { g, velho } of planos) {
+      if (!velho) { mudou.push(`criou ${g.nome} (${NOME_LUGAR_DO_GRUPO[g.lugar].toLowerCase()})`); continue; }
+      if (velho.nome !== g.nome) {
+        if (velho.campos.length) await tx.update(ticketFields).set({ section: g.nome, updatedAt: agora }).where(inArray(ticketFields.id, velho.campos.map((c) => c.id)));
+        mudou.push(`renomeou ${velho.nome} para ${g.nome}`);
+      }
+      if (velho.lugar !== g.lugar) mudou.push(`${g.nome} foi para ${g.lugar === 'lateral' ? 'a lateral' : 'o meio da ficha'}`);
+      if (velho.campos.length && velho.ativo !== g.ativo) {
+        await tx.update(ticketFields).set({ active: g.ativo, updatedAt: agora }).where(inArray(ticketFields.id, velho.campos.map((c) => c.id)));
+        // desligado, nenhum campo do grupo é pedido (para abrir ou nas etapas)
+        if (!g.ativo) for (const c of velho.campos) await gravarOndeEPedido(tx, p, c.id, false, { obrigatorioAoAbrir: false, etapas: [] });
+        mudou.push(`${g.ativo ? 'ativou' : 'desativou'} ${g.nome} (${velho.campos.length === 1 ? '1 campo' : `${velho.campos.length} campos`})`);
+      }
+    }
+    for (const x of saem) {
+      await excluirCamposNaTransacao(tx, p, campos, x.campos.map((c) => c.id), agora);
+      mudou.push(`excluiu ${x.nome}${x.campos.length ? ` com ${x.campos.length === 1 ? 'o campo' : 'os campos'} ${lista(x.campos.map((c) => c.nome))}` : ''}`);
+    }
+    // os ajustes relidos dentro da transação: a regra "para abrir" pode ter mudado acima
+    const [agoraP] = await tx.select({ settings: ticketPanels.settings }).from(ticketPanels).where(eq(ticketPanels.id, p.id)).limit(1);
+    const atuais = ajustesDoPainelCompletos(agoraP?.settings as Partial<AjustesDoPainel>);
+    await tx.update(ticketPanels).set({ settings: { ...atuais, partes: d.grupos.map((g) => ({ nome: g.nome, lugar: g.lugar })) }, updatedAt: agora }).where(eq(ticketPanels.id, p.id));
+  });
+  const ordemMudou = antes.filter((x) => usados.has(x.nome)).map((x) => x.nome).join('|') !== planos.filter((x) => x.velho).map((x) => x.velho!.nome).join('|');
+  if (ordemMudou) mudou.push('mudou a ordem');
+  const depois = d.grupos.map((g) => ({ nome: g.nome, lugar: g.lugar }));
+  return {
+    valor: depois,
+    resumo: `Mudou os grupos de campos do painel ${p.name}${mudou.length ? `: ${mudou.join('; ')}` : ' (nada mudou)'}`,
+    antes: antes.map((x) => ({ nome: x.nome, lugar: x.lugar, ativo: x.ativo, campos: x.campos.map((c) => c.nome) })),
+    depois: d.grupos,
+  };
 }
 
 // =====================================================================

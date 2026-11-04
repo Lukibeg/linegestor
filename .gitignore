@@ -10,5 +10,5 @@ apps/web/dist-demo
 backups/
 # cópia dos ajustes de aviso gravada pelo sistema no servidor (tem o token da API de avisos)
 config/
-# os certificados do servidor (2.4: o nia-ca.crt da NIA): são da instalação, não do código
+# os certificados do servidor (2.4.2: o nia-ca.crt da NIA): são da instalação, não do código
 certs/

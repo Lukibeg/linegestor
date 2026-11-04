@@ -139,7 +139,7 @@ function Titulo() {
 
   const abrir = () => { fim.current = false; setTexto(f.titulo); acao.limpar(); setEditando(true); };
   const desistir = () => { fim.current = true; setEditando(false); acao.limpar(); };
-  // o /nia (2.4) também no título: enquanto a NIA lê (e a janela da proposta está aberta), o "sair da caixa" não grava
+  // o /nia (2.4.2) também no título: enquanto a NIA lê (e a janela da proposta está aberta), o "sair da caixa" não grava
   const nia = useNiaNoCampo({ campo: 'titulo', caixa, texto, setTexto, salvo: f.titulo, aoMandar: desistir });
   const gravar = async () => {
     if (fim.current || nia.ocupada.current) return;

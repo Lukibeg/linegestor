@@ -9,18 +9,19 @@
  */
 import { useMemo, useState } from 'react';
 import { ChevronRight, ClipboardList, Rocket } from 'lucide-react';
-import { chaveDoCampo, ehCaixinhas, paraBusca, partesDoChamado, type BlocoDaParte, type CampoPersonalizado, type ParteDoChamado } from '@gestor/shared';
+import { chaveDoCampo, ehCaixinhas, gruposNaLateral, paraBusca, partesDoChamado, type BlocoDaParte, type CampoPersonalizado, type ParteDoChamado } from '@gestor/shared';
 import { ChipSituacao, CodigoChamado, painelDe } from '../comum.js';
 import { Secao, useAberta } from './base.js';
 import { Caixinhas } from './Caixinhas.js';
 import { CampoNaFicha } from './Classificacao.js';
 import { BlocoDoCampo } from './Textos.js';
 
-/** As partes do chamado, na ordem dos campos (nada quando o painel não tem campos com parte). */
+/** As partes do chamado, na ordem dos grupos do painel (nada quando o painel não tem campos com parte). */
 export function PartesDoChamado() {
-  const { f, opcoes, etapa, faltando } = useAberta();
+  const { f, opcoes, etapa, faltando, painel } = useAberta();
   const produtos = useMemo(() => f.produtos.map((p) => p.id), [f.produtos]);
-  const partes = useMemo(() => partesDoChamado(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, f.campos), [opcoes.campos, f.painelId, produtos, f.campos]);
+  const grupos = painel?.ajustes.partes;
+  const partes = useMemo(() => partesDoChamado(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, f.campos, grupos ?? []), [opcoes.campos, f.painelId, produtos, f.campos, grupos]);
   if (!partes.length) return null;
   const daEtapa = etapa ? partes.find((p) => paraBusca(p.nome) === paraBusca(etapa.nome)) : undefined;
   // fora das etapas com o nome de uma parte (o Stand By, o Concluído, o Implantado), todas abertas; o que a próxima etapa pede, também
@@ -58,24 +59,30 @@ function Parte({ p, atual, abertaDeInicio }: { p: ParteDoChamado; atual: boolean
       </button>
       {aberta && (
         <div id={`${id}-corpo`} className="px-4 pb-4 flex flex-col gap-4">
-          {p.blocos.map((b) => <Bloco key={b.produtoId ?? '-'} b={b} />)}
+          {p.blocos.map((b) => <Bloco key={b.produtoId ?? '-'} b={b} parte={p.nome} />)}
         </div>
       )}
     </section>
   );
 }
 
-/** Os campos de um produto (ou os de todo card) numa parte. */
-function Bloco({ b }: { b: BlocoDaParte }) {
-  const { f, opcoes } = useAberta();
+/** Os campos de um produto (ou os de todo card) numa parte. O produto sem campo nesta parte (2.4) aparece vazio, com o aviso. */
+function Bloco({ b, parte }: { b: BlocoDaParte; parte: string }) {
+  const { f, opcoes, cuida } = useAberta();
   const produto = b.produtoId ? f.produtos.find((x) => x.id === b.produtoId) ?? opcoes.produtos.find((x) => x.id === b.produtoId) : null;
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" data-bloco={produto?.nome ?? 'todos'}>
       {produto && (
         <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-ink-2 mb-1.5">
           <span className="w-2 h-2 rounded-full shrink-0" style={{ background: produto.cor }} aria-hidden /> {produto.nome}
         </p>
       )}
+      {!b.campos.length ? (
+        // 2.4, o Luan: "deixe todos os produtos mesmo que n tenham alguma curadoria configurada"
+        <p className="rounded-lg border border-dashed border-line px-3.5 py-3 text-[13px] text-muted italic">
+          Nenhum campo de {parte} {produto ? `para o ${produto.nome}` : ''} ainda.{cuida ? ' Inclua em Painéis › Ajustes › Campos, no grupo ' + parte + '.' : ''}
+        </p>
+      ) : (
       <div className="rounded-lg border border-line px-3.5 py-3 flex flex-col divide-y divide-line">
         {gruposDoBloco(b.campos).map((g) => (g.curtos ? (
           // os campos curtos seguidos (os números, os textos curtos, as datas): lado a lado (2.3, os Detalhes da proposta)
@@ -84,7 +91,30 @@ function Bloco({ b }: { b: BlocoDaParte }) {
           </div>
         ) : <div key={g.campos[0]!.id} className="py-3 first:pt-0 last:pb-0 min-w-0"><CampoDaParte c={g.campos[0]!} /></div>))}
       </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Os grupos de campos da lateral (2.4, o Luan: "tem q ter um conjunto para eu alterar as abas laterais"): um cartão por grupo,
+ * abaixo da Classificação, com os campos que o chamado mostra (o texto longo e as caixinhas inteiros, os outros numa linha).
+ */
+export function GruposDaLateral() {
+  const { f, opcoes, painel } = useAberta();
+  const produtos = useMemo(() => f.produtos.map((p) => p.id), [f.produtos]);
+  const grupos = useMemo(() => gruposNaLateral(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, painel?.ajustes.partes ?? []),
+    [opcoes.campos, f.painelId, produtos, painel?.ajustes.partes]);
+  return (
+    <>
+      {grupos.map((g) => (
+        <Secao key={g.nome} id={`grupo-${paraBusca(g.nome).replace(/[^a-z0-9]+/g, '-')}`} titulo={g.nome} icone={<ClipboardList size={16} />}>
+          <div className="flex flex-col gap-3.5">
+            {g.campos.map((c) => <div key={c.id} className="min-w-0"><CampoDaParte c={c} /></div>)}
+          </div>
+        </Secao>
+      ))}
+    </>
   );
 }
 
@@ -92,7 +122,7 @@ function Bloco({ b }: { b: BlocoDaParte }) {
 function gruposDoBloco(campos: readonly CampoPersonalizado[]): Array<{ curtos: boolean; campos: CampoPersonalizado[] }> {
   const grupos: Array<{ curtos: boolean; campos: CampoPersonalizado[] }> = [];
   for (const c of campos) {
-    const curto = c.tipo !== 'texto_longo' && !ehCaixinhas(c.tipo);
+    const curto = c.tipo !== 'texto_longo' && c.tipo !== 'documento' && !ehCaixinhas(c.tipo);
     const ultimo = grupos[grupos.length - 1];
     if (curto && ultimo?.curtos) ultimo.campos.push(c);
     else grupos.push({ curtos: curto, campos: [c] });

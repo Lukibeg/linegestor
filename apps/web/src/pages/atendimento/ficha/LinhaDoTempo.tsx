@@ -97,7 +97,7 @@ const ICONE: Partial<Record<TipoEvento, typeof CircleDot>> = {
   observador: Eye, lixeira: Trash2,
   // a implantação (2.3): o card que a negociação abriu, e o Implantado que ligou no cadastro
   implantacao: Rocket, cadastro: BadgeCheck, anexo: Paperclip,
-  // o /nia (2.4): a pessoa aplicou o que a NIA propôs
+  // o /nia (2.4.2): a pessoa aplicou o que a NIA propôs
   nia: WandSparkles,
 };
 /** Frases que já dizem quem foi ("o cliente respondeu", "fechou sozinho"): sem o nome na frente. */
@@ -295,7 +295,7 @@ function Anotar() {
   const citados = useMemo(() => (texto.includes('@') ? citadosNoTexto(texto, outros) : []), [texto, outros]);
   const posicao = aberta && caixa.current ? posicaoNoTexto(caixa.current, texto, digitando!.inicio) : null;
   const largura = caixa.current?.clientWidth ?? 600;
-  // o /nia (2.4) na anotação: o rascunho vai junto para a NIA, e o que ela propuser para a anotação volta para cá
+  // o /nia (2.4.2) na anotação: o rascunho vai junto para a NIA, e o que ela propuser para a anotação volta para cá
   const nia = useNiaNoCampo({ campo: 'anotacao', caixa, texto, setTexto: (t) => { setTexto(t); setCursor(t.length); } });
 
   const lerCursor = (e: SyntheticEvent<HTMLTextAreaElement>) => setCursor(e.currentTarget.selectionStart ?? 0);

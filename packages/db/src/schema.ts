@@ -440,6 +440,38 @@ export const dids = pgTable(
   ],
 );
 
+/**
+ * As movimentações dos circuitos e dos DIDs (2.4.1): cada mudança numa linha — o circuito novo, alterado, na lixeira ou
+ * restaurado; os DIDs novos, alterados, na lixeira ou restaurados; a importação da planilha. A aba Movimentações (Circuitos
+ * e DIDs) e a ficha do circuito leem daqui. As linhas de antes do 2.4.1 vieram da auditoria (a migração 0033).
+ */
+export const circuitMovements = pgTable(
+  'circuit_movements',
+  {
+    id: id(),
+    /** Quem fez (nulo: o sistema, ou a pessoa que não existe mais) */
+    userId: text('user_id').references(() => users.id),
+    /**
+     * O que aconteceu: circuito_criado | circuito_editado | circuito_lixeira | circuito_restaurado | dids_criados |
+     * did_editado | dids_editados | dids_lixeira | did_restaurado | importacao
+     */
+    kind: text('kind').notNull(),
+    /** Os circuitos envolvidos (o DID que trocou de circuito: o de antes e o de depois) */
+    circuitIds: text('circuit_ids').array().notNull().default([]),
+    /** Os números envolvidos, só com dígitos */
+    didNumbers: text('did_numbers').array().notNull().default([]),
+    /** A frase do que aconteceu, escrita na hora ("Atribuiu o DID (71) 3034-8350 a Clínica Aurora") */
+    summary: text('summary').notNull(),
+    /**
+     * Os fatos, crus (os nomes são escritos na hora de mostrar): o antes e o depois do circuito, a senha definida ou trocada
+     * (nunca a senha), cada DID com o antes e o depois, as contas da importação. Ver DetalhesDaMovimentacao no @gestor/shared.
+     */
+    details: jsonb('details'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('circuit_movements_created_idx').on(t.createdAt)],
+);
+
 // ---------------------------------------------------------------------
 // 3. INVENTÁRIO (modelos, aparelhos, movimentações)
 // ---------------------------------------------------------------------
@@ -1617,6 +1649,12 @@ export const ticketFields = pgTable(
     acceptsAttachments: boolean('accepts_attachments').notNull().default(false),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
+    /**
+     * Excluído (2.4, o Luan: "eu quero poder excluir os campos e n só desativar"): some dos Ajustes, da ficha, do Abrir chamado e
+     * das regras, e o nome fica livre para outro campo. O que os chamados tinham fica guardado; volta com o Restaurar
+     * (Ajustes › Campos › Excluídos). Nulo: no painel.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -1722,6 +1760,14 @@ export const tickets = pgTable(
     setupCents: bigint('setup_cents', { mode: 'number' }),
     /** A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma */
     productSetup: jsonb('product_setup').$type<Record<string, number>>().notNull().default({}),
+    /**
+     * A negociação: as CONDIÇÕES ESPECIAIS (2.4, o Luan: "concedi um desconto de 200 reais até março do ano que vem, além disso a
+     * ativação só vai ser paga a partir de março tbm e dividida em 6 vezes"; refeitas no 2.4.1) — {descontos: [{valor, ate}],
+     * ativacao: {desconto, vezes, aPartirDe}, observacao}. Os descontos vêm em sequência, do 1º mês de faturamento (o do Ganho);
+     * ate nulo: sem prazo (só o último); aPartirDe nulo: no 1º mês. As do 2.4 (com o "de") são lidas sem ele. Dizem como a
+     * mensalidade e a ativação vão ser cobradas; não mudam o valor. Nulo: nada combinado.
+     */
+    negotiationTerms: jsonb('negotiation_terms'),
     /** A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) */
     prospect: text('prospect'),
     /** Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) */

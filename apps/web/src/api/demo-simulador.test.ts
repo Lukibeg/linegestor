@@ -36,7 +36,7 @@ describe('os exemplos e quem vê', () => {
     await entrar('leitor');
     expect((await erroDe(api.opcoes())).status).toBe(403);
     await entrar('camila');
-    expect(await api.opcoes()).toMatchObject({ podeEditar: true, podeCuidar: false, ajustes: { imposto: 6, verde: 35, vermelho: 20, prazo: 24 } });
+    expect(await api.opcoes()).toMatchObject({ podeEditar: true, podeCuidar: false, ajustes: { imposto: 6, verde: 35, vermelho: 20, prazo: 12 } });
     await entrar('admin');
     expect(await api.opcoes()).toMatchObject({ podeEditar: true, podeCuidar: true });
   });

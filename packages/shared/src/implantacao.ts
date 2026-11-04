@@ -19,7 +19,7 @@
 import { cnpjLimpo, paraBusca } from './formatos.js';
 import {
   valorPreenchido,
-  type AjustesDoPainel, type CampoPersonalizado, type CorPainel, type EtapaPainel, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
+  type AjustesDoPainel, type CampoPersonalizado, type CorPainel, type EtapaPainel, type GrupoDeCampos, type LugarDoGrupo, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
   type OpcaoDoCampo, type TipoCampo, type ValorDoCampo, type ValoresDosCampos, AJUSTES_PAINEL_PADRAO,
 } from './atendimento.js';
 
@@ -78,20 +78,35 @@ export function contaDoCampo(
 }
 
 /**
- * As partes do chamado, na ordem dos campos (a primeira parte é a do primeiro campo com parte): em cada uma, primeiro o
- * bloco dos campos sem produto, depois um bloco por produto, na ordem dos produtos do chamado. Só os campos que aparecem
- * (ativos, e do produto que o chamado tem).
+ * As partes do chamado: na ordem dos grupos do painel (Ajustes › Campos, 2.4) e, as que só existem nos campos, na ordem dos
+ * campos. Em cada uma, primeiro o bloco dos campos sem produto, depois um bloco por produto, na ordem dos produtos do
+ * chamado. Só os campos que aparecem (ativos, e do produto que o chamado tem); os grupos da lateral ficam de fora (vão
+ * abaixo da Classificação: `gruposNaLateral`).
+ *
+ * A parte que tem campos de produto mostra **todos os produtos do chamado**, mesmo o que não tem campo nela (2.4, o Luan na
+ * Curadoria: "deixe todos os produtos mesmo que n tenham alguma curadoria configurada, no caso era pra ter um campo da
+ * voicenet mesmo que vazio"): o bloco vazio diz que ainda não há o que preencher, e os produtos não se misturam.
  */
 export function partesDoChamado(
   campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined,
+  grupos: readonly GrupoDeCampos[] = [],
 ): ParteDoChamado[] {
   const partes: ParteDoChamado[] = [];
   const porChave = new Map<string, ParteDoChamado>();
-  for (const c of campos) {
-    if (!c.parte?.trim() || !campoAparece(c, produtosDoChamado)) continue;
-    const k = chaveDaParte(c.parte);
+  const lateral = new Set(grupos.filter((g) => g.lugar === 'lateral').map((g) => chaveDaParte(g.nome)));
+  // as partes com campo de produto (ativo): mostram um bloco por produto do chamado
+  const porProduto = new Set(campos.filter((c) => c.ativo && c.parte?.trim() && c.produtoId).map((c) => chaveDaParte(c.parte!)));
+  const parte = (nome: string) => {
+    const k = chaveDaParte(nome);
     let p = porChave.get(k);
-    if (!p) { p = { nome: c.parte.trim(), blocos: [], feitos: 0, total: 0 }; porChave.set(k, p); partes.push(p); }
+    if (!p) { p = { nome: nome.trim(), blocos: [], feitos: 0, total: 0 }; porChave.set(k, p); partes.push(p); }
+    return p;
+  };
+  for (const c of campos) {
+    if (!c.parte?.trim() || !c.ativo || lateral.has(chaveDaParte(c.parte))) continue;
+    // a parte de produto nasce mesmo sem campo do produto deste chamado (os blocos vazios entram abaixo)
+    if (!campoAparece(c, produtosDoChamado)) { if (porProduto.has(chaveDaParte(c.parte)) && produtosDoChamado.length) parte(c.parte); continue; }
+    const p = parte(c.parte);
     let b = p.blocos.find((x) => x.produtoId === c.produtoId);
     if (!b) { b = { produtoId: c.produtoId, campos: [] }; p.blocos.push(b); }
     b.campos.push(c);
@@ -99,14 +114,61 @@ export function partesDoChamado(
     p.feitos += conta.feitos;
     p.total += conta.total;
   }
+  for (const p of partes) {
+    if (!porProduto.has(chaveDaParte(p.nome))) continue;
+    for (const id of produtosDoChamado) if (!p.blocos.some((b) => b.produtoId === id)) p.blocos.push({ produtoId: id, campos: [] });
+  }
   const ordemDoProduto = (id: string | null) => (id === null ? -1 : produtosDoChamado.indexOf(id));
   for (const p of partes) p.blocos.sort((a, b) => ordemDoProduto(a.produtoId) - ordemDoProduto(b.produtoId));
-  return partes;
+  // a ordem dos grupos do painel; as que não estão nos grupos, depois, na ordem dos campos
+  const ordem = (p: ParteDoChamado) => { const i = grupos.findIndex((g) => chaveDaParte(g.nome) === chaveDaParte(p.nome)); return i < 0 ? grupos.length : i; };
+  return partes.map((p, i) => ({ p, i })).sort((a, b) => ordem(a.p) - ordem(b.p) || a.i - b.i).map((x) => x.p);
 }
 
+/**
+ * Os grupos da lateral que aparecem no chamado (2.4): cada um com os campos que aparecem (ativos, e do produto que o chamado
+ * tem), na ordem dos grupos. O grupo sem campo nenhum neste chamado fica de fora.
+ */
+export function gruposNaLateral(
+  campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], grupos: readonly GrupoDeCampos[],
+): Array<{ nome: string; campos: CampoPersonalizado[] }> {
+  return grupos.filter((g) => g.lugar === 'lateral')
+    .map((g) => ({ nome: g.nome, campos: campos.filter((c) => c.parte && chaveDaParte(c.parte) === chaveDaParte(g.nome) && campoAparece(c, produtosDoChamado)) }))
+    .filter((g) => g.campos.length > 0);
+}
+
+/** Um grupo de campos como os Ajustes mostram (2.4): o nome, onde fica, os campos (na ordem) e se está ativo. */
+export type GrupoDoPainel = { nome: string; lugar: LugarDoGrupo; campos: CampoPersonalizado[]; ativo: boolean };
+
+/**
+ * Os grupos de campos do painel (2.4): os guardados nos ajustes, na ordem deles, e os que só existem nos campos (o nome da
+ * parte escrito no campo), no fim, no meio da ficha. O grupo está ativo quando não tem campo, ou quando algum campo dele está
+ * ativo (desativar o grupo desativa os campos dele).
+ */
+export function gruposDoPainel(grupos: readonly GrupoDeCampos[], campos: readonly CampoPersonalizado[]): GrupoDoPainel[] {
+  const out: GrupoDoPainel[] = [];
+  const porChave = new Map<string, GrupoDoPainel>();
+  const incluir = (nome: string, lugar: LugarDoGrupo) => {
+    const k = chaveDaParte(nome);
+    if (porChave.has(k)) return;
+    const g: GrupoDoPainel = { nome: nome.trim(), lugar, campos: [], ativo: true };
+    porChave.set(k, g); out.push(g);
+  };
+  for (const g of grupos) incluir(g.nome, g.lugar);
+  for (const c of campos) if (c.parte?.trim()) incluir(c.parte, 'meio');
+  for (const c of campos) if (c.parte?.trim()) porChave.get(chaveDaParte(c.parte))!.campos.push(c);
+  for (const g of out) g.ativo = !g.campos.length || g.campos.some((c) => c.ativo);
+  return out;
+}
+
+/** O grupo de um nome (sem ligar para maiúscula e acento), entre os do painel. */
+export const mesmoGrupo = (a: string | null | undefined, b: string | null | undefined) => !!a?.trim() && !!b?.trim() && chaveDaParte(a) === chaveDaParte(b);
+
 /** Só a conta de cada parte (o cartão do quadro e a lista). */
-export function progressoDasPartes(campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined): ProgressoDaParte[] {
-  return partesDoChamado(campos, produtosDoChamado, valores).map((p) => ({ parte: p.nome, feitos: p.feitos, total: p.total }));
+export function progressoDasPartes(
+  campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined, grupos: readonly GrupoDeCampos[] = [],
+): ProgressoDaParte[] {
+  return partesDoChamado(campos, produtosDoChamado, valores, grupos).map((p) => ({ parte: p.nome, feitos: p.feitos, total: p.total }));
 }
 
 /**
@@ -199,6 +261,8 @@ export const MODELO_DA_IMPLANTACAO: {
     ...AJUSTES_PAINEL_PADRAO, tipos: [], contaPrazo: false, fecharSozinhoDias: null, paiEsperaFilhos: true,
     // nem o tempo gasto (2.3, o Luan: "n precisa disso")
     camposDesligados: ['assunto', 'tipo', 'gravidade', 'alcance', 'operadoras', 'relato', 'solucao', 'prioridade', 'tempo'],
+    // os grupos de campos (2.4), no meio da ficha, na ordem das etapas
+    partes: [{ nome: 'Curadoria', lugar: 'meio' }, { nome: 'Configuração', lugar: 'meio' }, { nome: 'Testes', lugar: 'meio' }],
   },
   etapas: [
     { nome: 'Stand By', tipo: 'andamento', nivel: null, obrigatorios: [] },
@@ -229,7 +293,8 @@ export const MODELO_DA_IMPLANTACAO: {
     { nome: 'Números da rota de entrada', tipo: 'texto_longo', parte: CURADORIA, produto: 'linepbx', dica: 'Os números que entram e para onde vai cada um.', opcoes: [] },
     { nome: 'Estrutura da URA', tipo: 'texto_longo', parte: CURADORIA, produto: 'linepbx', dica: 'As mensagens e as opções de cada menu.', opcoes: [] },
     { nome: MODULOS_A_ATIVAR, tipo: 'modulos', parte: CURADORIA, produto: 'linepbx', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
-    // a configuração (a equipe técnica marca o que já fez)
+    // a configuração (a equipe técnica marca o que já fez). A Ativação dos módulos saiu no 2.4 e voltou no 2.4.1 (o Luan:
+    // "gostaria de retroceder uma questão" — "Que ela volte"): o checklist dos módulos escolhidos na Curadoria
     {
       nome: 'Configuração do ambiente', tipo: 'caixinhas', parte: CONFIGURACAO, produto: 'linechat', dica: 'Marque o que já foi feito.',
       opcoes: ['Criação dos usuários', 'Criação das equipes', 'Configuração dos chatbots', 'Configuração do horário de atendimento', 'Ativação dos números'],

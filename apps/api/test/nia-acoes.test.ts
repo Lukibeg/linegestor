@@ -1,5 +1,5 @@
 /**
- * Patch 2.4 — O /NIA NO CARD (decisão 0058). A NIA (a IA do suporte, um serviço de fora) propõe; a pessoa aplica.
+ * Patch 2.4.2 — O /NIA NO CARD (decisão 0060). A NIA (a IA do suporte, um serviço de fora) propõe; a pessoa aplica.
  *
  *  - os ajustes (Painéis › Ajustes › Integrações): o endereço e a chave de serviço (no cofre, nunca volta); a chave só
  *    vai para o servidor onde foi colada; o Testar diz quantos comandos vieram

@@ -1,5 +1,5 @@
 /**
- * O /NIA NO CARD (Patch 2.4, decisão 0058): em QUALQUER campo de texto do card — o título, os textos (o relato, a
+ * O /NIA NO CARD (Patch 2.4.2, decisão 0060): em QUALQUER campo de texto do card — o título, os textos (o relato, a
  * descrição, a solução, a causa, a solução de contorno, a validação, a "Sobre a negociação", os de texto longo do
  * painel) — e na caixa da anotação, digitar "/nia" abre o menu com TODOS os comandos da NIA (o nome em destaque e,
  * embaixo, a explicação de cada um: o catálogo vem dela, comando novo aparece sozinho). Continuar digitando filtra

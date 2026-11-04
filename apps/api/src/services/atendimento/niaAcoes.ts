@@ -1,5 +1,5 @@
 /**
- * O /NIA NO CARD (Patch 2.4, decisão 0058): o Gestor é o intermediário entre a ficha e a NIA — a IA do suporte da
+ * O /NIA NO CARD (Patch 2.4.2, decisão 0060): o Gestor é o intermediário entre a ficha e a NIA — a IA do suporte da
  * Ingline, um serviço de fora, já no ar, com as "ações" sobre um chamado (corrigir, formalizar, resumir, criar o
  * chamado a partir de uma descrição livre e preencher um card vazio).
  *

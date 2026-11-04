@@ -44,7 +44,7 @@ URL = os.environ.get('PREVIA_URL', 'http://localhost:4174/')
 SAIDA = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(RAIZ, 'o-que-mudou.mp4')
 
 # ---------- os textos do patch (troque a cada patch) ----------
-CAPA = ('Patch 2.4 — o /nia no card', 'Ingline Gestão · a NIA dentro de cada card: ela propõe, você aplica')
+CAPA = ('Patch 2.4.2 — o /nia no card', 'Ingline Gestão · a NIA dentro de cada card: ela propõe, você aplica')
 FIM = ('Os detalhes estão em Novidades', 'Cada mudança, com o texto e o print, fica no menu Novidades')
 # a tela que fica atrás da capa (o roteiro começa nela): a ficha do chamado do roteiro (o `antes_do_roteiro` acha o código)
 PRIMEIRA_TELA = '/painel'
@@ -340,7 +340,7 @@ def roteiro_2_3(page):
     apontar(page, page.locator('#campo-valor'), 2600)
 
 
-# ---------- o roteiro do Patch 2.4 (troque pelo do patch novo) ----------
+# ---------- o roteiro do Patch 2.4.2 (troque pelo do patch novo) ----------
 
 # o chamado do roteiro (o primeiro da lista do Suporte) e um sem relato (a dica do criar-chamado)
 COD_2_4 = {}

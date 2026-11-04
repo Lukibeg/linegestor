@@ -182,7 +182,7 @@ const PADROES: Record<Assunto, unknown> = {
   calendario: { tipos: TIPOS_DE_EVENTO_PADRAO },
   // o Simulador do Comercial (2.0.2): o imposto, as faixas do sinal e o prazo de fábrica; a tabela e os modelos, vazios
   'comercial-simulador': AJUSTES_DO_SIMULADOR_PADRAO,
-  // o /nia no card (2.4): o endereço da NIA; a chave de serviço fica no cofre (e só vai para o servidor onde foi colada)
+  // o /nia no card (2.4.2): o endereço da NIA; a chave de serviço fica no cofre (e só vai para o servidor onde foi colada)
   'atendimento-nia-acoes': { endereco: '', chaveDe: null, configuradoEm: null, configuradoPor: null, ultimoTeste: null },
 };
 

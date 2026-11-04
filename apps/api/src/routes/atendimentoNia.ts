@@ -1,5 +1,5 @@
 /**
- * O /nia no card (Patch 2.4, decisão 0058): o catálogo dos comandos da NIA, a proposta e o Aplicar, todos COM a sessão
+ * O /nia no card (Patch 2.4.2, decisão 0060): o catálogo dos comandos da NIA, a proposta e o Aplicar, todos COM a sessão
  * da pessoa — o navegador fala só com o Gestor, e a chave de serviço da NIA nunca sai do servidor. E, em Painéis ›
  * Ajustes › Integrações, o endereço da NIA, a chave (no cofre) e o Testar (a administração, `admin.manage`).
  *

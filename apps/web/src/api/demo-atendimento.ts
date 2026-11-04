@@ -35,6 +35,8 @@ import {
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
   ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, modulosSemMarcar, AoMoverSchema,
+  GruposGravarSchema, gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO,
+  mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES, CondicoesDaNegociacaoSchema, mesDeHoje, type CondicoesDaNegociacao,
   type AssinaturaNoCadastro, type MarcasDosCampos, type NegociacaoNoFim, type OQueAEtapaFaz, type PlanoDaImplantacao, type PlanoDoCadastro, type PedidoDoCliente,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
@@ -200,6 +202,8 @@ type ChamadoRow = {
   marcas?: MarcasDosCampos;
   /** a negociação que abriu este card na implantação (2.3) */
   daNegociacaoId?: string | null;
+  /** a negociação: as condições especiais (2.4; refeitas no 2.4.1: o desconto na mensalidade, com prazo ou sem, e na ativação) */
+  condicoes?: CondicoesDaNegociacao | null;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
 type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
@@ -448,6 +452,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     /** durante a montagem dos exemplos: sem auditoria e sem webhook (é o passado) */
     semeando: false,
     paineis: [] as PainelRow[], etapas: [] as EtapaRow[], assuntos: [] as Assunto[], campos: [] as CampoPersonalizado[],
+    /** os campos excluídos (2.4): fora de tudo, até o Restaurar (como o `deleted_at` do servidor) */
+    excluidos: [] as Array<CampoPersonalizado & { excluidoEm: string }>,
     chamados: [] as ChamadoRow[], eventos: [] as EventoRow[], notas: [] as NotaRow[], anexos: [] as AnexoRow[], ligacoes: [] as LigacaoRow[],
     tempos: [] as TempoRow[], casos: [] as CasoRow[], agendados: [] as AgendadoRow[],
     contatos: new Map<string, { clienteId: string; nome: string | null }>(),
@@ -460,7 +466,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     /** as integrações: os sites do iframe, o link da conversa e (2.1) os ajustes da NIA, o botão da ficha */
     integ: { sites: [] as string[], linkConversa: '', nia: { ...NIA_PADRAO } as AjustesDaNia },
     /**
-     * o /nia no card (2.4): a NIA de exemplo já vem ligada (o endereço de hoje; a chave a prévia não tem — só a marca de
+     * o /nia no card (2.4.2): a NIA de exemplo já vem ligada (o endereço de hoje; a chave a prévia não tem — só a marca de
      * que há uma guardada), para a pessoa ver o caminho inteiro
      */
     niaAcoes: { endereco: 'https://2.24.93.36:8443', temChave: true, configuradoEm: null as string | null, configuradoPor: 'Administrador' as string | null, ultimoTeste: null as NiaAcoesTela['ultimoTeste'] },
@@ -632,11 +638,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       valoresDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.valoresDosProdutos).filter(([id]) => t.produtos.includes(id))) : {},
       ativacao: t.ativacao,
       ativacoesDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.ativacoesDosProdutos).filter(([id]) => t.produtos.includes(id))) : {},
+      // o que foi combinado além do valor (2.4): só na negociação
+      condicoes: p?.tipo === 'vendas' ? t.condicoes ?? null : null,
       resultado: e?.resultado ?? null, motivoPerda: e?.resultado === 'perdido' ? t.motivoPerda : null,
       // o lugar que a equipe escolheu arrastando (2.1: só vale onde a ordem é à mão)
       ordemNoQuadro: t.ordemNoQuadro ?? null,
       // as partes da ficha (2.3, a implantação), com a conta de cada uma (como o servidor)
-      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos),
+      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos, p?.ajustes.partes ?? []),
     };
   }
 
@@ -1233,6 +1241,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           campo(x.chave, x.nome, x.valorAntes === null ? null : reais(x.valorAntes), conta.valor === null ? null : reais(conta.valor), x.valorAntes);
         }
       }
+      // as condições especiais (2.4; 2.4.1), como o servidor: uma linha no histórico
+      if (d.condicoes !== undefined) {
+        const antes = t.condicoes ?? null;
+        const depois = semCondicoes(d.condicoes) ? null : d.condicoes;
+        if (!mesmasCondicoes(antes, depois)) { set.condicoes = depois; campo('condicoes', NOME_CONDICOES, textoDasCondicoes(antes), textoDasCondicoes(depois), antes); }
+      }
     }
     if (d.operadoras !== undefined) {
       const novas = unicos(d.operadoras);
@@ -1304,7 +1318,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
 
     if (!eventos.length) return nada(t);
-    // o /nia (2.4, como o servidor): a linha da NIA, só com o que foi gravado
+    // o /nia (2.4.2, como o servidor): a linha da NIA, só com o que foi gravado
     const resumoDaNia = opts.nia ? resumoDoQueAplicou(opts.nia.nome, nomes, opts.nia.entrega) : null;
     if (opts.nia) eventos.push(['nia', { comando: opts.nia.comando, resumo: resumoDaNia, campos: [...nomes] }]);
     const depois = { ...set };
@@ -1959,6 +1973,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!opcao && ehCaixinhas(c.tipo)) throw bad('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
     return { c, opcao, nome: nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name }))) };
   }
+  /** O campo Documento (2.4): o valor é quantos arquivos ele tem (como o servidor). */
+  function contarDocumento(t: ChamadoRow, c: CampoPersonalizado) {
+    if (c.tipo !== 'documento') return;
+    const n = A.anexos.filter((a) => a.chamadoId === t.id && a.campoId === c.id && !a.deletedAt).length;
+    const campos = { ...t.campos };
+    if (n) campos[c.id] = n; else delete campos[c.id];
+    t.campos = campos;
+  }
   function anexarNoCampo(ator: Ator, ref: string, campoId: string, d: { opcaoId: string | null; anexos: Array<{ fileName: string; conteudo: string }> }, agora: Date = agoraReal()): Feito {
     exigirTrabalhar(ator);
     if (!d.anexos.length) throw bad('Escolha o arquivo.');
@@ -1974,6 +1996,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const pessoa = pessoaDoAtor(ator);
     guardar.forEach((a, i) => A.anexos.push({ id: novoId(), chamadoId: t.id, notaId: null, campoId: c.id, opcaoId: opcao?.id ?? null, ...a, porId: pessoa, em: iso(new Date(agora.getTime() + i)), deletedAt: null }));
     registrarEvento(t.id, 'anexo', ator, { acao: 'anexou', campo: nome, opcao: opcao?.nome ?? null, arquivos: guardar.map((a) => a.nome) }, e.quando());
+    contarDocumento(t, c);
     tocar(t, agora);
     camposAosObservadores(ator, t, [nome], agora);
     return {
@@ -1995,6 +2018,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const opcao = c && a.opcaoId ? c.opcoes.find((o) => o.id === a.opcaoId)?.nome ?? null : null;
     a.deletedAt = iso(agora);
     registrarEvento(t.id, 'anexo', ator, { acao: 'tirou', campo: nome, opcao, arquivos: [a.nome] }, e.quando());
+    if (c) contarDocumento(t, c);
     tocar(t, agora);
     return {
       ...nada(t),
@@ -3133,6 +3157,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       // os motivos de perda e a meta (do painel de Vendas): sem o campo no pedido, ficam como estão
       motivosDePerda: etiquetasUnicas(d.ajustes.motivosDePerda ?? atual?.ajustes.motivosDePerda ?? deFabrica.motivosDePerda),
       metaMensal: d.ajustes.metaMensal !== undefined ? d.ajustes.metaMensal : atual?.ajustes.metaMensal ?? null,
+      // os grupos de campos (2.4) mudam na aba Campos (o painel do modelo nasce com os do modelo)
+      partes: atual?.ajustes.partes ?? modelo?.ajustes.partes ?? [],
       // a negociação não tem prazo nem fecha sozinha
       ...(tipo === 'vendas' ? { contaPrazo: false, fecharSozinhoDias: null } : {}),
       // a implantação também não (2.3: leva o tempo dela)
@@ -3475,19 +3501,22 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // o mesmo nome pode estar em produtos diferentes (2.3: o Horário de atendimento do LineChat e o do LinePBX)
     const igual = camposDoPainel(p.id).find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome) && (c.produtoId ?? null) === (d.produtoId ?? null));
     if (igual) throw conflito(`O painel ${p.nome} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
-    if (atual && atual.tipo !== d.tipo) throw bad(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
+    // o texto curto, o longo e o documento trocam entre si (2.4)
+    if (atual && !tipoTroca(atual.tipo, d.tipo)) throw bad(`O tipo do campo ${atual.nome} (${NOME_TIPO_CAMPO[atual.tipo]}) não muda para ${NOME_TIPO_CAMPO[d.tipo]}. Crie outro campo e exclua este.`);
     if (!temOpcoesEscritas(d.tipo)) return [];
     return opcoesConferidas(d.tipo, d.opcoes, atual?.opcoes ?? []);
   }
   /** As opções gravadas (como o servidor): a sem id é nova; a que não veio fica desativada; a pasta (2.3) só nas caixinhas. */
   function opcoesConferidas(tipo: CampoPersonalizado['tipo'], vindas: ReturnType<typeof CampoGravarSchema.parse>['opcoes'], existentes: OpcaoDoCampo[]): OpcaoDoCampo[] {
     const pasta = (p: string | null | undefined) => (tipo === 'caixinhas' && p ? { pasta: p } : {});
-    const opcoes: OpcaoDoCampo[] = vindas.map((o) => {
-      if (!o.id) return { id: novoId(), nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
+    // as caixinhas (2.4): a que não veio é excluída, não fica desativada
+    const caixinhas = tipo === 'caixinhas';
+    const opcoes: OpcaoDoCampo[] = vindas.filter((o) => !caixinhas || o.ativa).map((o) => {
+      if (!o.id) return { id: novoId(), nome: o.nome, ativa: caixinhas || o.ativa, ...pasta(o.pasta) };
       if (!existentes.some((x) => x.id === o.id)) throw bad(`A opção ${o.nome} não é deste campo. Recarregue a tela e tente de novo.`);
-      return { id: o.id, nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
+      return { id: o.id, nome: o.nome, ativa: caixinhas || o.ativa, ...pasta(o.pasta) };
     });
-    for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
+    if (!caixinhas) for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
     const vistas = new Set<string>();
     for (const o of opcoes) {
       if (vistas.has(paraBusca(o.nome))) throw bad(`Duas opções com o nome ${o.nome} (uma delas pode estar desativada).`);
@@ -3565,13 +3594,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const antes = campoParaTela(c);
     conferirProdutoDoCampo(d.produtoId);
     const opcoes = conferirCampo(p, d, antes);
-    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos });
+    Object.assign(c, { nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos });
     sincronizarModulos();
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
     return {
       valor: campoParaTela(c),
-      resumo: `${como} o campo ${c.nome} no painel ${p.nome}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}`,
+      resumo: `${como} o campo ${c.nome} no painel ${p.nome}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}${antes.tipo !== c.tipo ? ` (era ${NOME_TIPO_CAMPO[antes.tipo]}; agora ${NOME_TIPO_CAMPO[c.tipo]})` : ''}`,
       antes: campoParaAuditoria(antes), depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
     };
   }
@@ -3590,6 +3619,92 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       valor: campoParaTela(c),
       resumo: `Mudou as caixinhas de ${nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name })))} no painel ${p.nome}${mudou.length ? `: ${mudou.join('; ')}` : ' (nada mudou)'}`,
       antes: { opcoes: antes.opcoes }, depois: { opcoes: c.opcoes.map((o) => ({ ...o })) },
+    };
+  }
+  // ---------- excluir um campo e os grupos de campos (2.4, como o servidor) ----------
+
+  const nomeDoCampoInteiro = (c: CampoPersonalizado) => nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name })));
+  /** Exclui os campos (o que outro segue só sai junto com ele): deixam de ser pedidos e vão para os Excluídos. */
+  function excluirCampos(p: PainelRow, ids: readonly string[], agora: Date) {
+    const todos = camposDoPainel(p.id);
+    const sai = new Set(ids);
+    const seguidor = todos.find((c) => c.escolhidosEm && sai.has(c.escolhidosEm) && !sai.has(c.id));
+    if (seguidor) throw bad(`O campo ${seguidor.nome} segue ${todos.find((c) => c.id === seguidor.escolhidosEm)?.nome ?? 'este campo'}: exclua os dois, ou mude ${seguidor.nome} antes.`);
+    for (const id of sai) {
+      gravarOndeEPedido(p, id, false, { obrigatorioAoAbrir: false, etapas: [] });
+      const i = A.campos.findIndex((c) => c.id === id);
+      if (i >= 0) A.excluidos.push({ ...A.campos.splice(i, 1)[0]!, excluidoEm: iso(agora) });
+    }
+  }
+  function excluirCampo(id: string, agora: Date) {
+    const c = A.campos.find((x) => x.id === id);
+    if (!c) throw naoAchado('Campo');
+    const p = A.paineis.find((x) => x.id === c.painelId && !x.deletedAt);
+    if (!p) throw naoAchado('Campo');
+    const antes = campoParaTela(c);
+    excluirCampos(p, [id], agora);
+    return { valor: { ok: true as const }, resumo: `Excluiu o campo ${nomeDoCampoInteiro(antes)} (${NOME_TIPO_CAMPO[antes.tipo]}) do painel ${p.nome}${antes.parte ? `, do grupo ${antes.parte}` : ''}`, antes: campoParaAuditoria(antes) };
+  }
+  function restaurarCampo(id: string) {
+    const i = A.excluidos.findIndex((x) => x.id === id);
+    if (i < 0) throw naoAchado('Campo');
+    const { excluidoEm: _, ...c } = A.excluidos[i]!;
+    const p = A.paineis.find((x) => x.id === c.painelId && !x.deletedAt);
+    if (!p) throw naoAchado('Campo');
+    const outros = camposDoPainel(p.id);
+    const igual = outros.find((x) => paraBusca(x.nome) === paraBusca(c.nome) && (x.produtoId ?? null) === (c.produtoId ?? null));
+    if (igual) throw conflito(`O painel ${p.nome} já tem um campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}: renomeie ou exclua esse antes de restaurar.`);
+    if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw bad(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos: exclua um antes de restaurar.`);
+    A.excluidos.splice(i, 1);
+    const volta: CampoPersonalizado = { ...c, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, escolhidosEm: c.escolhidosEm && outros.some((x) => x.id === c.escolhidosEm) ? c.escolhidosEm : null };
+    A.campos.push(volta);
+    sincronizarModulos();
+    return { valor: campoParaTela(volta), resumo: `Restaurou o campo ${nomeDoCampoInteiro(volta)} no painel ${p.nome}`, depois: campoParaAuditoria(volta) };
+  }
+  function gravarGrupos(painelId: string, d: ReturnType<typeof GruposGravarSchema.parse>, agora: Date) {
+    const p = linhaDoPainel(painelId);
+    const campos = camposDoPainel(painelId);
+    const antes = gruposDoPainel(p.ajustes.partes ?? [], campos);
+    const usados = new Set<string>();
+    const planos = d.grupos.map((g) => {
+      const velho = antes.find((x) => mesmoGrupo(x.nome, g.antes ?? g.nome) && !usados.has(x.nome)) ?? null;
+      if (g.antes && !velho) throw bad(`O grupo ${g.antes} não existe mais. Recarregue a tela e tente de novo.`);
+      if (velho) usados.add(velho.nome);
+      return { g, velho };
+    });
+    for (const { g, velho } of planos) {
+      const outro = antes.find((x) => x !== velho && mesmoGrupo(x.nome, g.nome) && usados.has(x.nome));
+      if (outro) throw bad(`Já existe o grupo ${outro.nome}.`);
+    }
+    const saem = antes.filter((x) => !usados.has(x.nome));
+    // o seguidor de fora do que sai trava antes de mexer em qualquer coisa (como a transação do servidor)
+    const vaoSair = new Set(saem.flatMap((x) => x.campos.map((c) => c.id)));
+    const seguidor = campos.find((c) => c.escolhidosEm && vaoSair.has(c.escolhidosEm) && !vaoSair.has(c.id));
+    if (seguidor) throw bad(`O campo ${seguidor.nome} segue ${campos.find((c) => c.id === seguidor.escolhidosEm)?.nome ?? 'este campo'}: exclua os dois, ou mude ${seguidor.nome} antes.`);
+    const mudou: string[] = [];
+    for (const { g, velho } of planos) {
+      if (!velho) { mudou.push(`criou ${g.nome} (${NOME_LUGAR_DO_GRUPO[g.lugar].toLowerCase()})`); continue; }
+      if (velho.nome !== g.nome) { for (const c of velho.campos) A.campos.find((x) => x.id === c.id)!.parte = g.nome; mudou.push(`renomeou ${velho.nome} para ${g.nome}`); }
+      if (velho.lugar !== g.lugar) mudou.push(`${g.nome} foi para ${g.lugar === 'lateral' ? 'a lateral' : 'o meio da ficha'}`);
+      if (velho.campos.length && velho.ativo !== g.ativo) {
+        for (const c of velho.campos) {
+          A.campos.find((x) => x.id === c.id)!.ativo = g.ativo;
+          if (!g.ativo) gravarOndeEPedido(p, c.id, false, { obrigatorioAoAbrir: false, etapas: [] });
+        }
+        mudou.push(`${g.ativo ? 'ativou' : 'desativou'} ${g.nome} (${velho.campos.length === 1 ? '1 campo' : `${velho.campos.length} campos`})`);
+      }
+    }
+    for (const x of saem) {
+      excluirCampos(p, x.campos.map((c) => c.id), agora);
+      mudou.push(`excluiu ${x.nome}${x.campos.length ? ` com ${x.campos.length === 1 ? 'o campo' : 'os campos'} ${lista(x.campos.map((c) => c.nome))}` : ''}`);
+    }
+    p.ajustes = { ...p.ajustes, partes: d.grupos.map((g) => ({ nome: g.nome, lugar: g.lugar })) };
+    const ordemMudou = antes.filter((x) => usados.has(x.nome)).map((x) => x.nome).join('|') !== planos.filter((x) => x.velho).map((x) => x.velho!.nome).join('|');
+    if (ordemMudou) mudou.push('mudou a ordem');
+    return {
+      valor: p.ajustes.partes.map((g) => ({ ...g })),
+      resumo: `Mudou os grupos de campos do painel ${p.nome}${mudou.length ? `: ${mudou.join('; ')}` : ' (nada mudou)'}`,
+      antes: antes.map((x) => ({ nome: x.nome, lugar: x.lugar, ativo: x.ativo, campos: x.campos.map((c) => c.nome) })), depois: d.grupos,
     };
   }
   function ordenarCampos(painelId: string, ids: string[]) {
@@ -4140,6 +4255,18 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       } catch (err) { A.erros.push(`comercial ${n.chave}: ${err instanceof Error ? err.message : String(err)}`); }
     }
     com.ajustes.metaMensal = META_DO_COMERCIAL * 100;
+    // as condições especiais (2.4), no exemplo do Luan: o Hotel Beira Mar com R$ 200 de desconto até março do ano que vem e a
+    // ativação a partir de março, em 6 vezes
+    {
+      const beira = negociacaoDoExemplo.get('beira-mar');
+      const hojeMes = mesDeHoje(agora);
+      const marco = `${Number(hojeMes.slice(0, 4)) + (Number(hojeMes.slice(5, 7)) >= 3 ? 1 : 0)}-03`;
+      if (beira) {
+        try {
+          alterar(atorDaPessoa(idDa('camila')), beira, { condicoes: CondicoesDaNegociacaoSchema.parse({ descontos: [{ valor: 20_000, ate: marco }], ativacao: { aPartirDe: marco, vezes: 6 } }) }, noDia(1, '18:00'));
+        } catch (err) { A.erros.push(`comercial beira-mar (as condições): ${err instanceof Error ? err.message : String(err)}`); }
+      }
+    }
 
     // os cards da implantação na ordem em que nasceram (as negociações são vividas uma de cada vez, a mais antiga primeiro, e
     // a que abriu o card ontem pode ter nascido antes da que abriu há duas semanas): os números seguem o dia de cada card
@@ -4360,7 +4487,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async andamentoOperadora(id, casoId, d) { await ctx.wait(150); const dados = ler(OperadoraAndamentoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(andamentoNaOperadora(eu(), id, casoId, dados)); },
     async avisarCliente(id, texto) { await ctx.wait(250); const dados = ler(AvisarClienteSchema, { texto }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(avisarCliente(eu(), id, dados.texto)); },
     async observar(id, acompanhar) { await ctx.wait(120); const dados = ler(ObservarSchema, { observar: acompanhar }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(observar(eu(), id, dados.observar)); },
-    // ---- o /nia no card (2.4): a NIA de exemplo (demo-nia.ts) no mesmo contrato; as regras do Gestor, como o servidor ----
+    // ---- o /nia no card (2.4.2): a NIA de exemplo (demo-nia.ts) no mesmo contrato; as regras do Gestor, como o servidor ----
     async niaAcoes() {
       await ctx.wait(120); ctx.requirePerm('tickets.work'); preparar();
       const configurada = !!A.niaAcoes.endereco && A.niaAcoes.temChave;
@@ -4595,6 +4722,34 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const ator = eu();
       const r = incluirOpcao(campoId, dados.nome, (painelId) => { const p = paineis().find((x) => x.id === painelId); return !!p && podeVerPainel(p, ator); });
       if (r.resumo) auditar('update', 'ticket_field', r.resumo, campoId);
+      return r.valor;
+    },
+    async excluirCampo(campoId) {
+      await ctx.wait(150);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const r = excluirCampo(campoId, agoraReal());
+      auditar('delete', 'ticket_field', r.resumo, campoId, { before: r.antes });
+      return r.valor;
+    },
+    async camposExcluidos(painelId) {
+      await ctx.wait(100);
+      ctx.requirePerm('tickets.manage'); preparar();
+      linhaDoPainel(painelId);
+      return A.excluidos.filter((c) => c.painelId === painelId).map((c) => ({ ...campoParaTela(c), excluidoEm: c.excluidoEm })).sort((a, b) => b.excluidoEm.localeCompare(a.excluidoEm));
+    },
+    async restaurarCampo(campoId) {
+      await ctx.wait(150);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const r = restaurarCampo(campoId);
+      auditar('restore', 'ticket_field', r.resumo, campoId, { after: r.depois });
+      return r.valor;
+    },
+    async salvarGrupos(painelId, d) {
+      await ctx.wait(150);
+      const dados = ler(GruposGravarSchema, d);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const r = gravarGrupos(painelId, dados, agoraReal());
+      auditar('update', 'ticket_panel', r.resumo, painelId, { before: r.antes, after: r.depois });
       return r.valor;
     },
     async ordenarCampos(painelId, ids) {

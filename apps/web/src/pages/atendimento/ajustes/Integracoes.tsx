@@ -782,12 +782,12 @@ function CartaoLinkConversa({ inicial }: { inicial: string }) {
   );
 }
 
-// ---------- a NIA no card (2.4): o /nia ----------
+// ---------- a NIA no card (2.4.2): o /nia ----------
 
 const CHAVE_NIA = ['atendimento', 'nia-acoes', 'ajustes'];
 
 /**
- * O /nia no card (2.4): o endereço da NIA (a IA do suporte, um serviço de fora) e a chave de serviço. A chave vai para o
+ * O /nia no card (2.4.2): o endereço da NIA (a IA do suporte, um serviço de fora) e a chave de serviço. A chave vai para o
  * cofre e nunca volta para a tela ("já existe uma guardada; preencha só para trocar"); ela só vai para o servidor onde
  * foi colada. Sem os dois, o /nia não aparece nos cards. O Testar lê o catálogo da NIA e diz quantos comandos vieram.
  */

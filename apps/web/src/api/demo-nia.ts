@@ -1,5 +1,5 @@
 /**
- * A NIA DE EXEMPLO DA PRÉVIA (Patch 2.4, o /nia no card): a prévia não tem a NIA de verdade (nem a chave), então uma
+ * A NIA DE EXEMPLO DA PRÉVIA (Patch 2.4.2, o /nia no card): a prévia não tem a NIA de verdade (nem a chave), então uma
  * NIA de mentira responde no mesmo contrato — o catálogo dos 5 comandos e o /api/nia/executar —, com regras simples
  * em vez de um modelo: corrige o português comum ("nao" → "não", a maiúscula, o ponto final), formaliza o "vc" e o
  * "pq", resume o card e acha o cliente, o produto, o assunto (só as folhas) e a gravidade no texto. Basta para a

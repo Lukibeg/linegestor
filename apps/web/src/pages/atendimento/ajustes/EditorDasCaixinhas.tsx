@@ -5,11 +5,14 @@
  *
  *  - cada pasta tem o nome (escrito ali mesmo), a ordem, o "Incluir caixinha" e o "Tirar a pasta" (as caixinhas dela
  *    ficam sem pasta: nada se perde);
- *  - cada caixinha sobe e desce (passando de uma pasta para a outra nas pontas), muda o nome e sai (a que já existia fica
- *    desativada: o card que a marcou continua com ela; a nova, ainda não salva, só sai).
+ *  - cada caixinha sobe e desce (passando de uma pasta para a outra nas pontas), muda o nome e sai.
+ *
+ * Desde o 2.4, a caixinha que sai é **excluída** (o Luan: "aqui eu quero excluir de fato e n desativar, os que eu já tiver
+ * desativado quero que sejam excluídos"): some do campo e dos cards, mesmo dos que a marcaram. Não há mais caixinha
+ * desativada, e o campo pode ficar sem nenhuma ("quero poder deixar todos os testes desativados").
  */
 import { useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Folder, FolderPlus, Plus, Undo2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Folder, FolderPlus, Plus, Trash2, X } from 'lucide-react';
 import { etiquetasUnicas, MAX_OPCOES_DO_CAMPO, paraBusca, pastasDasCaixinhas, type OpcaoDoCampo } from '@gestor/shared';
 
 export type CaixinhaRascunho = { chave: string; id?: string; nome: string; ativa: boolean };
@@ -20,9 +23,9 @@ export type CaixinhaParaGravar = { id?: string; nome: string; ativa: boolean; pa
 let sequencia = 0;
 const novaChave = (p: string) => `${p}-${++sequencia}`;
 
-/** As opções do campo, nas pastas do editor (a sem pasta sempre primeiro, mesmo vazia). */
+/** As opções do campo, nas pastas do editor (a sem pasta sempre primeiro, mesmo vazia). A desativada de antes do 2.4 não entra: ao salvar, sai. */
 export function pastasDoEditor(opcoes: readonly OpcaoDoCampo[]): PastaRascunho[] {
-  const grupos = pastasDasCaixinhas(opcoes);
+  const grupos = pastasDasCaixinhas(opcoes.filter((o) => o.ativa));
   const comoRascunho = (o: OpcaoDoCampo): CaixinhaRascunho => ({ chave: o.id, id: o.id, nome: o.nome, ativa: o.ativa });
   const sem = grupos.find((g) => g.pasta === null);
   return [
@@ -40,11 +43,10 @@ export function caixinhasParaGravar(pastas: readonly PastaRascunho[]): CaixinhaP
 /** O que impede de salvar (nulo: pode). */
 export function problemaNasPastas(pastas: readonly PastaRascunho[]): string | null {
   const todas = pastas.flatMap((p) => p.caixinhas);
-  if (todas.some((c) => !c.nome.trim())) return 'Dê um nome a cada caixinha (ou tire a que ficou vazia).';
-  if (!todas.some((c) => c.ativa)) return 'As caixinhas precisam de pelo menos uma opção.';
+  if (todas.some((c) => !c.nome.trim())) return 'Dê um nome a cada caixinha (ou exclua a que ficou vazia).';
   const vistas = new Set<string>();
   for (const c of todas) {
-    if (vistas.has(paraBusca(c.nome))) return `Duas caixinhas com o nome ${c.nome.trim()} (uma delas pode estar desativada).`;
+    if (vistas.has(paraBusca(c.nome))) return `Duas caixinhas com o nome ${c.nome.trim()}.`;
     vistas.add(paraBusca(c.nome));
   }
   const pastasComNome = pastas.filter((p) => p.chave !== 'sem');
@@ -113,7 +115,6 @@ export function EditorDasCaixinhas({ pastas, onChange, id = 'caixinhas' }: { pas
     <div className="min-w-0 flex flex-col gap-3" id={id}>
       {visiveis.map((p, pi) => {
         const sem = p.chave === 'sem';
-        const ativas = p.caixinhas.filter((c) => c.ativa).length;
         const k = pastasComNome.findIndex((x) => x.chave === p.chave);
         return (
           <section key={p.chave} className={temPastas ? 'rounded-lg border border-line' : ''} aria-label={sem ? (temPastas ? 'As caixinhas sem pasta' : 'As caixinhas') : `A pasta ${p.nome || 'nova'}`}>
@@ -126,7 +127,7 @@ export function EditorDasCaixinhas({ pastas, onChange, id = 'caixinhas' }: { pas
                   <input className="input py-1 text-[13.5px] font-semibold min-w-0 flex-1" id={`${id}-pasta-${p.chave}`} value={p.nome} maxLength={40} placeholder="Nome da pasta (ex.: Asterisk)"
                     aria-label="Nome da pasta" onChange={(e) => mudarPasta(p.chave, { nome: e.target.value })} />
                 )}
-                <span className="text-[12px] text-muted tnum shrink-0 px-1">{ativas} {ativas === 1 ? 'caixinha' : 'caixinhas'}</span>
+                <span className="text-[12px] text-muted tnum shrink-0 px-1">{p.caixinhas.length} {p.caixinhas.length === 1 ? 'caixinha' : 'caixinhas'}</span>
                 {!sem && (
                   <span className="flex shrink-0">
                     <IconeDoEditor rotulo={`Subir a pasta ${p.nome || 'nova'}`} desativado={k === 0} onClick={() => moverPasta(p.chave, -1)}><ArrowUp size={14} /></IconeDoEditor>
@@ -148,16 +149,9 @@ export function EditorDasCaixinhas({ pastas, onChange, id = 'caixinhas' }: { pas
                           <IconeDoEditor rotulo={`Subir ${c.nome || 'a caixinha'}`} desativado={primeira} onClick={() => moverCaixinha(pi, ci, -1)}><ArrowUp size={14} /></IconeDoEditor>
                           <IconeDoEditor rotulo={`Descer ${c.nome || 'a caixinha'}`} desativado={ultima} onClick={() => moverCaixinha(pi, ci, 1)}><ArrowDown size={14} /></IconeDoEditor>
                         </span>
-                        <input className={`input py-1.5 text-[13.5px] min-w-0 flex-1 ${c.ativa ? '' : 'line-through text-muted'}`} value={c.nome} maxLength={60} disabled={!c.ativa}
+                        <input className="input py-1.5 text-[13.5px] min-w-0 flex-1" value={c.nome} maxLength={60}
                           aria-label={`Caixinha ${ci + 1}${p.nome ? ` da pasta ${p.nome}` : ''}`} onChange={(e) => mudarCaixinha(c.chave, { nome: e.target.value })} />
-                        {c.ativa ? (
-                          <IconeDoEditor rotulo={c.id ? `Desativar a caixinha ${c.nome}` : `Tirar a caixinha ${c.nome || 'nova'}`} perigo
-                            onClick={() => (c.id ? mudarCaixinha(c.chave, { ativa: false }) : tirarCaixinha(c.chave))}><X size={14} /></IconeDoEditor>
-                        ) : (
-                          <button type="button" className="btn-ghost btn-sm shrink-0 text-[12.5px]" onClick={() => mudarCaixinha(c.chave, { ativa: true })} title="Os cards que já marcaram esta caixinha continuam com ela">
-                            <Undo2 size={13} /> Reativar
-                          </button>
-                        )}
+                        <IconeDoEditor rotulo={`Excluir a caixinha ${c.nome || 'nova'}`} perigo onClick={() => tirarCaixinha(c.chave)}><Trash2 size={14} /></IconeDoEditor>
                       </li>
                     );
                   })}
@@ -171,7 +165,7 @@ export function EditorDasCaixinhas({ pastas, onChange, id = 'caixinhas' }: { pas
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <button type="button" className="btn-secondary btn-sm" id={`${id}-nova-pasta`} onClick={novaPasta}><FolderPlus size={14} /> Nova pasta</button>
         <span className="text-[12.5px] text-muted">
-          Enter inclui (colar uma lista, uma por linha, inclui todas). As setas levam a caixinha de uma pasta para a outra. A caixinha que já foi marcada não some: fica desativada.
+          Enter inclui (colar uma lista, uma por linha, inclui todas). As setas levam a caixinha de uma pasta para a outra. A lixeira exclui a caixinha de verdade: ao salvar, ela some de todos os cards, mesmo dos que já a marcaram. O campo pode ficar sem nenhuma.
         </span>
       </div>
     </div>

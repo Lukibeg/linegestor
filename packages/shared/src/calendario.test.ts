@@ -4,6 +4,7 @@ import {
   FILTRO_DO_CALENDARIO_VAZIO, LembretesSchema, lembretesAoGravar, lembretesDevidos, paineisDepoisDaEdicao, pessoasPossiveis, quemEstaFora,
   quemRecebeOLembrete, textoDoAntes, textoDoHorario, textoDoLembrete, textoDoMes, textoDoPeriodo, textoDosLembretes, TIPOS_DE_EVENTO_PADRAO,
   tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, tituloSugerido, EventosDoPeriodoSchema, quandoDoEvento, quemRecebeAInclusao, textoDaInclusao,
+  arrumarNoDia, diasDaSemanaDoDia, minutosAgoraEmBrasilia, minutosDaHora, naFaixaDoDiaInteiro, numeroDaSemana, textoDaSemana,
   type EventoDoCalendario,
 } from './calendario.js';
 
@@ -258,3 +259,62 @@ describe('o aviso de que o evento entrou (2.0.2, opcional)', () => {
     expect(quemRecebeAInclusao({ paineis: ['p-sup'], pessoas: ['luan'], avisar: 'pessoas' }, quemVe, null)).toEqual(['luan']);
   });
 });
+
+describe('a hora de terminar acompanha a de começar (2.4)', () => {
+  it('a mesma duração; sem fim, uma hora; no mesmo dia, até 23:59', async () => {
+    const { fimQueAcompanha } = await import('./calendario.js');
+    expect(fimQueAcompanha('16:00', '17:00', '18:00', true)).toBe('19:00');
+    expect(fimQueAcompanha('09:00', '10:30', '14:15', true)).toBe('15:45');
+    expect(fimQueAcompanha('', '', '08:00', true)).toBe('09:00');
+    expect(fimQueAcompanha('10:00', '09:00', '11:00', true)).toBe('12:00');
+    expect(fimQueAcompanha('16:00', '18:00', '23:00', true)).toBe('23:59');
+    expect(fimQueAcompanha('16:00', '17:00', '23:59', true)).toBe('17:00');
+    // vários dias: dá a volta
+    expect(fimQueAcompanha('22:00', '02:00', '23:00', false)).toBe('03:00');
+    expect(fimQueAcompanha('16:00', '17:00', '', true)).toBe('17:00');
+  });
+});
+
+describe('a semana (2.4.1, "como no outlook")', () => {
+  it('os dias, o número da semana e o texto do alto', () => {
+    expect(diasDaSemanaDoDia('2026-11-03')).toEqual(['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08']);
+    expect(diasDaSemanaDoDia('2026-11-08')[0]).toBe('2026-11-02');
+    // o do print do Outlook: 02–08 de novembro de 2026 é a semana 45
+    expect(numeroDaSemana('2026-11-03')).toBe(45);
+    expect(numeroDaSemana('2026-01-01')).toBe(1);
+    expect(numeroDaSemana('2027-01-01')).toBe(53);
+    expect(numeroDaSemana('2026-12-28')).toBe(53);
+    expect(numeroDaSemana('2027-01-04')).toBe(1);
+    expect(textoDaSemana(diasDaSemanaDoDia('2026-11-03'))).toBe('02–08 de novembro de 2026');
+    expect(textoDaSemana(diasDaSemanaDoDia('2026-10-28'))).toBe('26 de outubro – 01 de novembro de 2026');
+    expect(textoDaSemana(diasDaSemanaDoDia('2026-12-30'))).toBe('28 de dezembro de 2026 – 03 de janeiro de 2027');
+  });
+
+  it('as horas e a faixa do dia inteiro', () => {
+    expect(minutosDaHora('14:30')).toBe(870);
+    expect(minutosDaHora('24:00')).toBeNull();
+    expect(minutosDaHora(null)).toBeNull();
+    expect(minutosAgoraEmBrasilia(new Date('2026-11-03T19:56:00Z'))).toBe(16 * 60 + 56);
+    expect(minutosAgoraEmBrasilia(new Date('2026-11-04T02:30:00Z'))).toBe(23 * 60 + 30);
+    expect(naFaixaDoDiaInteiro(evento({ diaInteiro: true }))).toBe(true);
+    expect(naFaixaDoDiaInteiro(evento({ diaInteiro: false, horaInicio: '09:00', horaFim: '10:00' }))).toBe(false);
+    // a virada que entra na madrugada fica em cima, como no Outlook
+    expect(naFaixaDoDiaInteiro(evento({ diaInteiro: false, horaInicio: '22:00', horaFim: '02:00', fim: '2026-10-21' }))).toBe(true);
+  });
+
+  it('os eventos que se encontram ficam lado a lado; os que não, com a largura toda', () => {
+    const h = (id: string, horaInicio: string, horaFim: string | null) => evento({ id, titulo: id, diaInteiro: false, horaInicio, horaFim });
+    const r = arrumarNoDia([
+      h('a', '09:00', '10:00'), h('b', '09:30', '11:00'), h('c', '10:00', '10:30'), h('d', '14:00', null), h('e', '16:00', '16:00'),
+      evento({ id: 'inteiro' }), evento({ id: 'outro-dia', inicio: '2026-10-21', fim: '2026-10-21', diaInteiro: false, horaInicio: '09:00', horaFim: '10:00' }),
+    ], '2026-10-20');
+    const m = Object.fromEntries(r.map((x) => [x.evento.id, [x.inicio, x.fim, x.coluna, x.colunas]]));
+    // a e b se encontram; c começa quando a termina e cabe na coluna dela; o grupo tem duas colunas
+    expect(m).toEqual({
+      a: [540, 600, 0, 2], b: [570, 660, 1, 2], c: [600, 630, 0, 2],
+      // sem a hora de terminar, uma hora; terminando na mesma hora, meia hora (para dar para clicar)
+      d: [840, 900, 0, 1], e: [960, 990, 0, 1],
+    });
+  });
+});
+

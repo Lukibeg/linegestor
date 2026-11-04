@@ -34,6 +34,11 @@ import {
 import type { Api } from './index.js';
 import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo, type CadastroDaPrevia } from './demo-atendimento.js';
 import type { AssinaturaNoCadastro } from '@gestor/shared';
+import {
+  MovimentacoesDosCircuitosSchema, linhaDaMovimentacao, movimentacaoBate, movimentacaoDaLixeiraDoCircuito, movimentacaoDaLixeiraDosDids,
+  movimentacaoDoCircuitoCriado, movimentacaoDoCircuitoEditado, movimentacaoDosDidsCriados, movimentacaoDosDidsEditados, periodoDasMovimentacoes, soDeTerceiros,
+  tiposDoFiltro, type DetalhesDaMovimentacao, type NomesDaMovimentacao, type NovaMovimentacao, type PaginaDeMovimentacoes,
+} from '@gestor/shared';
 import { criarCalendarioDemo } from './demo-calendario.js';
 import { criarSimuladorDemo } from './demo-simulador.js';
 import { criarHelenaDemo } from './demo-helena.js';
@@ -76,6 +81,8 @@ type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedA
 type ModRow = ProductModule & { productId: string; deletedAt?: string | null };
 type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; authType: 'ip' | 'login'; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; thirdParty: boolean; deletedAt: string | null };
 type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; inUse: boolean; note: string | null; deletedAt: string | null };
+/** Uma movimentação dos circuitos e dos DIDs (2.4.1), como o servidor guarda em circuit_movements. */
+type CircMovRow = { id: string; userId: string | null; kind: string; circuitIds: string[]; didNumbers: string[]; summary: string; details: DetalhesDaMovimentacao | null; createdAt: string };
 /** `image` é a foto embutida ("data:…"), como a logo do cliente na demonstração */
 type ModelRow = { id: string; code: string; name: string; categoryId: string | null; image: string | null; valueCents: number | null; deletedAt: string | null };
 type DeviceRow = { id: string; modelId: string; mac: string | null; macSecondary: string | null; serialNumber: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
@@ -212,13 +219,48 @@ const S = {
   modules: [...MODULOS_INICIAIS, ...MODULOS_SO_DA_PREVIA].map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
   subMods: [] as SubMod[],
   audit: [] as (AuditItem & { userId: string | null })[],
+  circMovs: [] as CircMovRow[],
   me: null as UserRow | null,
 };
 
 function audit(action: string, entityType: string, summary: string, entityId: string | null = null, extra: { before?: unknown; after?: unknown } = {}) {
   S.audit.unshift({ id: id(), action, entityType, entityId, summary, before: extra.before ?? null, after: extra.after ?? null, userName: S.me?.name ?? null, userId: S.me?.id ?? null, createdAt: now() });
 }
+/** Os nomes de agora (as movimentações dos circuitos escrevem o detalhe com eles, como o servidor). */
+function nomesDasMovimentacoesDemo(): NomesDaMovimentacao {
+  return {
+    clientes: Object.fromEntries(S.clients.map((c) => [c.id, c.tradeName])),
+    circuitos: Object.fromEntries(S.circuits.map((c) => [c.id, c.name])),
+    operadoras: Object.fromEntries(S.carriers.map((c) => [c.id, c.name])),
+  };
+}
+/** Guarda a movimentação dos circuitos (2.4.1), com quem está na prévia e a hora de agora (ou as da história de exemplo). */
+function guardarMovimentacaoDemo(m: NovaMovimentacao | null, quando = now(), quem: string | null = S.me?.id ?? null) {
+  if (!m) return;
+  S.circMovs.push({ id: id(), userId: quem, kind: m.tipo, circuitIds: m.circuitos, didNumbers: m.numeros, summary: m.resumo, details: m.detalhes, createdAt: quando });
+}
 const notFound = (w = 'Registro') => new ApiError(404, `${w} não encontrado`);
+/** A aba Movimentações dos circuitos na prévia: os mesmos filtros e a mesma linha do servidor. */
+function movimentacoesDosCircuitosDemo(q: Record<string, unknown>): PaginaDeMovimentacoes {
+  const f = MovimentacoesDosCircuitosSchema.parse(q);
+  const nomes = nomesDasMovimentacoesDemo();
+  const tipos = tiposDoFiltro(f.tipo);
+  const { desde, antesDe } = periodoDasMovimentacoes(f.de, f.ate);
+  const terceiros = new Set(S.circuits.filter((c) => c.thirdParty).map((c) => c.id));
+  const lista = S.circMovs
+    .filter((m) => (f.circuitId ? m.circuitIds.includes(f.circuitId) : f.incluirTerceiros || !soDeTerceiros(m.circuitIds, terceiros)) && (!tipos || tipos.includes(m.kind as never)) && (!f.userId || m.userId === f.userId)
+      && (!desde || new Date(m.createdAt) >= desde) && (!antesDe || new Date(m.createdAt) < antesDe)
+      && movimentacaoBate(f.q, { resumo: m.summary, numeros: m.didNumbers, circuitos: [] }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  const pessoas = Object.fromEntries(S.users.map((u) => [u.id, u.name]));
+  const vivos = new Set(S.circuits.filter((c) => !c.deletedAt).map((c) => c.id));
+  const pagina = lista.slice((f.page - 1) * f.pageSize, f.page * f.pageSize).map((m) => linhaDaMovimentacao({
+    id: m.id, quando: m.createdAt, userId: m.userId, tipo: m.kind, circuitos: m.circuitIds, numeros: m.didNumbers, resumo: m.summary, detalhes: m.details,
+  }, nomes, pessoas, vivos));
+  const quem = [...new Set(S.circMovs.map((m) => m.userId).filter((x): x is string => !!x))]
+    .map((uid) => ({ id: uid, nome: pessoas[uid] ?? 'pessoa excluída' })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  return { items: pagina, total: lista.length, page: f.page, pageSize: f.pageSize, pessoas: quem };
+}
 const bad = (m: string) => new ApiError(400, m);
 /** O contato como a tela recebe: com quantos chamados deste cliente têm o WhatsApp dele. */
 function contatoParaTela(x: ContatoRow): ContatoDoCliente {
@@ -709,6 +751,33 @@ function seed() {
     { id: 'anx1', projectId: proj.id, projectClientId: null, fileName: 'ura-institucional-v3.mp3', mimeType: 'audio/mpeg', sizeBytes: 1_842_000, conteudo: 'data:audio/mpeg;base64,', uploadedById: 'u1', createdAt: daysAgo(11), deletedAt: null },
     { id: 'anx2', projectId: proj.id, projectClientId: null, fileName: 'roteiro-da-locucao.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sizeBytes: 24_500, conteudo: 'data:application/octet-stream;base64,', uploadedById: 'u1', createdAt: daysAgo(12), deletedAt: null },
   ];
+
+  // as movimentações dos circuitos (2.4.1): uma história coerente com o que está cadastrado — cada circuito criado, a faixa
+  // dos DIDs, as atribuições por cliente; e umas mudanças recentes (os canais e a senha do 071 Principal, um DID na lixeira e
+  // de volta, o uso de um número da Aurora)
+  {
+    const nomes = nomesDasMovimentacoesDemo();
+    S.circuits.forEach((c, i) => {
+      const dia = 210 - i * 25;
+      const doCircuito = S.dids.filter((d) => d.circuitId === c.id);
+      guardarMovimentacaoDemo(movimentacaoDoCircuitoCriado(c.name === '071 Principal' ? { ...c, channels: 20 } : c), daysAgo(dia, 9), 'u1');
+      guardarMovimentacaoDemo(movimentacaoDosDidsCriados({ numeros: doCircuito.map((d) => d.number), circuitId: c.id }, nomes), daysAgo(dia, 10), 'u2');
+      const porCliente = new Map<string, DidRow[]>();
+      for (const d of doCircuito) if (d.clientId) porCliente.set(d.clientId, [...(porCliente.get(d.clientId) ?? []), d]);
+      for (const [cli, lista] of porCliente) {
+        const pares = lista.map((d) => ({ antes: { ...d, clientId: null, inUse: false, note: null }, depois: d }));
+        guardarMovimentacaoDemo(movimentacaoDosDidsEditados(pares, nomes, `Alterou ${lista.length} DID(s): cliente → ${nomes.clientes[cli]}`), daysAgo(dia - 2, 15), 'u2');
+      }
+    });
+    const principal = S.circuits.find((c) => c.name === '071 Principal')!;
+    guardarMovimentacaoDemo(movimentacaoDoCircuitoEditado({ ...principal, channels: 20 }, principal, false, nomes), daysAgo(40, 11), 'u1');
+    guardarMovimentacaoDemo(movimentacaoDoCircuitoEditado(principal, principal, true, nomes), daysAgo(12, 16), 'u2');
+    const reserva = S.dids.find((d) => d.circuitId === S.circuits.find((c) => c.name === 'Feixe Reserva')!.id)!;
+    guardarMovimentacaoDemo(movimentacaoDaLixeiraDosDids([reserva], 'dids_lixeira'), daysAgo(9, 14), 'u3');
+    guardarMovimentacaoDemo(movimentacaoDaLixeiraDosDids([reserva], 'did_restaurado'), daysAgo(8, 10), 'u1');
+    const daAurora = S.dids.find((d) => d.clientId === byName['Clínica Aurora'] && d.inUse);
+    if (daAurora) guardarMovimentacaoDemo(movimentacaoDosDidsEditados([{ antes: { ...daAurora, inUse: false }, depois: daAurora }], nomes), daysAgo(3, 11), 'u3');
+  }
 
   S.audit = [
     { id: id(), action: 'bulk_update', entityType: 'did', entityId: null, summary: 'Alterou 40 DID(s): cliente → Supermercado Bom Preço', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 16) },
@@ -2473,10 +2542,11 @@ export const demoApi: Api = {
       return S.clients.filter((c) => ids.has(c.id)).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode }));
     },
     async get(idc) { await wait(); requirePerm('records.read'); const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito'); return shapeCircuit(c); },
-    async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const tipo = d.authType === 'login' ? 'login' : 'ip'; const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), keyNumber: (d.keyNumber as string) ?? null, carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, authType: tipo, signalingIp: (d.signalingIp as string) ?? null, authIp: tipo === 'login' ? null : (d.authIp as string) ?? null, authUsername: tipo === 'ip' ? null : (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, thirdParty: !!d.thirdParty, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
-    async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'authType', 'signalingIp', 'authIp', 'authUsername', 'notes', 'thirdParty'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; /* o que não é do tipo escolhido é limpo, como no servidor */ if (c.authType === 'ip') c.authUsername = null; else c.authIp = null; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
-    async remove(idc) { await wait(); requirePerm('records.delete'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); const n = S.dids.filter((d) => d.circuitId === idc && !d.deletedAt).length; if (n) throw bad(`Este circuito ainda tem ${n} DIDs. Mova-os para outro circuito antes de excluir.`); c.deletedAt = now(); audit('delete', 'circuit', `Mandou o circuito ${c.name} para a lixeira`, c.id); return { ok: true }; },
+    async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const tipo = d.authType === 'login' ? 'login' : 'ip'; const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), keyNumber: (d.keyNumber as string) ?? null, carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, authType: tipo, signalingIp: (d.signalingIp as string) ?? null, authIp: tipo === 'login' ? null : (d.authIp as string) ?? null, authUsername: tipo === 'ip' ? null : (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, thirdParty: !!d.thirdParty, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); guardarMovimentacaoDemo(movimentacaoDoCircuitoCriado(c)); return shapeCircuit(c); },
+    async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); const antes = { ...c }; for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'authType', 'signalingIp', 'authIp', 'authUsername', 'notes', 'thirdParty'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; /* o que não é do tipo escolhido é limpo, como no servidor */ if (c.authType === 'ip') c.authUsername = null; else c.authIp = null; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); guardarMovimentacaoDemo(movimentacaoDoCircuitoEditado(antes, c, !!d.authPassword, nomesDasMovimentacoesDemo())); return shapeCircuit(c); },
+    async remove(idc) { await wait(); requirePerm('records.delete'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); const n = S.dids.filter((d) => d.circuitId === idc && !d.deletedAt).length; if (n) throw bad(`Este circuito ainda tem ${n} DIDs. Mova-os para outro circuito antes de excluir.`); c.deletedAt = now(); audit('delete', 'circuit', `Mandou o circuito ${c.name} para a lixeira`, c.id); guardarMovimentacaoDemo(movimentacaoDaLixeiraDoCircuito(c, 'circuito_lixeira')); return { ok: true }; },
     async createRange(idc, d) { return demoApi.dids.createRange({ ...d, circuitId: idc }); },
+    async movimentacoes(q) { await wait(); requirePerm('records.read'); return movimentacoesDosCircuitosDemo(q); },
   },
   dids: {
     async list(q) {
@@ -2489,10 +2559,10 @@ export const demoApi: Api = {
       return { ...p, free: items.filter((d) => d.free).length };
     },
     async ids(q) { await wait(50); return { ids: filterDids(q).slice(0, 5000).map((d) => d.id) }; },
-    async createRange(d) { await wait(); requirePerm('dids.assign'); if (!d.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); const nums = gerarFaixaDids(didLimpo(String(d.baseNumber)), Number(d.quantity)); const ex = nums.filter((n) => S.dids.some((x) => x.number === n)); if (ex.length) throw bad(`${ex.length} número(s) já existem: ${ex.slice(0, 5).map(didFormatado).join(', ')}`); nums.forEach((n) => S.dids.push({ id: id(), number: n, circuitId: d.circuitId as string, clientId: (d.clientId as string) ?? null, inUse: false, ownerClientId: (d.ownerClientId as string) ?? S.clients.find((c) => c.internalCode === 'voicenet')!.id, note: (d.note as string) ?? null, deletedAt: null })); audit('bulk_create', 'did', `Criou ${nums.length} DIDs (${nums[0]}–${nums[nums.length - 1]})`); return { created: nums.length, first: nums[0]!, last: nums[nums.length - 1]! }; },
-    async update(idd, d) { await wait(); requirePerm('dids.assign'); const x = S.dids.find((r) => r.id === idd); if (!x) throw notFound('DID'); if (d.circuitId === null) throw bad('Todo DID pertence a um circuito'); if (d.inUse !== undefined && (d.clientId === null || (d.clientId === undefined && !x.clientId))) throw bad('Só um número com cliente pode ser marcado como em uso'); for (const k of ['circuitId', 'clientId', 'ownerClientId', 'inUse', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; /* a marca acompanha o cliente: liberou, cai; atribuiu, entra em uso */ /* alocar não é usar: trocou de cliente (ou liberou) sem dizer a marca, ela cai */ if (d.clientId !== undefined && d.inUse === undefined) x.inUse = false; if (d.clientId === null) x.inUse = false; audit('update', 'did', `Editou o DID ${x.number}`, x.id); return shapeDid(x); },
-    async bulk(ids, set) { await wait(200); requirePerm('dids.assign'); if (!Object.keys(set).length) throw bad('Escolha pelo menos um campo para alterar'); if ('circuitId' in set && !set.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); let n = 0; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { /* marcar uso sem mexer no cliente só vale para quem tem cliente */ if ('inUse' in set && !('clientId' in set) && !x.clientId) continue; n++; for (const k of ['circuitId', 'clientId', 'inUse', 'note'] as const) if (k in set) (x as any)[k] = set[k]; if ('clientId' in set && !('inUse' in set)) x.inUse = false; if (set.clientId === null) x.inUse = false; } const parts: string[] = []; if (set.circuitId) parts.push(`circuito → ${S.circuits.find((c) => c.id === set.circuitId)?.name}`); if ('clientId' in set) parts.push(set.clientId ? `cliente → ${S.clients.find((c) => c.id === set.clientId)?.tradeName}` : 'liberados (sem cliente)'); if ('inUse' in set) parts.push(set.inUse ? 'marcados como em uso' : 'marcados como não usados'); if ('note' in set) parts.push(set.note ? `observação → "${set.note}"` : 'observação limpa'); audit('bulk_update', 'did', `Alterou ${n} DID(s): ${parts.join(', ')}`); return { affected: n }; },
-    async bulkDelete(ids) { await wait(); requirePerm('records.delete'); let n = 0; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { x.deletedAt = now(); n++; } audit('bulk_delete', 'did', `Mandou ${n} DID(s) para a lixeira`); return { affected: n }; },
+    async createRange(d) { await wait(); requirePerm('dids.assign'); if (!d.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); const nums = gerarFaixaDids(didLimpo(String(d.baseNumber)), Number(d.quantity)); const ex = nums.filter((n) => S.dids.some((x) => x.number === n)); if (ex.length) throw bad(`${ex.length} número(s) já existem: ${ex.slice(0, 5).map(didFormatado).join(', ')}`); nums.forEach((n) => S.dids.push({ id: id(), number: n, circuitId: d.circuitId as string, clientId: (d.clientId as string) ?? null, inUse: false, ownerClientId: (d.ownerClientId as string) ?? S.clients.find((c) => c.internalCode === 'voicenet')!.id, note: (d.note as string) ?? null, deletedAt: null })); audit('bulk_create', 'did', `Criou ${nums.length} DIDs (${nums[0]}–${nums[nums.length - 1]})`); guardarMovimentacaoDemo(movimentacaoDosDidsCriados({ numeros: nums, circuitId: d.circuitId as string, clientId: (d.clientId as string) ?? null, note: (d.note as string) ?? null }, nomesDasMovimentacoesDemo())); return { created: nums.length, first: nums[0]!, last: nums[nums.length - 1]! }; },
+    async update(idd, d) { await wait(); requirePerm('dids.assign'); const x = S.dids.find((r) => r.id === idd); if (!x) throw notFound('DID'); if (d.circuitId === null) throw bad('Todo DID pertence a um circuito'); if (d.inUse !== undefined && (d.clientId === null || (d.clientId === undefined && !x.clientId))) throw bad('Só um número com cliente pode ser marcado como em uso'); const antes = { ...x }; for (const k of ['circuitId', 'clientId', 'ownerClientId', 'inUse', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; /* a marca acompanha o cliente: liberou, cai; atribuiu, entra em uso */ /* alocar não é usar: trocou de cliente (ou liberou) sem dizer a marca, ela cai */ if (d.clientId !== undefined && d.inUse === undefined) x.inUse = false; if (d.clientId === null) x.inUse = false; audit('update', 'did', `Editou o DID ${x.number}`, x.id); guardarMovimentacaoDemo(movimentacaoDosDidsEditados([{ antes, depois: x }], nomesDasMovimentacoesDemo())); return shapeDid(x); },
+    async bulk(ids, set) { await wait(200); requirePerm('dids.assign'); if (!Object.keys(set).length) throw bad('Escolha pelo menos um campo para alterar'); if ('circuitId' in set && !set.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); let n = 0; const pares: Array<{ antes: DidRow; depois: DidRow }> = []; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { /* marcar uso sem mexer no cliente só vale para quem tem cliente */ if ('inUse' in set && !('clientId' in set) && !x.clientId) continue; n++; pares.push({ antes: { ...x }, depois: x }); for (const k of ['circuitId', 'clientId', 'inUse', 'note'] as const) if (k in set) (x as any)[k] = set[k]; if ('clientId' in set && !('inUse' in set)) x.inUse = false; if (set.clientId === null) x.inUse = false; } const parts: string[] = []; if (set.circuitId) parts.push(`circuito → ${S.circuits.find((c) => c.id === set.circuitId)?.name}`); if ('clientId' in set) parts.push(set.clientId ? `cliente → ${S.clients.find((c) => c.id === set.clientId)?.tradeName}` : 'liberados (sem cliente)'); if ('inUse' in set) parts.push(set.inUse ? 'marcados como em uso' : 'marcados como não usados'); if ('note' in set) parts.push(set.note ? `observação → "${set.note}"` : 'observação limpa'); audit('bulk_update', 'did', `Alterou ${n} DID(s): ${parts.join(', ')}`); guardarMovimentacaoDemo(movimentacaoDosDidsEditados(pares, nomesDasMovimentacoesDemo(), `Alterou ${n} DID(s): ${parts.join(', ')}`)); return { affected: n }; },
+    async bulkDelete(ids) { await wait(); requirePerm('records.delete'); let n = 0; const sairam: DidRow[] = []; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { x.deletedAt = now(); n++; sairam.push(x); } audit('bulk_delete', 'did', `Mandou ${n} DID(s) para a lixeira`); guardarMovimentacaoDemo(movimentacaoDaLixeiraDosDids(sairam, 'dids_lixeira')); return { affected: n }; },
   },
   inventory: {
     async summary(q = {}): Promise<InventorySummary> {
@@ -3957,6 +4027,9 @@ export const demoApi: Api = {
       const it = list.find((x) => x.id === idr); if (!it) throw notFound();
       it.deletedAt = null;
       if (type === 'knowledgeArticle' || type === 'portalArticle') it.atualizadoEm = now();
+      // as movimentações dos circuitos (2.4.1): restaurar pela Lixeira também conta
+      if (type === 'circuit') guardarMovimentacaoDemo(movimentacaoDaLixeiraDoCircuito(it, 'circuito_restaurado'));
+      if (type === 'did') guardarMovimentacaoDemo(movimentacaoDaLixeiraDosDids([it], 'did_restaurado'));
       const nome = type === 'knowledgeArticle' ? `${codigoDoArtigo(it.numero)} "${it.titulo}"` : type === 'portalArticle' ? `o tutorial ${it.numero} "${it.titulo}" do portal` : it.tradeName ?? it.name ?? it.number ?? (type === 'device' ? identificacaoAparelho(it).texto : idr);
       audit('restore', type, `Restaurou ${nome} da lixeira`, idr); return { ok: true };
     },

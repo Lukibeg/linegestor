@@ -1,5 +1,5 @@
 /**
- * O /NIA NO CARD (Patch 2.4, decisão 0058): as "ações" da NIA — a IA do suporte da Ingline, um serviço de fora, já no
+ * O /NIA NO CARD (Patch 2.4.2, decisão 0060): as "ações" da NIA — a IA do suporte da Ingline, um serviço de fora, já no
  * ar — dentro de qualquer campo de texto do card, em todos os painéis. O pedido do Luan (30/10): digitar "/nia" num
  * campo abre um menu com TODOS os comandos (o nome e uma explicação curta de cada um, para quem nunca leu
  * documentação); "/nia corrigir o relato, a solução e a causa" trabalha só os campos citados; "/nia corrigir" sem

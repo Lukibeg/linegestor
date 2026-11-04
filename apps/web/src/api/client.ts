@@ -132,6 +132,7 @@ export const realApi: Api = {
     update: (id, d) => http('PATCH', `/circuits/${id}`, d),
     remove: (id) => http('DELETE', `/circuits/${id}`),
     createRange: (id, d) => http('POST', `/circuits/${id}/dids/range`, d),
+    movimentacoes: (q) => http('GET', `/circuits/movimentacoes${qs(q)}`),
   },
   dids: {
     list: (q) => http('GET', `/dids${qs(q)}`),
@@ -353,6 +354,10 @@ export const realApi: Api = {
     salvarCampo: (painelId, id, d) => (id ? http('PUT', `/atendimento/campos/${id}`, d) : http('POST', `/atendimento/paineis/${painelId}/campos`, d)),
     salvarCaixinhas: (campoId, d) => http('PUT', `/atendimento/campos/${campoId}/caixinhas`, d),
     ordenarCampos: (painelId, ids) => http('PUT', `/atendimento/paineis/${painelId}/campos/ordem`, { ids }),
+    excluirCampo: (campoId) => http('DELETE', `/atendimento/campos/${campoId}`),
+    camposExcluidos: (painelId) => http('GET', `/atendimento/paineis/${painelId}/campos/excluidos`),
+    restaurarCampo: (campoId) => http('POST', `/atendimento/campos/${campoId}/restaurar`),
+    salvarGrupos: (painelId, d) => http('PUT', `/atendimento/paineis/${painelId}/grupos`, d),
     incluirOpcaoDoCampo: (campoId, d) => http('POST', `/atendimento/campos/${campoId}/opcoes`, d),
     etiquetas: () => http('GET', '/atendimento/etiquetas'),
     criarEtiqueta: (d) => http('POST', '/atendimento/etiquetas', d),

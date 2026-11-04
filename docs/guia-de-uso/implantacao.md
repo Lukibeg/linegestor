@@ -49,12 +49,14 @@ Voltar a negociação e mover de novo não abre outro card.
   Curadoria, alguém precisa ser o responsável (a janela pergunta).
 - **A Configuração.** A equipe técnica marca as caixinhas do que já fez. A **Ativação dos módulos** é o checklist dos
   módulos marcados na Curadoria (só eles aparecem): marque cada um conforme ativar. Cada caixinha marcada mostra quem
-  marcou e quando.
+  marcou e quando. (Ela saiu no 2.4 e voltou no 2.4.1, com o que os cards já tinham marcado.)
 - **Os Testes.** O suporte marca o que já testou com o cliente.
 - **As pastas.** A Configuração do LinePBX vem em pastas (Servidor, Asterisk, LinePBX Web, Módulos, Telefones), cada uma
   com a conta. Quem cuida dos chamados muda ali mesmo: **Editar as caixinhas** › Nova pasta, Incluir caixinha, as setas
-  (levam a caixinha de uma pasta para a outra), o × (a caixinha que um card já marcou fica desativada, e ele continua
-  com ela) › Salvar. Vale para todos os cards do painel.
+  (levam a caixinha de uma pasta para a outra), a lixeira (desde o 2.4, exclui de verdade: some de todos os cards, mesmo
+  dos que a marcaram; o campo pode ficar sem nenhuma) › Salvar. Vale para todos os cards do painel.
+- **Todos os produtos.** Cada parte mostra um bloco para cada produto do card; o que ainda não tem campo naquela parte
+  (o VoiceNet, por exemplo) aparece vazio, com o aviso.
 - **Os anexos.** Cada campo da Curadoria tem o **Anexar**: imagens, PDF, Word, Excel, até 10 MB cada. A Configuração e os
   Testes ficam sem (o Recebe anexos, em Painéis › Ajustes › Campos, liga em qualquer campo; nas caixinhas, o anexo vai
   no clipe de cada uma). A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
@@ -81,16 +83,22 @@ quando começar a faturar.
 
 ## 5. Os campos (Painéis › Ajustes › Campos)
 
-Todo campo de qualquer painel ganhou duas opções:
+Desde o 2.4, os campos ficam em **grupos** (o cartão **Os grupos de campos**: Novo grupo, Editar — o nome e se fica no meio
+da ficha ou na lateral —, as setas da ordem, o botão que ativa ou desativa todos os campos do grupo e a lixeira, que exclui o
+grupo com os campos). A lista dos campos vem separada: os da Classificação e, em cada grupo, um bloco por produto. O campo se
+**exclui** de verdade (Editar › Excluir o campo); o que os chamados preencheram volta pelo **Restaurar**, em Excluídos.
 
-- **Parte da ficha**: com ela, o campo vai para o meio da ficha, num cartão com os da mesma parte.
+Todo campo de qualquer painel tem duas opções:
+
+- **Grupo**: com ele, o campo vai para o cartão do grupo (no meio da ficha ou na lateral).
 - **Produto**: com ele, o campo só aparece no chamado que tem o produto. O mesmo nome pode existir em produtos
   diferentes.
 
 E dois tipos novos: **Caixinhas** (o que já foi feito, com quem marcou e quando; em pastas, se quiser: **Nova pasta** na
 janela do campo) e **Módulos do produto** (os módulos do catálogo; o produto não muda depois de criado). Num campo de
 módulos, **Os módulos que aparecem** › **Só os marcados em …** faz dele o checklist de outro campo de módulos do mesmo
-produto (como a Ativação dos módulos segue o Módulos a ativar).
+produto. E, desde o 2.4, o tipo **Documento**: o arquivo anexado (conta como feito com o primeiro); o texto curto e o longo
+viram documento sem perder o que foi escrito.
 
 E a opção **Recebe anexos**: com ela, o campo ganha o Anexar na ficha (nas caixinhas, o clipe de cada uma). No modelo
 Implantação, vem ligada nos campos da Curadoria.

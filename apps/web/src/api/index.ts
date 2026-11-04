@@ -4,6 +4,7 @@
  */
 import type * as T from './types.js';
 import type {
+  PaginaDeMovimentacoes,
   AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
   AoMoverEntrada, LeituraDoHelenaNaTela, OQueAEtapaFaz, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
@@ -73,6 +74,8 @@ export type Api = {
     update(id: string, d: Record<string, unknown>): Promise<T.Circuit>;
     remove(id: string): Promise<{ ok: boolean }>;
     createRange(id: string, d: Record<string, unknown>): Promise<{ created: number; first: string; last: string }>;
+    /** As movimentações dos circuitos e dos DIDs (2.4.1): o que mudou, quem e quando, com os filtros */
+    movimentacoes(q: Record<string, unknown>): Promise<PaginaDeMovimentacoes>;
   };
   dids: {
     list(q: Record<string, unknown>): Promise<T.Page<T.Did>>;
@@ -362,7 +365,7 @@ export type Api = {
     observar(id: string, observar: boolean): Promise<T.FichaChamado>;
     /** a IA lê a conversa (ou o chamado) e sugere; nada é gravado até a pessoa aplicar */
     preencherComIa(id: string): Promise<T.SugestaoIa>;
-    // ---- o /nia no card (2.4): a NIA propõe, a pessoa aplica ----
+    // ---- o /nia no card (2.4.2): a NIA propõe, a pessoa aplica ----
     /** os comandos da NIA (o menu do /nia); sem a NIA configurada, `configurada: false` e o /nia não aparece */
     niaAcoes(): Promise<CatalogoDaNia>;
     /** a proposta da NIA para o card (não grava nada): a resposta dela como veio; na entrega "campos", com os ids */
@@ -385,6 +388,13 @@ export type Api = {
     salvarCaixinhas(campoId: string, d: T.CaixinhasGravarEntrada): Promise<T.CampoPersonalizado>;
     /** a ordem dos campos do painel (todos os ids) */
     ordenarCampos(painelId: string, ids: string[]): Promise<T.CampoPersonalizado[]>;
+    /** excluir um campo (2.4): sai de tudo; o que os chamados preencheram fica guardado e volta com o Restaurar */
+    excluirCampo(campoId: string): Promise<{ ok: true }>;
+    /** os campos excluídos do painel (2.4), do mais recente para o mais antigo */
+    camposExcluidos(painelId: string): Promise<Array<T.CampoPersonalizado & { excluidoEm: string }>>;
+    restaurarCampo(campoId: string): Promise<T.CampoPersonalizado>;
+    /** os grupos de campos do painel (2.4): a lista inteira, na ordem da ficha; o que não vier é excluído com os campos */
+    salvarGrupos(painelId: string, d: T.GruposGravarEntrada): Promise<T.GrupoDeCampos[]>;
     /** incluir uma opção numa lista do painel ali mesmo (2.0.3, só nas listas que incluem na hora: a Indicação) */
     incluirOpcaoDoCampo(campoId: string, d: T.OpcaoIncluirEntrada): Promise<T.OpcaoDoCampo>;
     /** as etiquetas de cada painel, com a cor (Ajustes › Etiquetas): criar, editar (o nome e a cor) e tirar a que nenhum chamado do painel usa */
@@ -422,7 +432,7 @@ export type Api = {
     /** os ajustes da NIA (2.1): o botão da ficha e as etiquetas de pedir, de pronto e de erro */
     niaAjustes(): Promise<T.AjustesDaNia>;
     salvarNia(d: T.AjustesDaNiaEntrada): Promise<T.AjustesDaNia>;
-    /** o /nia (2.4): o endereço da NIA e se há chave guardada (a chave nunca volta); salvar (a chave só para trocar) e testar */
+    /** o /nia (2.4.2): o endereço da NIA e se há chave guardada (a chave nunca volta); salvar (a chave só para trocar) e testar */
     niaAcoesAjustes(): Promise<NiaAcoesTela>;
     salvarNiaAcoes(d: AjustesDaNiaAcoesEntrada): Promise<NiaAcoesTela>;
     testarNiaAcoes(): Promise<TesteDaNia>;

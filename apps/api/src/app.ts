@@ -127,7 +127,7 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     await api.register(atendimentoAjustesRoutes, { prefix: '/atendimento' });
     await api.register(atendimentoEntradaRoutes, { prefix: '/atendimento' });
     await api.register(atendimentoRotinaRoutes, { prefix: '/atendimento' });
-    // o /nia no card (2.4): a NIA propõe pelo Gestor (a chave dela nunca vai para o navegador)
+    // o /nia no card (2.4.2): a NIA propõe pelo Gestor (a chave dela nunca vai para o navegador)
     await api.register(atendimentoNiaRoutes, { prefix: '/atendimento' });
     // o calendário (2.0.1): os eventos de cada equipe, nos painéis dos chamados
     await api.register(calendarioRoutes, { prefix: '/calendario' });
