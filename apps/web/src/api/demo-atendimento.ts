@@ -69,6 +69,12 @@ import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import { planoDoHistorico, type ChamadoDoHistorico } from './demo-atendimento-historico.js';
 import { PROPOSTA_PDF_DEMO } from './proposta-demo-midia.js';
+import { CATALOGO_DA_NIA_DEMO, respostaDaNiaDemo } from './demo-nia.js';
+import {
+  AjustesDaNiaAcoesSchema, base64DoConteudo, problemaDosAnexosDaNia, camposDeTextoDoCard, campoDoTipo, enderecoDaNia, folhasDoAssunto, idsDasListasDaNia, NiaAplicarSchema, NiaProporSchema,
+  NOME_DO_CAMPO_DA_NIA, NOMES_DAS_GRAVIDADES, problemaDoTamanho, procurarAssunto, resumoDoQueAplicou,
+  type CampoDeTextoDaNia, type NiaAcoesTela, type OpcoesComIds, type OpcoesParaANia, type PedidoParaANia, type PropostaDaNia,
+} from '@gestor/shared';
 import {
   AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, CAMPOS_DO_HELENA_NO_COMERCIAL, ETAPA_QUE_ABRE_A_IMPLANTACAO, IMPLANTACOES_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, CORES_DAS_ETIQUETAS_DO_COMERCIAL, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, WHATSAPP_DA_EQUIPE,
@@ -85,7 +91,7 @@ export type EstadoDaPrevia = {
   /** `whatsapp`: o número dos avisos dos chamados (2.0.1, em Administração › Usuários); `whatsappAvisos` falso = pausado */
   users: Array<{ id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; whatsapp?: string | null; whatsappAvisos?: boolean }>;
   roles: Array<{ id: string; key: string | null; permissions: string[] }>;
-  clients: Array<{ id: string; tradeName: string; isInternal: boolean; deletedAt: string | null }>;
+  clients: Array<{ id: string; tradeName: string; isInternal: boolean; deletedAt: string | null; archived?: boolean }>;
   products: Array<{ id: string; code: string; name: string; color: string; sortOrder: number; active: boolean; deletedAt: string | null }>;
   subs: Array<{ clientId: string; productCode: string; deactivatedAt: string | null }>;
   carriers: Array<{ id: string; name: string; active: boolean }>;
@@ -459,6 +465,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     temChavePropria: false,
     /** as integrações: os sites do iframe, o link da conversa e (2.1) os ajustes da NIA, o botão da ficha */
     integ: { sites: [] as string[], linkConversa: '', nia: { ...NIA_PADRAO } as AjustesDaNia },
+    /**
+     * o /nia no card (2.4.2): a NIA de exemplo já vem ligada (o endereço de hoje; a chave a prévia não tem — só a marca de
+     * que há uma guardada), para a pessoa ver o caminho inteiro
+     */
+    niaAcoes: { endereco: 'https://2.24.93.36:8443', temChave: true, configuradoEm: null as string | null, configuradoPor: 'Administrador' as string | null, ultimoTeste: null as NiaAcoesTela['ultimoTeste'] },
     /** o mapa do robô do LineChat (2.0.1); na prévia o robô não chama, então não há último pedido */
     mapaRobo: mapaDeFabrica() as MapaDoRobo,
     ultimoRobo: null as UltimoPedidoDoRobo | null,
@@ -1046,7 +1057,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   //  ALTERAR
   // =====================================================================
 
-  function alterar(ator: Ator, ref: string, pedido: ChamadoAlterar, agora: Date = agoraReal()): Feito {
+  function alterar(ator: Ator, ref: string, pedido: ChamadoAlterar, agora: Date = agoraReal(), opts: { nia?: { comando: string; nome: string; entrega: 'texto' | 'campos'; anexos?: string[] } } = {}): Feito {
     exigirTrabalhar(ator);
     const e = carregar(ator, ref, agora);
     const { t, painel } = e;
@@ -1307,6 +1318,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
 
     if (!eventos.length) return nada(t);
+    // o /nia (2.4.2, como o servidor): a linha da NIA, só com o que foi gravado
+    const anexosDaNia = opts.nia?.anexos ?? [];
+    const resumoDaNia = opts.nia ? resumoDoQueAplicou(opts.nia.nome, nomes, opts.nia.entrega, anexosDaNia) : null;
+    if (opts.nia) eventos.push(['nia', { comando: opts.nia.comando, resumo: resumoDaNia, campos: [...nomes], ...(anexosDaNia.length ? { anexos: anexosDaNia } : {}) }]);
     const depois = { ...set };
     Object.assign(t, set);
     tocar(t, agora);
@@ -1324,7 +1339,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const camposMudados = nomes.filter((n) => n !== 'Observadores' && n !== NOME_CAMPO.responsavel);
     if (camposMudados.length) avisarObservadores({ chamado: curto(t), observadores, menos, campos: { quem: ator.nome, nomes: camposMudados } }, agora);
     emitir('chamado.alterado', t.id, { mudancas });
-    return { id: t.id, codigo: t.codigo, titulo: t.titulo, resumo: `Alterou ${t.codigo} "${t.titulo}": ${nomes.join(', ')}`, antes, depois };
+    const resumo = resumoDaNia ? `Aplicou a proposta da NIA em ${t.codigo} "${t.titulo}": ${resumoDaNia}` : `Alterou ${t.codigo} "${t.titulo}": ${nomes.join(', ')}`;
+    return { id: t.id, codigo: t.codigo, titulo: t.titulo, resumo, antes, depois };
   }
 
   // =====================================================================
@@ -4472,6 +4488,154 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async andamentoOperadora(id, casoId, d) { await ctx.wait(150); const dados = ler(OperadoraAndamentoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(andamentoNaOperadora(eu(), id, casoId, dados)); },
     async avisarCliente(id, texto) { await ctx.wait(250); const dados = ler(AvisarClienteSchema, { texto }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(avisarCliente(eu(), id, dados.texto)); },
     async observar(id, acompanhar) { await ctx.wait(120); const dados = ler(ObservarSchema, { observar: acompanhar }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(observar(eu(), id, dados.observar)); },
+    // ---- o /nia no card (2.4.2): a NIA de exemplo (demo-nia.ts) no mesmo contrato; as regras do Gestor, como o servidor ----
+    async niaAcoes() {
+      await ctx.wait(120); ctx.requirePerm('tickets.work'); preparar();
+      const configurada = !!A.niaAcoes.endereco && A.niaAcoes.temChave;
+      return { configurada, acoes: configurada ? CATALOGO_DA_NIA_DEMO.map((a) => ({ ...a })) : [], erro: null };
+    },
+    async niaPropor(id, d) {
+      await ctx.wait(150);
+      const dados = ler(NiaProporSchema, d);
+      ctx.requirePerm('tickets.work'); preparar();
+      const ator = eu();
+      exigirTrabalhar(ator);
+      const t = chamadoVisivel(id, ator);
+      const painel = painelPorId(t.painelId)!;
+      const nome = CATALOGO_DA_NIA_DEMO.find((a) => a.comando === dados.comando)?.nome ?? dados.comando;
+      const falhou = (erro: string): PropostaDaNia => {
+        auditar('chamado_nia_proposta', 'ticket', `Pediu à NIA (${nome}) uma proposta para ${t.codigo}${dados.campo ? `, do campo ${dados.campo}` : ''} — não veio: ${erro}`, t.id);
+        return { ok: false, comando: dados.comando, erro };
+      };
+      if (!A.niaAcoes.endereco || !A.niaAcoes.temChave) return falhou('A NIA ainda não está ligada: o endereço e a chave ficam em Painéis › Ajustes › Integrações.');
+      const acao = CATALOGO_DA_NIA_DEMO.find((a) => a.comando === dados.comando);
+      if (!acao) return falhou(`A NIA não tem o comando "${dados.comando}". Escolha um da lista do /nia.`);
+      // os anexos do lugar do /nia (como o servidor): o rascunho da anotação, ou os do campo (fora os apagados)
+      const anexos = dados.campo === 'anotacao'
+        ? (dados.anexos ?? []).map((a) => ({ nome: a.fileName, base64: base64DoConteudo(a.conteudo) }))
+        : dados.campo?.startsWith('campo:')
+          ? A.anexos.filter((a) => a.chamadoId === t.id && a.campoId === dados.campo!.slice(6) && !a.deletedAt).map((a) => ({ nome: a.nome, base64: base64DoConteudo(a.url) }))
+          : [];
+      const grande = anexos.find((a) => bytesDoBase64(a.base64) > 10 * 1024 * 1024);
+      if (grande) return falhou(`O anexo "${grande.nome}" passa de 10 MB: a NIA lê até 10 MB por arquivo. Tire ele e chame a NIA de novo.`);
+      const problema = problemaDosAnexosDaNia(anexos.map((a) => ({ bytes: bytesDoBase64(a.base64) })));
+      if (problema) return falhou(problema);
+      const campos = camposDeTextoDoCard(painel, t.tipoChamado, !!t.relato?.trim());
+      const chamado: PedidoParaANia['chamado'] = Object.fromEntries(campos.map((c) => [c, (t[c] as string | null) ?? '']));
+      if (dados.campo === 'anotacao') chamado.anotacao = dados.anotacao ?? '';
+      let opcoes: OpcoesParaANia | undefined;
+      let comIds: OpcoesComIds = {};
+      if (acao.entrega === 'campos') {
+        const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
+        const assuntos = usa('assunto') ? folhasDoAssunto(A.assuntos, painel.id) : [];
+        comIds = {
+          ...(usa('cliente') ? { clientes: S.clients.filter((c) => !c.deletedAt && !c.archived).map((c) => ({ id: c.id, nome: c.tradeName })) } : {}),
+          ...(usa('produtos') ? { produtos: S.products.filter((x) => !x.deletedAt && x.active).map((x) => ({ id: x.id, nome: x.name })) } : {}),
+          ...(usa('tipo') && painel.ajustes.tipos.length ? { tipos: painel.ajustes.tipos } : {}),
+          ...(assuntos.length ? { assuntos } : {}),
+        };
+        opcoes = {
+          ...(comIds.clientes?.length ? { cliente: comIds.clientes.map((c) => c.nome) } : {}),
+          ...(comIds.produtos?.length ? { produto: comIds.produtos.map((x) => x.nome) } : {}),
+          ...(comIds.tipos ? { tipo: comIds.tipos } : {}),
+          ...(comIds.assuntos ? { assunto: comIds.assuntos } : {}),
+          ...(usa('gravidade') && campoDoTipo(painel.tipo, 'gravidade') ? { gravidade: NOMES_DAS_GRAVIDADES } : {}),
+        };
+      }
+      // a NIA pensa uns segundos (a de verdade leva de 5 a 30)
+      await ctx.wait(1800);
+      const r: PropostaDaNia = respostaDaNiaDemo({ comando: acao.comando, instrucao: dados.instrucao, campo: dados.campo ?? '', referencia: t.codigo, chamado, ...(opcoes ? { opcoes } : {}), ...(anexos.length ? { anexos } : {}) });
+      if (r.ok && r.entrega === 'campos' && r.campos) r.idsDasListas = idsDasListasDaNia(r.campos, comIds);
+      auditar('chamado_nia_proposta', 'ticket', `Pediu à NIA (${acao.nome}) uma proposta para ${t.codigo}${dados.campo ? `, do campo ${dados.campo}` : ''}${anexos.length ? `, com ${anexos.length} ${anexos.length === 1 ? 'anexo' : 'anexos'}` : ''}${r.ok ? '' : ` — não veio: ${r.erro}`}`, t.id);
+      return r;
+    },
+    async niaAplicar(id, d) {
+      await ctx.wait(200);
+      const dados = ler(NiaAplicarSchema, d);
+      ctx.requirePerm('tickets.work'); preparar();
+      const ator = eu();
+      exigirTrabalhar(ator);
+      const t = chamadoVisivel(id, ator);
+      const painel = painelPorId(t.painelId)!;
+      const usados = new Set<string>(camposDeTextoDoCard(painel, t.tipoChamado, true));
+      const pedido: ChamadoAlterar = {};
+      const doPainel: Record<string, string | null> = {};
+      for (const [chave, texto] of Object.entries(dados.campos)) {
+        if (chave.startsWith('campo:')) {
+          const c = A.campos.find((x) => x.id === chave.slice(6) && x.painelId === painel.id);
+          if (!c || !c.ativo || c.tipo !== 'texto_longo') throw bad('Esse campo não é um campo de texto deste card.');
+          const problema = problemaDoTamanho(chave, texto, c.nome);
+          if (problema) throw bad(problema);
+          doPainel[c.id] = texto?.trim() ? texto : null;
+          continue;
+        }
+        const campo = chave as CampoDeTextoDaNia;
+        if (!usados.has(campo)) throw bad(`${NOME_DO_CAMPO_DA_NIA[campo]} não é um campo deste card.`);
+        const problema = problemaDoTamanho(campo, texto);
+        if (problema) throw bad(problema);
+        if (campo === 'titulo') pedido.titulo = (texto ?? '').trim();
+        else pedido[campo] = texto?.trim() ? texto : null;
+      }
+      if (Object.keys(doPainel).length) pedido.campos = doPainel;
+      let entrega: 'texto' | 'campos' = 'texto';
+      if (dados.listas) {
+        const l = dados.listas;
+        entrega = 'campos';
+        if (l.clienteId !== undefined) pedido.clienteId = l.clienteId;
+        if (l.produtos !== undefined) pedido.produtos = l.produtos;
+        if (l.tipo !== undefined) pedido.tipo = l.tipo;
+        if (l.gravidade !== undefined) pedido.gravidade = l.gravidade;
+        if (l.assunto !== undefined) {
+          if (!l.assunto) pedido.assuntoId = null;
+          else {
+            const achado = procurarAssunto(A.assuntos, painel, l.assunto);
+            if (!achado.ok) throw bad(achado.erro);
+            pedido.assuntoId = achado.assunto.id;
+          }
+        }
+      }
+      const acao = CATALOGO_DA_NIA_DEMO.find((a) => a.comando === dados.comando);
+      if (acao?.entrega === 'campos') entrega = 'campos';
+      const r = alterar(ator, t.id, ler(ChamadoAlterarSchema, pedido), agoraReal(), { nia: { comando: dados.comando, nome: acao?.nome ?? dados.comando, entrega, anexos: dados.anexosLidos ?? [] } });
+      if (!r.resumo) throw bad('Nada mudou: o que foi marcado já estava assim no card.');
+      return fichaDepois(r);
+    },
+    async niaAcoesAjustes() {
+      await ctx.wait(80); ctx.requirePerm('admin.manage'); preparar();
+      return { ...A.niaAcoes };
+    },
+    async salvarNiaAcoes(d) {
+      await ctx.wait(180);
+      const dados = ler(AjustesDaNiaAcoesSchema, d);
+      ctx.requirePerm('admin.manage'); preparar();
+      const antes = A.niaAcoes.endereco;
+      const lido = dados.endereco ? enderecoDaNia(dados.endereco) : null;
+      if (lido && !lido.ok) throw bad(lido.erro);
+      const novo = lido?.ok ? lido.endereco : '';
+      const servidorAntes = antes ? (enderecoDaNia(antes) as { servidor?: string }).servidor : null;
+      if (novo && !dados.chave && !A.niaAcoes.temChave) throw bad('Cole a chave de serviço da NIA: sem ela, a NIA recusa o Gestor.');
+      if (novo && !dados.chave && A.niaAcoes.temChave && lido?.ok && servidorAntes && lido.servidor !== servidorAntes) {
+        throw bad(`O endereço agora é de outro servidor (${lido.servidor}): cole a chave de novo. A chave guardada só vai para ${servidorAntes}, onde foi colada.`);
+      }
+      // a prévia não guarda a chave (nem a mostra): só a marca de que há uma
+      A.niaAcoes = {
+        ...A.niaAcoes, endereco: novo, temChave: A.niaAcoes.temChave || !!dados.chave, configuradoEm: agoraReal().toISOString(), configuradoPor: eu().nome,
+        ultimoTeste: dados.chave || novo !== antes ? null : A.niaAcoes.ultimoTeste,
+      };
+      auditar('settings_atendimento_nia_acoes', 'settings', novo ? `Mudou o endereço da NIA (/nia): ${novo}${dados.chave ? ', com a chave nova' : ''}` : 'Desligou o /nia (tirou o endereço da NIA)', 'atendimento-nia-acoes',
+        { before: { endereco: antes }, after: { endereco: novo, trocouChave: !!dados.chave } });
+      return { ...A.niaAcoes };
+    },
+    async testarNiaAcoes() {
+      await ctx.wait(900); ctx.requirePerm('admin.manage'); preparar();
+      const configurada = !!A.niaAcoes.endereco && A.niaAcoes.temChave;
+      const r = configurada
+        ? { ok: true, mensagem: `A NIA respondeu: ${CATALOGO_DA_NIA_DEMO.length} comandos.`, quantos: CATALOGO_DA_NIA_DEMO.length, acoes: CATALOGO_DA_NIA_DEMO.map((a) => ({ ...a })) }
+        : { ok: false, mensagem: 'Salve o endereço e a chave da NIA antes de testar.', quantos: null, acoes: [] };
+      if (configurada) A.niaAcoes = { ...A.niaAcoes, ultimoTeste: { em: agoraReal().toISOString(), ok: r.ok, mensagem: r.mensagem, quantos: r.quantos } };
+      auditar('settings_atendimento_nia_acoes_teste', 'settings', `Testou a NIA (/nia): ${r.mensagem}`, 'atendimento-nia-acoes');
+      return r;
+    },
     async preencherComIa(id) {
       await ctx.wait(1200);
       ctx.requirePerm('tickets.work'); preparar();

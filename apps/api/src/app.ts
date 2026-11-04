@@ -40,6 +40,7 @@ import atendimentoRoutes from './routes/atendimento.js';
 import atendimentoAjustesRoutes from './routes/atendimentoAjustes.js';
 import atendimentoEntradaRoutes from './routes/atendimentoEntrada.js';
 import atendimentoRotinaRoutes from './routes/atendimentoRotina.js';
+import atendimentoNiaRoutes from './routes/atendimentoNia.js';
 import calendarioRoutes from './routes/calendario.js';
 import simuladorRoutes from './routes/simulador.js';
 import helenaRoutes from './routes/helena.js';
@@ -126,6 +127,8 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     await api.register(atendimentoAjustesRoutes, { prefix: '/atendimento' });
     await api.register(atendimentoEntradaRoutes, { prefix: '/atendimento' });
     await api.register(atendimentoRotinaRoutes, { prefix: '/atendimento' });
+    // o /nia no card (2.4.2): a NIA propõe pelo Gestor (a chave dela nunca vai para o navegador)
+    await api.register(atendimentoNiaRoutes, { prefix: '/atendimento' });
     // o calendário (2.0.1): os eventos de cada equipe, nos painéis dos chamados
     await api.register(calendarioRoutes, { prefix: '/calendario' });
     // o Simulador do Comercial (2.0.2): a conta de uma venda antes de fechar

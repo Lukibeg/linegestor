@@ -167,6 +167,20 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   para o chamado que foi etiquetado à mão antes do botão. Pedido sem resposta, dá para pedir de novo
   depois de 10 minutos. **Sem a conversa do LineChat**, o botão avisa antes (a NIA lê só o que está
   escrito no chamado) e oferece **Ligar a conversa**. A negociação não tem a NIA.
+- **O /nia** (2.4.2, em todos os painéis, também na negociação): em **qualquer campo de texto** do card —
+  o título, o relato, a descrição, a solução, a causa, a solução de contorno, a validação, a "Sobre a
+  negociação" — e na **anotação**, escreva **/nia**: abre a lista dos comandos da NIA, cada um com o que
+  ele faz (corrigir o português, formalizar para o cliente, resumir, criar o chamado a partir de uma
+  descrição, preencher um card vazio). Continuar escrevendo filtra (**/nia cor**); as setas e o **Enter**
+  escolhem, **Esc** fecha. Depois do comando, escreva o pedido na mesma linha e **Enter** manda:
+  **/nia corrigir o relato e a causa** trabalha só esses; **/nia corrigir**, sem citar, o card inteiro.
+  O /nia e o pedido saem do campo. A NIA lê o card **como está gravado** (o que você escreveu e não salvou,
+  salve antes; na anotação, o rascunho vai junto). Enquanto ela lê, o campo fica parado (**a NIA está
+  lendo…**); depois abre a janela com o **antes e o depois** de cada campo (o que mudou em destaque), o
+  **resumo**, ou a **tabela dos campos** (o cliente, o produto, o tipo, o assunto e a gravidade). **A NIA
+  propõe, você aplica**: nada é gravado até o **Aplicar**, que grava só o que ficou marcado — e o
+  Histórico diz o que você aplicou. No card sem relato (a ligação), a dica: **/nia criar-chamado** e
+  descreva o que aconteceu. Só aparece para quem pode mexer no card, e com a NIA ligada em Integrações.
 - **Citar um colega**: na anotação, escreva **@** e o começo do nome — a lista de quem vê o painel abre
   ali mesmo; as setas andam, **Enter** (ou o clique) escolhe e **Esc** fecha só a lista. O botão
   **Citar**, ao lado de Anexar, faz o mesmo. Embaixo da caixa aparece quem vai receber o aviso. Quem for
@@ -203,7 +217,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 | **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a prioridade sugerida: a coluna **Só a gravidade** (o painel sem o alcance) e a matriz gravidade × alcance (o painel que usa o alcance) |
 | **Avisos e WhatsApp** | No primeiro cartão, os dois números (o do cliente, oficial, e o da equipe), a chave e o **Testar**. **A mensagem ao cliente**: pelo **modelo aprovado** (o template do WhatsApp oficial — o único jeito de começar uma conversa) ou em texto livre (só até 24 horas da última mensagem do cliente; depois disso, vai o modelo). **Buscar os modelos no LineChat** traz os aprovados do número oficial; ao escolher um, o Gestor preenche o **id** (templateId) e as **variáveis**, e cada uma recebe um valor do chamado (o nome do contato, o código, o título, a empresa, o responsável, quem manda, **o que o atendente escreveu**) ou um texto fixo. O modelo com imagem, vídeo ou documento no cabeçalho pede o **endereço do arquivo** (https://). A prévia mostra a mensagem com um chamado de exemplo. **Quem fica com a conversa no LineChat**: a equipe (pelo nome) e, ligado, quem manda (pelo e-mail, o mesmo nos dois). Depois, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início), e **a mensagem de cada aviso no WhatsApp** (2.0.2; abaixo). O **WhatsApp de cada pessoa** fica em **Administração › Usuários** (no Editar usuário; o "Receber os avisos dos chamados no WhatsApp" pausa sem apagar o número): aqui aparece quantos recebem |
 | **Agendados** | O chamado que nasce sozinho (todo dia, toda semana, todo mês ou uma vez) |
-| **Integrações** | O robô do LineChat e o **mapa do robô** (os parâmetros que chegam no webhook, de onde vem cada campo do chamado e como deve chegar o webhook), as chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
+| **Integrações** | O robô do LineChat e o **mapa do robô** (os parâmetros que chegam no webhook, de onde vem cada campo do chamado e como deve chegar o webhook), as chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles, o link da conversa e, desde o 2.4.2, a **NIA (/nia)**: o endereço da NIA, a chave de serviço (vai para o cofre e nunca volta; trocar o endereço para outro servidor pede a chave de novo) e o **Testar**, que diz quantos comandos vieram. Sem os dois, o /nia não aparece nos cards; enquanto a NIA não tiver domínio, o servidor precisa do `nia-ca.crt` (o passo a passo está em `docs/publicacao.md`) |
 | **IA** | O provedor e a chave do **Preencher com IA** (é a mesma IA da Base de conhecimento) e, desde o 2.1, **A NIA na ficha**: liga e desliga o botão da NIA e diz as três etiquetas do combinado com o fluxo do n8n — a de pedir (que o botão põe), a de pronto e a de erro (que a NIA põe); de fábrica, as do Helena |
 
 Painéis, campos, etiquetas, prazos, avisos e agendados: quem **cuida dos chamados**. Integrações e

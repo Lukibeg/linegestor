@@ -44,9 +44,9 @@ URL = os.environ.get('PREVIA_URL', 'http://localhost:4174/')
 SAIDA = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(RAIZ, 'o-que-mudou.mp4')
 
 # ---------- os textos do patch (troque a cada patch) ----------
-CAPA = ('Patch 2.3 — a implantação dos clientes', 'Ingline Gestão · do Comercial ao Implantado, em 2 minutos, com dados de exemplo')
+CAPA = ('Patch 2.4.2 — o /nia no card', 'Ingline Gestão · a NIA dentro de cada card: ela propõe, você aplica')
 FIM = ('Os detalhes estão em Novidades', 'Cada mudança, com o texto e o print, fica no menu Novidades')
-# a tela que fica atrás da capa (o roteiro começa nela)
+# a tela que fica atrás da capa (o roteiro começa nela): a ficha do chamado do roteiro (o `antes_do_roteiro` acha o código)
 PRIMEIRA_TELA = '/painel'
 # quanto da capa fica no começo do vídeo, em segundos (a gravação começa com uns 0 a 2 s de
 # diferença do relógio daqui: na prática a capa fica entre 2,5 e 4,5 s)
@@ -215,7 +215,7 @@ def entrar_atras_da_capa(page):
             esperar(page, 900)
 
 
-# ---------- o roteiro do Patch 2.3 (troque pelo do patch novo) ----------
+# ---------- o roteiro do Patch 2.3 (o exemplo de antes) ----------
 
 # Os cards e as negociações do roteiro, pelo título (o código sai do quadro e da lista, atrás da capa)
 CARDS = {
@@ -232,7 +232,7 @@ COD = {}
 IMAGEM_PARA_ANEXAR = os.path.join(RAIZ, 'docs/novidades/2.3/pastas.jpg')
 
 
-def antes_do_roteiro(page):
+def antes_do_roteiro_2_3(page):
     ir(page, '/atendimento/quadro?painel=painel-implantacao', 1800)
     COD.update(page.evaluate("""(titulos) => Object.fromEntries(Object.entries(titulos).map(([k, t]) => {
         const li = [...document.querySelectorAll('li[data-codigo]')].find((x) => x.innerText.includes(t));
@@ -256,7 +256,7 @@ def abrir_a_parte(page, id_):
         clicar(page, b.first); esperar(page, 600)
 
 
-def roteiro(page):
+def roteiro_2_3(page):
     n = iter(range(1, 100))
     # 1. o menu: Suporte › Painel da Implantação, e o quadro
     legenda(page, next(n), 'O painel de Implantação', 'Um card por cliente novo. No menu, Suporte › Painel da Implantação.', 900)
@@ -338,6 +338,117 @@ def roteiro(page):
     page.keyboard.press('Escape'); esperar(page, 1400)
     legenda(page, next(n), 'E o card já está com os valores', 'O LinePBX e o LineChat, cada um no seu campo. Sem precisar levar nada.', 600)
     apontar(page, page.locator('#campo-valor'), 2600)
+
+
+# ---------- o roteiro do Patch 2.4.2 (troque pelo do patch novo) ----------
+
+# o chamado do roteiro (o primeiro da lista do Suporte) e um sem relato (a dica do criar-chamado)
+COD_2_4 = {}
+
+
+def editar_texto(page, campo, texto):
+    """Escreve no campo do card e salva (atrás da capa: os erros de quem escreve correndo, para a NIA corrigir)."""
+    bloco = page.locator(f'#campo-{campo}')
+    bloco.scroll_into_view_if_needed()
+    bloco.get_by_role('button').filter(has_text=re.compile('^ *(Editar|Escrever) *$')).first.click()
+    esperar(page, 300)
+    area = bloco.locator('textarea')
+    area.fill(texto)
+    area.press('Control+Enter')
+    esperar(page, 900)
+
+
+def antes_do_roteiro(page):
+    global PRIMEIRA_TELA
+    ir(page, '/atendimento/lista?painel=painel-suporte', 2000)
+    codigos = page.evaluate("""() => [...new Set([...document.querySelectorAll('a[href^="#/atendimento/SUP-"]')].map((a) => a.getAttribute('href').split('/').pop()))]""")
+    for c in codigos[1:30]:
+        ir(page, f'/atendimento/{c}', 1400)
+        if page.locator('#campo-relato [data-nia-dica]').count():
+            COD_2_4['vazio'] = c
+            break
+    if 'vazio' not in COD_2_4:
+        # nenhum exemplo sem relato: o segundo card fica sem ele (a prévia é de mentira)
+        COD_2_4['vazio'] = codigos[1]
+        ir(page, f'/atendimento/{codigos[1]}', 1400)
+        editar_texto(page, 'relato', '')
+    COD_2_4['card'] = codigos[0]
+    ir(page, f'/atendimento/{codigos[0]}', 1800)
+    editar_texto(page, 'relato', 'o cliente ligou dizendo que desde terca os ramais nao tem audio , ninguem escuta nada')
+    editar_texto(page, 'descricao', 'testado o ramal 203 no sbc , registro ok. a operadora nao mudou nada')
+    PRIMEIRA_TELA = f'/atendimento/{codigos[0]}'
+    print('os chamados do roteiro:', COD_2_4)
+
+
+def roteiro(page):
+    n = iter(range(1, 100))
+    # 1. o /nia num campo: o menu com todos os comandos
+    bloco = page.locator('#campo-solucao')
+    bloco.scroll_into_view_if_needed(); esperar(page, 400)
+    legenda(page, next(n), 'O /nia em qualquer campo do card', 'No título, nos textos e na anotação, em todos os painéis: escreva /nia e a lista dos comandos abre ali.', 600)
+    clicar(page, bloco.get_by_role('button').filter(has_text=re.compile('^ *(Editar|Escrever) *$')).first); esperar(page, 500)
+    area = bloco.locator('textarea')
+    clicar(page, area, 200)
+    page.keyboard.type('/nia', delay=140); esperar(page, 1200)
+    apontar(page, page.locator('[data-nia-menu] [data-nia-comando]').nth(3), 900)
+    apontar(page, page.locator('[data-nia-menu] [data-nia-comando]').nth(1), 1200)
+    legenda(page, next(n), 'Digitar filtra', 'Cada comando com o que ele faz. /nia cor deixa só o Corrigir o português.', 600)
+    page.keyboard.type(' cor', delay=160); esperar(page, 1600)
+
+    # 2. o pedido na mesma linha
+    legenda(page, next(n), 'O pedido na mesma linha', 'Enter escolhe. Depois, escreva o que quer: só o relato e a descrição. Enter manda.', 600)
+    page.keyboard.press('Enter'); esperar(page, 500)
+    page.keyboard.type('o relato e a descrição', delay=85); esperar(page, 900)
+    page.keyboard.press('Enter'); esperar(page, 900)
+
+    # 3. a proposta: o antes e o depois
+    page.wait_for_selector('#janela-da-nia', timeout=15000); esperar(page, 600)
+    legenda(page, next(n), 'O antes e o depois', 'A NIA propõe, campo por campo, com o que mudou em destaque. Nada é gravado ainda.', 600)
+    apontar(page, page.locator('[data-nia-linha="relato"] [data-depois]'), 2000)
+    apontar(page, page.locator('[data-nia-linha="descricao"] [data-depois]'), 1600)
+    legenda(page, next(n), 'Você escolhe o que entra', 'Desmarque o que não quiser e clique em Aplicar: grava só o marcado, com o seu nome.', 600)
+    clicar(page, page.get_by_role('checkbox', name='Aplicar em Descrição')); esperar(page, 900)
+    clicar(page, page.locator('#nia-aplicar')); esperar(page, 1800)
+
+    # 4. o Histórico
+    hist = page.get_by_role('tab', name='Histórico')
+    hist.scroll_into_view_if_needed(); esperar(page, 400)
+    legenda(page, next(n), 'No Histórico do card', 'A linha da NIA diz o que você aplicou. O que ficou desmarcado não entra.', 600)
+    clicar(page, hist); esperar(page, 700)
+    apontar(page, page.locator('li', has_text='aplicou a NIA').first, 2400)
+
+    # 5. o resumo na anotação
+    clicar(page, page.get_by_role('tab', name=re.compile('^Anotações')).first); esperar(page, 500)
+    nota = page.locator('#anotacao-nova')
+    legenda(page, next(n), 'O resumo do card', 'Na anotação, /nia resumir: o resumo vira o rascunho, e você anota como sempre.', 600)
+    digitar(page, nota, '/nia resumir'); esperar(page, 500)
+    page.keyboard.press('Enter')
+    page.wait_for_selector('#janela-da-nia', timeout=15000); esperar(page, 1800)
+    clicar(page, page.locator('#nia-aplicar')); esperar(page, 1800)
+    nota.fill('')
+
+    # 6. o chamado a partir da ligação
+    if COD_2_4.get('vazio'):
+        ir(page, f'/atendimento/{COD_2_4["vazio"]}', 1800)
+        dica = page.locator('#campo-relato button:has([data-nia-dica])')
+        dica.scroll_into_view_if_needed(); esperar(page, 400)
+        legenda(page, next(n), 'O chamado a partir da ligação', 'No card sem relato, a dica: /nia criar-chamado e o que aconteceu, com as suas palavras.', 600)
+        clicar(page, dica); esperar(page, 500)
+        page.keyboard.type('/nia criar', delay=120); esperar(page, 700)
+        page.keyboard.press('Enter'); esperar(page, 300)
+        page.keyboard.type('a Clínica Aurora ligou: desde cedo os ramais estão mudos, ninguém escuta nada', delay=45); esperar(page, 600)
+        page.keyboard.press('Enter')
+        page.wait_for_selector('#janela-da-nia', timeout=15000); esperar(page, 600)
+        legenda(page, next(n), 'A NIA propõe os campos', 'O título, o relato, o cliente, o produto, o assunto. Vem marcado só o que o card ainda não tem.', 600)
+        apontar(page, page.locator('#nia-tabela-campos'), 2600)
+        clicar(page, page.locator('#nia-aplicar')); esperar(page, 1800)
+
+    # 7. as Integrações
+    ir(page, '/atendimento/ajustes?aba=integracoes', 1800)
+    cartao = page.locator('#integ-nia')
+    cartao.scroll_into_view_if_needed(); esperar(page, 500)
+    legenda(page, next(n), 'A NIA nas Integrações', 'O endereço e a chave de serviço (no cofre, nunca volta para a tela). O Testar diz quantos comandos vieram.', 600)
+    clicar(page, page.locator('#integ-nia-testar')); esperar(page, 2600)
 
 
 # ---------- o roteiro do Patch 2.0 (o exemplo de antes) ----------

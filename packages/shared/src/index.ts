@@ -26,3 +26,4 @@ export * from './nia.js';
 export * from './implantacao.js';
 export * from './negociacao.js';
 export * from './circuitos-movimentacoes.js';
+export * from './nia-acoes.js';

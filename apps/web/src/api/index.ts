@@ -8,6 +8,7 @@ import type {
   AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
   AoMoverEntrada, LeituraDoHelenaNaTela, OQueAEtapaFaz, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
+  AjustesDaNiaAcoesEntrada, CatalogoDaNia, NiaAcoesTela, NiaAplicarEntrada, NiaProporEntrada, PropostaDaNia, TesteDaNia,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
 
@@ -364,6 +365,13 @@ export type Api = {
     observar(id: string, observar: boolean): Promise<T.FichaChamado>;
     /** a IA lê a conversa (ou o chamado) e sugere; nada é gravado até a pessoa aplicar */
     preencherComIa(id: string): Promise<T.SugestaoIa>;
+    // ---- o /nia no card (2.4.2): a NIA propõe, a pessoa aplica ----
+    /** os comandos da NIA (o menu do /nia); sem a NIA configurada, `configurada: false` e o /nia não aparece */
+    niaAcoes(): Promise<CatalogoDaNia>;
+    /** a proposta da NIA para o card (não grava nada): a resposta dela como veio; na entrega "campos", com os ids */
+    niaPropor(id: string, d: NiaProporEntrada): Promise<PropostaDaNia>;
+    /** grava só o marcado, pelo caminho de sempre da ficha, com a linha da NIA no Histórico */
+    niaAplicar(id: string, d: NiaAplicarEntrada): Promise<T.FichaChamado>;
     remover(id: string): Promise<{ ok: boolean }>;
     restaurar(id: string): Promise<T.FichaChamado>;
     // ---- os ajustes do módulo (quem cuida dos chamados) ----
@@ -424,6 +432,10 @@ export type Api = {
     /** os ajustes da NIA (2.1): o botão da ficha e as etiquetas de pedir, de pronto e de erro */
     niaAjustes(): Promise<T.AjustesDaNia>;
     salvarNia(d: T.AjustesDaNiaEntrada): Promise<T.AjustesDaNia>;
+    /** o /nia (2.4.2): o endereço da NIA e se há chave guardada (a chave nunca volta); salvar (a chave só para trocar) e testar */
+    niaAcoesAjustes(): Promise<NiaAcoesTela>;
+    salvarNiaAcoes(d: AjustesDaNiaAcoesEntrada): Promise<NiaAcoesTela>;
+    testarNiaAcoes(): Promise<TesteDaNia>;
     /** o mapa do robô do LineChat (2.0.1) e o último pedido dele */
     robo(): Promise<T.RoboTela>;
     salvarMapaDoRobo(mapa: T.MapaDoRoboEntrada): Promise<T.MapaDoRobo>;

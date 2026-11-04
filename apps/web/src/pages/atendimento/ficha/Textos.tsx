@@ -8,13 +8,14 @@
  * está vazio fica destacado, e o aviso em cima diz tudo o que falta. Os campos de texto longo que o
  * painel criou (Ajustes › Campos) entram aqui, depois dos do chamado.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { CircleAlert, Pencil } from 'lucide-react';
 import { campoAparece, campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
 import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
+import { DicaDoCriarChamado, useNiaNoCampo } from './NiaNoCampo.js';
 
 type CampoTexto = 'relato' | 'descricao' | 'solucao' | 'causa' | 'contorno' | 'validacao';
 type Bloco = { campo: CampoTexto; titulo: string; dica: string; max: number; exemplo: string };
@@ -138,6 +139,13 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
   const [texto, setTexto] = useState('');
   const acao = useAcao();
   const falta = faltando.has(chave);
+  const caixa = useRef<HTMLTextAreaElement>(null);
+  // o /nia (2.4.2): em qualquer campo de texto do card; a NIA lê o que está gravado, e o editor fecha quando ela aceita o pedido
+  // num campo com anexos (2.3), a NIA lê os anexos dele (o servidor junta; aqui, só para o menu dizer quais)
+  const anexosDoCampo = campoId ? (f.anexosDosCampos ?? []).filter((a) => a.campoId === campoId).map((a) => ({ nome: a.nome, bytes: a.tamanho })) : [];
+  const nia = useNiaNoCampo({ campo: chave, caixa, texto, setTexto, salvo: valor, aoMandar: () => { setEditando(false); acao.limpar(); }, anexos: anexosDoCampo });
+  // o card sem relato (o card novo, a ligação): a dica do /nia criar-chamado
+  const dicaDaNia = nia.disponivel && nia.temComando('criar-chamado') && chave === 'relato' && !valor.trim();
 
   const abrir = () => { setTexto(valor); acao.limpar(); setEditando(true); };
   const desistir = () => { setEditando(false); acao.limpar(); };
@@ -165,17 +173,19 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
       </div>
       {editando ? (
         <div>
-          <textarea className="input text-[14px] leading-relaxed" rows={linhas} autoFocus maxLength={max} value={texto} placeholder={exemplo || undefined}
+          <textarea ref={caixa} className="input text-[14px] leading-relaxed" rows={linhas} autoFocus maxLength={max} value={texto} disabled={nia.lendo}
+            placeholder={dicaDaNia ? 'Digite /nia criar-chamado e descreva o que aconteceu' : exemplo || undefined}
             aria-label={titulo} onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void salvar(); }
               // Esc só desiste quando nada mudou: não se perde um texto escrito por engano
               else if (e.key === 'Escape' && texto === valor) { e.preventDefault(); desistir(); }
             }} />
+          {nia.aviso}
           <div className="flex flex-wrap items-center gap-2 mt-2">
-            <button type="button" className="btn-primary btn-sm" disabled={acao.ocupado} onClick={() => void salvar()}>{acao.ocupado ? <Spinner className="text-white" /> : 'Salvar'}</button>
-            <button type="button" className="btn-secondary btn-sm" onClick={desistir}>Cancelar</button>
-            <span className="text-[11.5px] text-muted ml-auto">Ctrl+Enter salva · os códigos (SUP-12) viram link</span>
+            <button type="button" className="btn-primary btn-sm" disabled={acao.ocupado || nia.lendo} onClick={() => void salvar()}>{acao.ocupado ? <Spinner className="text-white" /> : 'Salvar'}</button>
+            <button type="button" className="btn-secondary btn-sm" disabled={nia.lendo} onClick={desistir}>Cancelar</button>
+            <span className="text-[11.5px] text-muted ml-auto">Ctrl+Enter salva · os códigos (SUP-12) viram link{nia.disponivel ? ' · /nia chama a NIA' : ''}</span>
           </div>
           <ErroPerto erro={acao.erro} />
         </div>
@@ -183,12 +193,18 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
         <TextoComReferencias texto={valor} className="block text-[14.5px] leading-relaxed text-ink" />
       ) : falta && pode ? (
         <button type="button" onClick={abrir} className="w-full text-left rounded-lg border border-dashed border-signal px-3 py-2 text-[13px] text-signal hover:bg-signal-soft">
-          Ainda vazio — clique para escrever.
+          Ainda vazio — clique para escrever.{dicaDaNia && <> <DicaDoCriarChamado className="block mt-0.5" /></>}
+        </button>
+      ) : dicaDaNia ? (
+        <button type="button" onClick={abrir} className="w-full text-left rounded-lg border border-dashed border-line px-3 py-2 hover:bg-surface-2" id="relato-dica-nia">
+          <span className="block text-[13px] text-muted italic">Ainda não escrito.</span>
+          <DicaDoCriarChamado />
         </button>
       ) : (
         <p className="text-[13px] text-muted italic">Ainda não escrito.</p>
       )}
       {campoId && <AnexosDoTexto campoId={campoId} />}
+      {nia.janelas}
     </div>
   );
 }

@@ -2082,6 +2082,8 @@ export const TIPOS_EVENTO = [
   'implantacao', 'cadastro',
   // o anexo de um campo do card ou de uma caixinha (2.3)
   'anexo',
+  // o /nia no card (2.4.2): a pessoa aplicou o que a NIA propôs (a frase é o resumo do que foi gravado)
+  'nia',
 ] as const;
 export type TipoEvento = (typeof TIPOS_EVENTO)[number];
 export type EventoChamado = {
@@ -2375,6 +2377,11 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'reaberto': return `reabriu ${d.venda ? 'a negociação' : 'o chamado'}${d.motivo ? `: ${d.motivo}` : ''}`;
     case 'painel': return `passou do painel ${d.de} para ${d.para}`;
     case 'ia': return `preencheu com a IA: ${(d.campos as string[] | undefined)?.join(', ') || 'nada mudou'}`;
+    // o /nia (2.4.2): "aplicou a NIA (Corrigir o português): mudou Relato do cliente e Causa" — a frase é o resumo
+    case 'nia': {
+      const resumo = typeof d.resumo === 'string' && d.resumo.trim() ? d.resumo.trim() : `NIA: ${emLista((d.campos as string[] | undefined) ?? []) || 'nada mudou'}`;
+      return `aplicou a ${/^NIA\b/.test(resumo) ? resumo : `NIA: ${resumo}`}`;
+    }
     case 'resposta_pronta': return `usou a resposta pronta "${d.nome}"`;
     case 'cliente_respondeu': return d.reabriu ? `o cliente respondeu e o chamado reabriu: "${d.texto}"` : `o cliente respondeu: "${d.texto}"`;
     case 'prazo': return d.texto ?? 'alerta de prazo';

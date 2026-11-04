@@ -11,7 +11,7 @@
  * observar o chamado.
  */
 import { lazy, Suspense, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type SyntheticEvent } from 'react';
-import { AlarmClock, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, AtSign, BadgeCheck, Bell, CircleDot, Columns3, Download, ExternalLink, Eye, FileText, Flag, GitBranch, History, Hourglass, Layers, Link2, ListChecks, Lock, MessageCircle, MessageSquareReply, Paperclip, Pencil, Plus, RadioTower, Rocket, RotateCcw, Sparkles, Timer, Trash2, UserRound, X, Zap } from 'lucide-react';
+import { AlarmClock, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, AtSign, BadgeCheck, Bell, CircleDot, Columns3, Download, ExternalLink, Eye, FileText, Flag, GitBranch, History, Hourglass, Layers, Link2, ListChecks, Lock, MessageCircle, MessageSquareReply, Paperclip, Pencil, Plus, RadioTower, Rocket, RotateCcw, Sparkles, Timer, Trash2, UserRound, WandSparkles, X, Zap } from 'lucide-react';
 import {
   NIVEIS, citacaoDigitando, citadosNoTexto, duracaoDoPrazo, emLista, paraBusca, rotuloDoNivel,
   type AnexoChamado, type AnotacaoChamado, type EventoChamado, type PessoaCurta, type TipoEvento,
@@ -25,6 +25,7 @@ import { ordenarLista, Th, useOrdenacaoLocal } from '../../../lib/ordenacao.js';
 import { Avatar, dataHoraCurta } from '../comum.js';
 import { ErroPerto, Secao, TextoComReferencias, comMaiuscula, useAberta, useAcao } from './base.js';
 import { dataCompleta } from './Cabecalho.js';
+import { useNiaNoCampo } from './NiaNoCampo.js';
 
 /** O leitor de PDF (o PDF.js) só carrega quando um PDF abre. */
 const LeitorDePdf = lazy(() => import('../../../components/LeitorDePdf.js'));
@@ -96,6 +97,8 @@ const ICONE: Partial<Record<TipoEvento, typeof CircleDot>> = {
   observador: Eye, lixeira: Trash2,
   // a implantação (2.3): o card que a negociação abriu, e o Implantado que ligou no cadastro
   implantacao: Rocket, cadastro: BadgeCheck, anexo: Paperclip,
+  // o /nia (2.4.2): a pessoa aplicou o que a NIA propôs
+  nia: WandSparkles,
 };
 /** Frases que já dizem quem foi ("o cliente respondeu", "fechou sozinho"): sem o nome na frente. */
 const SEM_AUTOR = new Set<TipoEvento>(['cliente_respondeu', 'prazo', 'fechou_sozinho', 'aviso_equipe']);
@@ -292,6 +295,12 @@ function Anotar() {
   const citados = useMemo(() => (texto.includes('@') ? citadosNoTexto(texto, outros) : []), [texto, outros]);
   const posicao = aberta && caixa.current ? posicaoNoTexto(caixa.current, texto, digitando!.inicio) : null;
   const largura = caixa.current?.clientWidth ?? 600;
+  // o /nia (2.4.2) na anotação: o rascunho vai junto para a NIA, e o que ela propuser para a anotação volta para cá
+  // os anexos do rascunho vão junto: a NIA lê (o Gestor só junta e manda); eles continuam no rascunho depois
+  const nia = useNiaNoCampo({
+    campo: 'anotacao', caixa, texto, setTexto: (t) => { setTexto(t); setCursor(t.length); },
+    anexos: anexos.map((a) => ({ nome: a.nome, bytes: a.tamanho, conteudo: a.conteudo })),
+  });
 
   const lerCursor = (e: SyntheticEvent<HTMLTextAreaElement>) => setCursor(e.currentTarget.selectionStart ?? 0);
   const irPara = (pos: number) => requestAnimationFrame(() => { const el = caixa.current; if (el) { el.focus(); el.setSelectionRange(pos, pos); } });
@@ -362,7 +371,7 @@ function Anotar() {
       onDragLeave={() => setArrastando(false)} onDrop={soltar}>
       <label htmlFor="anotacao-nova" className="sr-only">Anotação</label>
       <div className="relative">
-        <textarea ref={caixa} id="anotacao-nova" className="input min-h-[76px] bg-surface" rows={Math.min(12, Math.max(3, texto.split('\n').length + 1))} maxLength={20_000} value={texto}
+        <textarea ref={caixa} id="anotacao-nova" className="input min-h-[76px] bg-surface" rows={Math.min(12, Math.max(3, texto.split('\n').length + 1))} maxLength={20_000} value={texto} disabled={nia.lendo}
           onChange={(e) => { setTexto(e.target.value); setCursor(e.target.selectionStart ?? 0); setMarcado(0); setEspacoAuto(null); }} onPaste={colar}
           onSelect={lerCursor} onClick={lerCursor} onKeyUp={lerCursor} onFocus={() => setFoco(true)} onBlur={() => setFoco(false)}
           role="combobox" aria-autocomplete="list" aria-expanded={aberta} aria-controls="anotacao-citar-lista"
@@ -388,7 +397,7 @@ function Anotar() {
             }
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void anotar(); }
           }}
-          placeholder="Escreva uma anotação… (@ cita um colega; cole um print ou um arquivo com Ctrl+V, ou arraste o arquivo até aqui)" />
+          placeholder={`Escreva uma anotação… (@ cita um colega${nia.disponivel ? '; /nia chama a NIA' : ''}; cole um print ou um arquivo com Ctrl+V, ou arraste o arquivo até aqui)`} />
         {aberta && posicao && (
           <div role="listbox" id="anotacao-citar-lista" aria-label="Citar um colega"
             className="absolute z-30 card p-1 shadow-lg" onMouseDown={(e) => e.preventDefault()}
@@ -404,6 +413,8 @@ function Anotar() {
           </div>
         )}
       </div>
+      {nia.aviso}
+      {nia.janelas}
       {citados.length > 0 && (
         <p className="mt-1.5 text-[12.5px] text-accent-ink flex flex-wrap items-center gap-x-1.5" id="anotacao-citados" role="status">
           <AtSign size={13} className="shrink-0" aria-hidden /> {citados.length === 1 ? 'Vai receber o aviso:' : 'Vão receber o aviso:'} <b className="font-semibold">{emLista(citados.map((p) => p.nome))}</b>
