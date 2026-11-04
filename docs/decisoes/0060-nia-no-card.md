@@ -61,12 +61,25 @@ chamado."*
    cabe.
 
 9. **A ficha nunca quebra por causa da NIA.** Toda falha vira `{ ok: false, erro }` com a frase pronta: a NIA que não
-   responde em 90 s (*"A NIA não respondeu agora. Tente de novo."*), a chave recusada (*"A chave da NIA foi recusada;
+   responde em 120 s (o mesmo que a NIA espera o modelo; era 90 s, e um PDF grande fazia o Gestor desistir antes dela) (*"A NIA não respondeu agora. Tente de novo."*), a chave recusada (*"A chave da NIA foi recusada;
    confira em Painéis › Ajustes › Integrações."*), o certificado, a resposta que não se entende. O catálogo espera 15 s
    (a tela desiste de uma leitura em 30 s).
 
 10. **O vocabulário dos assuntos para a NIA.** O `GET /integracao/opcoes` (o da chave de API) passou a levar, em cada
     assunto, a `descricao` e o `dePara` (os apelidos). O `caminho` continua o valor que o PATCH aceita.
+
+11. **Os anexos vão junto, e quem lê é a NIA.** O /nia leva os arquivos do lugar onde foi digitado: na anotação, os do
+    rascunho (até 5, ainda no navegador: vêm no pedido do `/nia/propor`, no mesmo `{ fileName, conteudo }` da
+    anotação); num campo do painel com anexos (os do 2.3), os daquele campo, lidos do banco (`ticket_attachments` com o
+    `field_id`, fora os apagados); nos outros campos, nada. O Gestor só junta e manda no formato da NIA
+    (`anexos: [{ nome, base64 }]`, sem o prefixo `data:...;base64,`): não lê, não interpreta e não manda para IA
+    nenhuma. Antes de chamar, confere com a frase clara e sem chamar a NIA: até 10 arquivos, 10 MB cada e 14 MB somando
+    (a NIA confere de novo, inclusive o tipo pelo conteúdo). A rota do `/nia/propor` aceita até 75 MB no corpo, porque
+    5 arquivos de 10 MB em base64 passam de 60 MB. O que a NIA leu (`anexosLidos`) aparece em cima da proposta; o
+    evento `nia` do Histórico guarda os nomes (`anexos`), e a frase termina com *"(com base em: print.png,
+    relato.docx)"*. O arquivo que a NIA recusa (tipo, corrompido, grande) vem como `ok:false` e a frase dela aparece
+    como veio; o rascunho fica intacto (o texto e os anexos). Nada disso grava os arquivos: a anotação é salva como
+    sempre, depois.
 
 ## Na tela
 
@@ -84,5 +97,7 @@ pessoa vê) e só com a NIA configurada.
 
 - Nenhum limite de usos por hora (a IA da base tem 30): cada pedido pede um Enter da pessoa. Se a conta da NIA pedir, o
   limite entra no serviço do Gestor.
+- A rota da anotação continua com o limite geral de 30 MB no corpo: 5 anexos de 10 MB (em base64) não cabem lá ao
+  salvar a anotação, embora caibam no /nia. É de antes do /nia e não mudou aqui.
 - O resumir num campo de texto longo do painel grava pelo Aplicar; os outros campos do painel (lista, número, data) não
   recebem o /nia.

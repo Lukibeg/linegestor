@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AJUSTES_PAINEL_PADRAO, textoDoEvento, type Assunto } from './atendimento.js';
 import {
-  acoesDoCatalogo, camposDeTextoDoCard, comComandoEscolhido, diferencaPorPalavras, folhasDoAssunto, idsDasListasDaNia, lerComandoDaNia,
+  acoesDoCatalogo, base64DoConteudo, bytesDoBase64, camposDeTextoDoCard, problemaDosAnexosDaNia, textoDosAnexosLidos, comComandoEscolhido, diferencaPorPalavras, folhasDoAssunto, idsDasListasDaNia, lerComandoDaNia,
   NiaAplicarSchema, NiaProporSchema, problemaDoTamanho, RespostaDaNiaSchema, resumoDoQueAplicou, textoSemOComando, type AcaoDaNia,
 } from './nia-acoes.js';
 
@@ -197,3 +197,28 @@ describe('o destaque do que mudou', () => {
 // o tipo do catálogo de hoje, para não sair do contrato
 const _tipo: AcaoDaNia = ACOES[0]!;
 void _tipo;
+
+describe('os anexos para a NIA', () => {
+  it('o conteúdo vai sem o prefixo data URL; o base64 puro fica como está', () => {
+    expect(base64DoConteudo('data:image/png;base64,iVBORw0KGgo=')).toBe('iVBORw0KGgo=');
+    expect(base64DoConteudo('JVBERi0x')).toBe('JVBERi0x');
+    expect(bytesDoBase64('data:text/plain;base64,b2k=')).toBe(2);
+  });
+  it('mais de 10 arquivos ou mais de 14 MB somando: a mensagem diz o que fazer', () => {
+    const mega = 1024 * 1024;
+    expect(problemaDosAnexosDaNia(Array.from({ length: 10 }, () => ({ bytes: mega })))).toBeNull();
+    expect(problemaDosAnexosDaNia(Array.from({ length: 11 }, () => ({ bytes: 1 })))).toBe('A NIA lê até 10 arquivos de uma vez, e aqui há 11. Tire alguns e chame a NIA de novo.');
+    expect(problemaDosAnexosDaNia([{ bytes: 10 * mega }, { bytes: 5 * mega }])).toBe('Os anexos somam 15 MB, e a NIA lê até 14 MB de uma vez. Tire algum e chame a NIA de novo.');
+  });
+  it('a frase do Histórico termina com os anexos que a NIA leu', () => {
+    expect(resumoDoQueAplicou('Preencher este chamado', ['Relato do cliente', 'Cliente'], 'campos', ['print.png', 'relato.docx']))
+      .toBe('NIA (Preencher este chamado): preencheu Relato do cliente e Cliente (com base em: print.png, relato.docx)');
+    expect(textoDosAnexosLidos([{ nome: 'print do erro.png', tipo: 'imagem', como: 'lido inteiro' }, { nome: 'relato.docx', tipo: 'Word', como: 'texto extraído' }]))
+      .toBe('print do erro.png (imagem), relato.docx (texto extraído)');
+  });
+  it('a resposta com o anexosLidos é lida; o pedido de proposta aceita os anexos do rascunho (até 5)', () => {
+    expect(RespostaDaNiaSchema.parse({ ok: true, anexosLidos: [{ nome: 'a.pdf', tipo: 'PDF', como: 'lido inteiro' }] }).anexosLidos).toHaveLength(1);
+    const seis = Array.from({ length: 6 }, (_, i) => ({ fileName: `${i}.txt`, conteudo: 'b2k=' }));
+    expect(NiaProporSchema.safeParse({ comando: 'corrigir', campo: 'anotacao', anexos: seis }).success).toBe(false);
+  });
+});

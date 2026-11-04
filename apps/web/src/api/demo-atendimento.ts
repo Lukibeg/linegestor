@@ -71,7 +71,7 @@ import { planoDoHistorico, type ChamadoDoHistorico } from './demo-atendimento-hi
 import { PROPOSTA_PDF_DEMO } from './proposta-demo-midia.js';
 import { CATALOGO_DA_NIA_DEMO, respostaDaNiaDemo } from './demo-nia.js';
 import {
-  AjustesDaNiaAcoesSchema, camposDeTextoDoCard, campoDoTipo, enderecoDaNia, folhasDoAssunto, idsDasListasDaNia, NiaAplicarSchema, NiaProporSchema,
+  AjustesDaNiaAcoesSchema, base64DoConteudo, problemaDosAnexosDaNia, camposDeTextoDoCard, campoDoTipo, enderecoDaNia, folhasDoAssunto, idsDasListasDaNia, NiaAplicarSchema, NiaProporSchema,
   NOME_DO_CAMPO_DA_NIA, NOMES_DAS_GRAVIDADES, problemaDoTamanho, procurarAssunto, resumoDoQueAplicou,
   type CampoDeTextoDaNia, type NiaAcoesTela, type OpcoesComIds, type OpcoesParaANia, type PedidoParaANia, type PropostaDaNia,
 } from '@gestor/shared';
@@ -1057,7 +1057,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   //  ALTERAR
   // =====================================================================
 
-  function alterar(ator: Ator, ref: string, pedido: ChamadoAlterar, agora: Date = agoraReal(), opts: { nia?: { comando: string; nome: string; entrega: 'texto' | 'campos' } } = {}): Feito {
+  function alterar(ator: Ator, ref: string, pedido: ChamadoAlterar, agora: Date = agoraReal(), opts: { nia?: { comando: string; nome: string; entrega: 'texto' | 'campos'; anexos?: string[] } } = {}): Feito {
     exigirTrabalhar(ator);
     const e = carregar(ator, ref, agora);
     const { t, painel } = e;
@@ -1319,8 +1319,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
     if (!eventos.length) return nada(t);
     // o /nia (2.4.2, como o servidor): a linha da NIA, só com o que foi gravado
-    const resumoDaNia = opts.nia ? resumoDoQueAplicou(opts.nia.nome, nomes, opts.nia.entrega) : null;
-    if (opts.nia) eventos.push(['nia', { comando: opts.nia.comando, resumo: resumoDaNia, campos: [...nomes] }]);
+    const anexosDaNia = opts.nia?.anexos ?? [];
+    const resumoDaNia = opts.nia ? resumoDoQueAplicou(opts.nia.nome, nomes, opts.nia.entrega, anexosDaNia) : null;
+    if (opts.nia) eventos.push(['nia', { comando: opts.nia.comando, resumo: resumoDaNia, campos: [...nomes], ...(anexosDaNia.length ? { anexos: anexosDaNia } : {}) }]);
     const depois = { ...set };
     Object.assign(t, set);
     tocar(t, agora);
@@ -4509,6 +4510,16 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (!A.niaAcoes.endereco || !A.niaAcoes.temChave) return falhou('A NIA ainda não está ligada: o endereço e a chave ficam em Painéis › Ajustes › Integrações.');
       const acao = CATALOGO_DA_NIA_DEMO.find((a) => a.comando === dados.comando);
       if (!acao) return falhou(`A NIA não tem o comando "${dados.comando}". Escolha um da lista do /nia.`);
+      // os anexos do lugar do /nia (como o servidor): o rascunho da anotação, ou os do campo (fora os apagados)
+      const anexos = dados.campo === 'anotacao'
+        ? (dados.anexos ?? []).map((a) => ({ nome: a.fileName, base64: base64DoConteudo(a.conteudo) }))
+        : dados.campo?.startsWith('campo:')
+          ? A.anexos.filter((a) => a.chamadoId === t.id && a.campoId === dados.campo!.slice(6) && !a.deletedAt).map((a) => ({ nome: a.nome, base64: base64DoConteudo(a.url) }))
+          : [];
+      const grande = anexos.find((a) => bytesDoBase64(a.base64) > 10 * 1024 * 1024);
+      if (grande) return falhou(`O anexo "${grande.nome}" passa de 10 MB: a NIA lê até 10 MB por arquivo. Tire ele e chame a NIA de novo.`);
+      const problema = problemaDosAnexosDaNia(anexos.map((a) => ({ bytes: bytesDoBase64(a.base64) })));
+      if (problema) return falhou(problema);
       const campos = camposDeTextoDoCard(painel, t.tipoChamado, !!t.relato?.trim());
       const chamado: PedidoParaANia['chamado'] = Object.fromEntries(campos.map((c) => [c, (t[c] as string | null) ?? '']));
       if (dados.campo === 'anotacao') chamado.anotacao = dados.anotacao ?? '';
@@ -4533,9 +4544,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       }
       // a NIA pensa uns segundos (a de verdade leva de 5 a 30)
       await ctx.wait(1800);
-      const r: PropostaDaNia = respostaDaNiaDemo({ comando: acao.comando, instrucao: dados.instrucao, campo: dados.campo ?? '', referencia: t.codigo, chamado, ...(opcoes ? { opcoes } : {}) });
+      const r: PropostaDaNia = respostaDaNiaDemo({ comando: acao.comando, instrucao: dados.instrucao, campo: dados.campo ?? '', referencia: t.codigo, chamado, ...(opcoes ? { opcoes } : {}), ...(anexos.length ? { anexos } : {}) });
       if (r.ok && r.entrega === 'campos' && r.campos) r.idsDasListas = idsDasListasDaNia(r.campos, comIds);
-      auditar('chamado_nia_proposta', 'ticket', `Pediu à NIA (${acao.nome}) uma proposta para ${t.codigo}${dados.campo ? `, do campo ${dados.campo}` : ''}${r.ok ? '' : ` — não veio: ${r.erro}`}`, t.id);
+      auditar('chamado_nia_proposta', 'ticket', `Pediu à NIA (${acao.nome}) uma proposta para ${t.codigo}${dados.campo ? `, do campo ${dados.campo}` : ''}${anexos.length ? `, com ${anexos.length} ${anexos.length === 1 ? 'anexo' : 'anexos'}` : ''}${r.ok ? '' : ` — não veio: ${r.erro}`}`, t.id);
       return r;
     },
     async niaAplicar(id, d) {
@@ -4585,7 +4596,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       }
       const acao = CATALOGO_DA_NIA_DEMO.find((a) => a.comando === dados.comando);
       if (acao?.entrega === 'campos') entrega = 'campos';
-      const r = alterar(ator, t.id, ler(ChamadoAlterarSchema, pedido), agoraReal(), { nia: { comando: dados.comando, nome: acao?.nome ?? dados.comando, entrega } });
+      const r = alterar(ator, t.id, ler(ChamadoAlterarSchema, pedido), agoraReal(), { nia: { comando: dados.comando, nome: acao?.nome ?? dados.comando, entrega, anexos: dados.anexosLidos ?? [] } });
       if (!r.resumo) throw bad('Nada mudou: o que foi marcado já estava assim no card.');
       return fichaDepois(r);
     },

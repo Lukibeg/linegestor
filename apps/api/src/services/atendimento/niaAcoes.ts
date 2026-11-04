@@ -6,7 +6,8 @@
  * O navegador fala só com o Gestor: a chave de serviço da NIA é de SERVIDOR e nunca chega à tela. Ela fica no cofre
  * cifrado e só vai para o servidor onde foi colada (`chaveDe`): trocar o endereço para outro servidor pede a chave de
  * novo — senão bastaria mudar o endereço para a chave ir parar em outro lugar. O pedido não segue redirecionamento
- * (pelo mesmo motivo) e espera até 90 s (documento longo faz o modelo pensar).
+ * (pelo mesmo motivo) e espera até 120 s — o mesmo que a NIA espera o modelo: com menos, um PDF grande fazia o Gestor
+ * desistir enquanto a NIA ainda trabalhava (a pessoa via "não respondeu" e o uso era cobrado mesmo assim).
  *
  * A regra de ouro: a NIA PROPÕE, a pessoa aplica. `propor` manda o card inteiro, lido do banco (só os campos de texto
  * que o painel usa), e devolve a resposta da NIA como veio — nada é gravado e nada vai para o Histórico (proposta não é
@@ -17,11 +18,11 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { and, asc, eq, isNull } from 'drizzle-orm';
-import { products } from '@gestor/db';
+import { products, ticketAttachments } from '@gestor/db';
 import {
-  acoesDoCatalogo, camposDeTextoDoCard, campoDoTipo, campoLigado, enderecoDaNia, folhasDoAssunto, idsDasListasDaNia,
+  acoesDoCatalogo, base64DoConteudo, bytesDoBase64, problemaDosAnexosDaNia, camposDeTextoDoCard, campoDoTipo, campoLigado, enderecoDaNia, folhasDoAssunto, idsDasListasDaNia,
   NOME_DO_CAMPO_DA_NIA, NOMES_DAS_GRAVIDADES, problemaDoTamanho, RespostaDaNiaSchema,
-  type AcaoDaNia, type AjustesDaNiaAcoesEntrada, type CampoDeTextoDaNia, type CatalogoDaNia, type ChamadoAlterar, type ChamadoParaANia, type NiaAcoesTela,
+  type AcaoDaNia, type AnexoParaANia, type AjustesDaNiaAcoesEntrada, type CampoDeTextoDaNia, type CatalogoDaNia, type ChamadoAlterar, type ChamadoParaANia, type NiaAcoesTela,
   type NiaAplicar, type OpcoesComIds, type OpcoesParaANia, type PedidoParaANia, type PropostaDaNia, type TesteDaNia, type TipoChamado,
 } from '@gestor/shared';
 import { BadRequest } from '../../plugins/errors.js';
@@ -51,8 +52,13 @@ const ERROS_DE_CERTIFICADO = new Set([
 //  AS FERRAMENTAS (os testes trocam: a NIA de mentira e o prazo curto)
 // =====================================================================
 
+/** Quanto o Gestor espera a proposta da NIA: os mesmos 120 s que a NIA espera o modelo (antes, 90 s). */
+export const PRAZO_DA_NIA_MS = 120_000;
+
 type Ferramentas = { fetchFn: typeof fetch; prazoMs: number; agora: () => number };
-let ferramentas: Ferramentas = { fetchFn: (...a) => fetch(...a), prazoMs: 90_000, agora: () => Date.now() };
+let ferramentas: Ferramentas = { fetchFn: (...a) => fetch(...a), prazoMs: PRAZO_DA_NIA_MS, agora: () => Date.now() };
+/** O prazo de agora (os testes trocam por um curto; fora deles, o `PRAZO_DA_NIA_MS`). */
+export const prazoDaNiaMs = () => ferramentas.prazoMs;
 export function trocarFerramentasNia(f: Partial<Ferramentas>) { ferramentas = { ...ferramentas, ...f }; }
 
 // =====================================================================
@@ -133,11 +139,11 @@ function mensagemDaFalha(e: unknown): string {
 }
 
 /**
- * Um pedido à NIA, com a chave no cabeçalho (X-NIA-API-KEY). Sem seguir redirecionamento e com o prazo de 90 s
+ * Um pedido à NIA, com a chave no cabeçalho (X-NIA-API-KEY). Sem seguir redirecionamento e com o prazo de 120 s
  * (o corpo da resposta também conta). A mensagem de cada falha já vem pronta para a tela.
  */
 async function pedir(cfg: { endereco: string; chave: string }, metodo: 'GET' | 'POST', caminho: string, corpo?: unknown): Promise<Resultado> {
-  // o catálogo é leve: 15 s bastam (a tela desiste de uma leitura em 30 s); a proposta espera os 90 s
+  // o catálogo é leve: 15 s bastam (a tela desiste de uma leitura em 30 s); a proposta espera os 120 s
   const sinal = AbortSignal.timeout(metodo === 'GET' ? Math.min(15_000, ferramentas.prazoMs) : ferramentas.prazoMs);
   let r: Response;
   try {
@@ -224,15 +230,43 @@ async function produtosAtivos(app: FastifyInstance) {
  * de lista do painel do card (só o que ele usa e o que está ativo; o assunto, só as folhas), pelos nomes; o que a NIA
  * escolher volta também com o id do Gestor (`idsDasListas`), para o Aplicar.
  */
+/** Um arquivo passa de 10 MB (o limite da anotação e da NIA, por arquivo). */
+const DEZ_MB = 10 * 1024 * 1024;
+
+/**
+ * Os anexos do lugar onde o /nia foi digitado (o Gestor só junta e manda; quem lê é a NIA): na anotação, os do
+ * rascunho (ainda no navegador, vêm no pedido); num campo do card, os daquele campo e das caixinhas dele, lidos do
+ * banco (fora os apagados); nos outros campos, nenhum.
+ */
+async function anexosDoLugar(app: FastifyInstance, ticketId: string, d: { campo?: string; anexos?: Array<{ fileName: string; conteudo: string }> }): Promise<AnexoParaANia[]> {
+  if (d.campo === 'anotacao') return (d.anexos ?? []).map((a) => ({ nome: a.fileName, base64: base64DoConteudo(a.conteudo) }));
+  if (d.campo?.startsWith('campo:')) {
+    const linhas = await app.db.select({ nome: ticketAttachments.fileName, base64: ticketAttachments.dataBase64 }).from(ticketAttachments)
+      .where(and(eq(ticketAttachments.ticketId, ticketId), eq(ticketAttachments.fieldId, d.campo.slice(6)), isNull(ticketAttachments.deletedAt)))
+      .orderBy(asc(ticketAttachments.createdAt), asc(ticketAttachments.id));
+    return linhas.map((a) => ({ nome: a.nome, base64: base64DoConteudo(a.base64) }));
+  }
+  return [];
+}
+
 export async function proporANia(
-  app: FastifyInstance, ator: Ator, ref: string, d: { comando: string; instrucao: string; campo?: string; anotacao?: string },
-): Promise<{ proposta: PropostaDaNia; chamado: { id: string; codigo: string }; nome: string }> {
+  app: FastifyInstance, ator: Ator, ref: string, d: { comando: string; instrucao: string; campo?: string; anotacao?: string; anexos?: Array<{ fileName: string; conteudo: string }> },
+): Promise<{ proposta: PropostaDaNia; chamado: { id: string; codigo: string }; nome: string; anexos: number }> {
   exigirTrabalhar(ator);
   const ctx = await carregarContexto(app.db);
   const t = await chamadoVisivel(app.db, ref, ator, ctx);
   const painel = ctx.paineis.find((p) => p.id === t.panelId)!;
   const chamado = { id: t.id, codigo: t.code };
-  const falhou = (erro: string, nome = d.comando) => ({ proposta: { ok: false, comando: d.comando, erro }, chamado, nome });
+  let quantos = 0;
+  const falhou = (erro: string, nome = d.comando) => ({ proposta: { ok: false, comando: d.comando, erro }, chamado, nome, anexos: quantos });
+
+  // os anexos: conferidos ANTES de chamar a NIA (a pessoa sabe na hora; a NIA confere de novo)
+  const anexos = await anexosDoLugar(app, t.id, d);
+  quantos = anexos.length;
+  const grande = anexos.find((a) => bytesDoBase64(a.base64) > DEZ_MB);
+  if (grande) return falhou(`O anexo "${grande.nome}" passa de 10 MB: a NIA lê até 10 MB por arquivo. Tire ele e chame a NIA de novo.`);
+  const problema = problemaDosAnexosDaNia(anexos.map((a) => ({ bytes: bytesDoBase64(a.base64) })));
+  if (problema) return falhou(problema);
 
   const cfg = await configuracao(app);
   if (!cfg) return falhou(NIA_NAO_CONFIGURADA);
@@ -271,16 +305,17 @@ export async function proporANia(
 
   const pedido: PedidoParaANia = {
     comando: acao.comando, instrucao: d.instrucao, campo: d.campo ?? '', referencia: t.code, chamado: doCard, ...(opcoes ? { opcoes } : {}),
+    ...(anexos.length ? { anexos } : {}),
   };
   const r = await pedir(cfg, 'POST', '/api/nia/executar', pedido);
   if (!r.ok) return falhou(r.erro, acao.nome);
   const lida = RespostaDaNiaSchema.safeParse(r.json);
   if (!lida.success) return falhou(NIA_NAO_ENTENDEU, acao.nome);
   const resposta = lida.data as PropostaDaNia;
-  if (!resposta.ok) return { proposta: { ...resposta, erro: resposta.erro?.trim() || NIA_NAO_RESPONDEU }, chamado, nome: acao.nome };
+  if (!resposta.ok) return { proposta: { ...resposta, erro: resposta.erro?.trim() || NIA_NAO_RESPONDEU }, chamado, nome: acao.nome, anexos: quantos };
   // a entrega "campos": o nome → id, conferido contra as opções que foram (a NIA só devolve o que estava na lista)
   if ((resposta.entrega ?? acao.entrega) === 'campos' && resposta.campos) resposta.idsDasListas = idsDasListasDaNia(resposta.campos, comIds);
-  return { proposta: resposta, chamado, nome: acao.nome };
+  return { proposta: resposta, chamado, nome: acao.nome, anexos: quantos };
 }
 
 // =====================================================================
@@ -334,7 +369,7 @@ export async function aplicarANia(app: FastifyInstance, ator: Ator, ref: string,
   const cat = await catalogoDaNia(app).catch(() => null);
   const acao = cat?.acoes.find((a) => a.comando === d.comando);
   if (acao?.entrega === 'campos') entrega = 'campos';
-  const r = await alterar(app, ator, t.id, pedido, { nia: { comando: d.comando, nome: acao?.nome ?? d.comando, entrega } });
+  const r = await alterar(app, ator, t.id, pedido, { nia: { comando: d.comando, nome: acao?.nome ?? d.comando, entrega, anexos: d.anexosLidos ?? [] } });
   if (!r.resumo) throw new BadRequest('Nada mudou: o que foi marcado já estava assim no card.');
   return r;
 }

@@ -768,8 +768,9 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   if (!eventos.length) return nada(t);
   // o /nia (2.4.2): a linha do Histórico diz o que a pessoa aplicou da proposta da NIA, só com o que foi gravado (ela
   // pode ter desmarcado campos); fica junto das linhas de cada campo, na mesma transação
-  const resumoDaNia = opts.nia ? resumoDoQueAplicou(opts.nia.nome, nomes, opts.nia.entrega) : null;
-  if (opts.nia) eventos.push(['nia', { comando: opts.nia.comando, resumo: resumoDaNia, campos: [...nomes] }]);
+  const anexosDaNia = opts.nia?.anexos ?? [];
+  const resumoDaNia = opts.nia ? resumoDoQueAplicou(opts.nia.nome, nomes, opts.nia.entrega, anexosDaNia) : null;
+  if (opts.nia) eventos.push(['nia', { comando: opts.nia.comando, resumo: resumoDaNia, campos: [...nomes], ...(anexosDaNia.length ? { anexos: anexosDaNia } : {}) }]);
   set.updatedAt = agora;
   set.lastActivityAt = agora;
   const clienteFinal = set.clientId !== undefined ? set.clientId : t.clientId;
@@ -808,7 +809,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
 }
 
 /** O que o Aplicar do /nia (2.4.2) passa ao `alterar`: o comando e o nome dele (a frase do Histórico). */
-export type AplicarDaNia = { comando: string; nome: string; entrega: 'texto' | 'campos' };
+export type AplicarDaNia = { comando: string; nome: string; entrega: 'texto' | 'campos'; /** os anexos que a NIA leu (2.4.2) */ anexos?: string[] };
 
 // =====================================================================
 //  MOVER (o coração: escalonar, resolver, fechar, reabrir)

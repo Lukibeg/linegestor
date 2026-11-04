@@ -296,7 +296,11 @@ function Anotar() {
   const posicao = aberta && caixa.current ? posicaoNoTexto(caixa.current, texto, digitando!.inicio) : null;
   const largura = caixa.current?.clientWidth ?? 600;
   // o /nia (2.4.2) na anotação: o rascunho vai junto para a NIA, e o que ela propuser para a anotação volta para cá
-  const nia = useNiaNoCampo({ campo: 'anotacao', caixa, texto, setTexto: (t) => { setTexto(t); setCursor(t.length); } });
+  // os anexos do rascunho vão junto: a NIA lê (o Gestor só junta e manda); eles continuam no rascunho depois
+  const nia = useNiaNoCampo({
+    campo: 'anotacao', caixa, texto, setTexto: (t) => { setTexto(t); setCursor(t.length); },
+    anexos: anexos.map((a) => ({ nome: a.nome, bytes: a.tamanho, conteudo: a.conteudo })),
+  });
 
   const lerCursor = (e: SyntheticEvent<HTMLTextAreaElement>) => setCursor(e.currentTarget.selectionStart ?? 0);
   const irPara = (pos: number) => requestAnimationFrame(() => { const el = caixa.current; if (el) { el.focus(); el.setSelectionRange(pos, pos); } });

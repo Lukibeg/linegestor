@@ -89,6 +89,11 @@ export type ChamadoParaANia = Partial<Record<CampoDeTextoDaNia, string>> & { ano
 /** As opções de lista (só para a entrega "campos"): os nomes, só do que o painel usa e está ativo; o assunto, só as folhas. */
 export type OpcoesParaANia = Partial<Record<ListaDaNia, string[]>>;
 
+/** Um anexo como a NIA recebe: o nome e o conteúdo em base64, sem o prefixo "data:…;base64,". */
+export type AnexoParaANia = { nome: string; base64: string };
+/** O que a NIA diz que leu de cada anexo ("imagem", "lido inteiro"; "Word", "texto extraído"). */
+export type AnexoLidoDaNia = { nome: string; tipo: string; como: string };
+
 /** O corpo do POST /api/nia/executar. */
 export type PedidoParaANia = {
   comando: string;
@@ -99,6 +104,8 @@ export type PedidoParaANia = {
   referencia: string;
   chamado: ChamadoParaANia;
   opcoes?: OpcoesParaANia;
+  /** os arquivos do lugar onde o /nia foi digitado (o rascunho da anotação, ou os anexos do campo): contexto para a NIA */
+  anexos?: AnexoParaANia[];
 };
 
 /** Uma linha do corrigir e do formalizar: o campo, o antes e o depois. */
@@ -114,6 +121,8 @@ export type RespostaDaNia = {
   texto?: string | null;
   campos?: Partial<Record<'titulo' | 'relato' | 'descricao', string | null>> & Partial<Record<ListaDaNia, string | string[] | null>>;
   naoPropostos?: string[];
+  /** o que a NIA leu de cada anexo */
+  anexosLidos?: AnexoLidoDaNia[];
   resumo?: string | null;
   observacao?: string | null;
   erro?: string | null;
@@ -139,6 +148,8 @@ export const RespostaDaNiaSchema = z.object({
     cliente: ValorDeLista.optional(), produto: ValorDeLista.optional(), tipo: ValorDeLista.optional(), assunto: ValorDeLista.optional(), gravidade: ValorDeLista.optional(),
   }).passthrough().nullish().transform((v) => v ?? undefined),
   naoPropostos: z.array(z.string()).max(20).nullish().transform((v) => v ?? undefined),
+  anexosLidos: z.array(z.object({ nome: z.string().max(255), tipo: z.string().max(60).catch(''), como: z.string().max(120).catch('') })).max(20).nullish().catch(undefined)
+    .transform((v) => v ?? undefined),
   resumo: z.string().max(2000).nullish(),
   observacao: z.string().max(2000).nullish(),
   erro: z.string().max(2000).nullish(),
@@ -178,6 +189,12 @@ export const NiaProporSchema = z.object({
   campo: CampoOndeANiaFoiChamadaSchema.optional(),
   /** o rascunho da anotação, quando o /nia foi digitado nela */
   anotacao: z.string().max(20_000, 'A anotação vai até 20.000 letras').optional(),
+  /**
+   * os arquivos do rascunho da anotação (ainda no navegador), no formato que a anotação já manda: o nome e o conteúdo
+   * em data URL ou base64; até 5, como a anotação
+   */
+  anexos: z.array(z.object({ fileName: z.string().trim().min(1).max(200), conteudo: z.string().min(1).max(15_000_000) }))
+    .max(5, 'A anotação leva até 5 arquivos.').optional(),
 });
 export type NiaProporEntrada = z.input<typeof NiaProporSchema>;
 
@@ -188,6 +205,8 @@ export const NiaAplicarSchema = z.object({
   comando: ComandoSchema,
   /** a frase que a NIA mandou (o servidor monta a do Histórico de novo, só com o que gravou) */
   resumo: z.string().max(2000).nullish(),
+  /** os nomes dos anexos que a NIA leu (o `anexosLidos` da proposta): vão para o Histórico */
+  anexosLidos: z.array(z.string().trim().min(1).max(255)).max(20).optional(),
   /** só os MARCADOS: o texto novo de cada um (vazio tira) */
   campos: z.record(ChaveDoAplicar, z.string().nullable()).default({}),
   /** a entrega "campos": os ids das listas marcadas */
@@ -330,9 +349,50 @@ export const NOMES_DAS_GRAVIDADES = GRAVIDADES.map((g) => NOME_GRAVIDADE[g]);
  * A frase do Histórico, montada de novo só com o que foi gravado (a pessoa pode ter desmarcado campos):
  * "NIA (Corrigir o português): mudou Relato do cliente e Causa". A entrega "campos" preenche; o resto muda.
  */
-export function resumoDoQueAplicou(nomeDoComando: string, gravados: string[], entrega: 'texto' | 'campos'): string {
+export function resumoDoQueAplicou(nomeDoComando: string, gravados: string[], entrega: 'texto' | 'campos', anexos: string[] = []): string {
   const verbo = entrega === 'campos' ? 'preencheu' : 'mudou';
-  return `NIA (${nomeDoComando}): ${gravados.length ? `${verbo} ${emLista(gravados)}` : 'nada mudou'}`;
+  // os anexos que a NIA leu: "(com base em: print do erro.png, contrato.pdf)"
+  const base = anexos.length ? ` (com base em: ${anexos.join(', ')})` : '';
+  return `NIA (${nomeDoComando}): ${gravados.length ? `${verbo} ${emLista(gravados)}` : 'nada mudou'}${base}`;
+}
+
+// =====================================================================
+//  OS ANEXOS (o Gestor junta e manda; quem lê é a NIA)
+// =====================================================================
+
+/** Os limites da NIA para uma leitura (os do "Novo chamado" dela): até 10 arquivos e 14 MB somando todos. */
+export const LIMITES_DOS_ANEXOS_DA_NIA = { arquivos: 10, bytes: 14 * 1024 * 1024 } as const;
+
+/** O conteúdo em base64, sem o prefixo "data:…;base64," (o jeito que a NIA recebe). */
+export function base64DoConteudo(conteudo: string): string {
+  const virgula = conteudo.startsWith('data:') ? conteudo.indexOf(',') : -1;
+  return (virgula >= 0 ? conteudo.slice(virgula + 1) : conteudo).replace(/\s+/g, '');
+}
+
+/** Quantos bytes o base64 tem (sem decodificar). */
+export function bytesDoBase64(b64: string): number {
+  const limpo = base64DoConteudo(b64);
+  const sobra = limpo.endsWith('==') ? 2 : limpo.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((limpo.length * 3) / 4) - sobra);
+}
+
+const mb = (b: number) => `${(b / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
+
+/**
+ * Os anexos passam do que a NIA lê de uma vez? A mensagem diz o que fazer (o Gestor confere antes de chamar a NIA,
+ * para a pessoa saber na hora; a NIA confere de novo).
+ */
+export function problemaDosAnexosDaNia(anexos: Array<{ bytes: number }>): string | null {
+  const { arquivos, bytes } = LIMITES_DOS_ANEXOS_DA_NIA;
+  if (anexos.length > arquivos) return `A NIA lê até ${arquivos} arquivos de uma vez, e aqui há ${anexos.length}. Tire alguns e chame a NIA de novo.`;
+  const soma = anexos.reduce((s, a) => s + a.bytes, 0);
+  if (soma > bytes) return `Os anexos somam ${mb(soma)}, e a NIA lê até ${mb(bytes)} de uma vez. Tire algum e chame a NIA de novo.`;
+  return null;
+}
+
+/** "print do erro.png (imagem), relato.docx (texto extraído)": o que a NIA leu, como a janela da proposta mostra. */
+export function textoDosAnexosLidos(lidos: AnexoLidoDaNia[]): string {
+  return lidos.map((a) => `${a.nome} (${a.como && a.como !== 'lido inteiro' ? a.como : a.tipo || a.como || 'lido'})`).join(', ');
 }
 
 // =====================================================================

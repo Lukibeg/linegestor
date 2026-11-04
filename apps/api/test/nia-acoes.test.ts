@@ -15,11 +15,11 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { clients, newId, products, ticketEvents, tickets, ticketSubjects } from '@gestor/db';
+import { auditLog, clients, newId, products, secrets, settings, ticketAttachments, ticketEvents, ticketFields, tickets, ticketSubjects } from '@gestor/db';
 import type { FichaChamado, PedidoParaANia } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
-import { esquecerCatalogoDaNia, NIA_CHAVE_RECUSADA, NIA_NAO_RESPONDEU, trocarFerramentasNia } from '../src/services/atendimento/niaAcoes.js';
+import { esquecerCatalogoDaNia, NIA_CHAVE_RECUSADA, NIA_NAO_RESPONDEU, PRAZO_DA_NIA_MS, prazoDaNiaMs, trocarFerramentasNia } from '../src/services/atendimento/niaAcoes.js';
 
 let app: App;
 let s: Session;       // a administração
@@ -249,6 +249,9 @@ describe('a proposta (nada é gravado)', () => {
     responder = () => ({ corpo: { ok: false, erro: 'Descrição está vazio: não há o que trabalhar' } });
     expect((await propor(sup.codigo, { comando: 'corrigir' })).json()).toMatchObject({ ok: false, erro: 'Descrição está vazio: não há o que trabalhar' });
 
+    // o prazo de verdade: 120 s, o mesmo que a NIA espera o modelo (aqui o teste troca por um curto, para não esperar)
+    expect(PRAZO_DA_NIA_MS).toBe(120_000);
+    expect(prazoDaNiaMs()).toBe(300);
     responder = () => ({ demora: true, corpo: { ok: true } });
     const lenta = await propor(sup.codigo, { comando: 'corrigir' });
     expect(lenta.statusCode).toBe(200);
@@ -320,10 +323,95 @@ describe('o Aplicar (só o marcado, pelo caminho de sempre)', () => {
   });
 });
 
+describe('os anexos (o Gestor junta e manda; quem lê é a NIA)', () => {
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const TXT = Buffer.from('Relato da Michele: desde terça os ramais estão mudos.').toString('base64');
+  const lidos = [{ nome: 'print do erro.png', tipo: 'imagem', como: 'lido inteiro' }, { nome: 'relato.txt', tipo: 'texto', como: 'texto extraído' }];
+  let campoComAnexos = '';
+
+  beforeAll(async () => {
+    // um campo de texto longo do Suporte que recebe anexos (2.3), com dois anexos: um apagado; e um anexo de outro campo
+    campoComAnexos = newId();
+    const outro = newId();
+    await app.db.insert(ticketFields).values([
+      { id: campoComAnexos, panelId: SUP, name: 'Evidências', kind: 'texto_longo', acceptsAttachments: true, sortOrder: 90 },
+      { id: outro, panelId: SUP, name: 'Outro campo', kind: 'texto_longo', acceptsAttachments: true, sortOrder: 91 },
+    ]);
+    await app.db.insert(ticketAttachments).values([
+      { id: newId(), ticketId: sup.id, fieldId: campoComAnexos, fileName: 'log do sbc.txt', mimeType: 'text/plain', sizeBytes: 50, dataBase64: TXT },
+      { id: newId(), ticketId: sup.id, fieldId: campoComAnexos, fileName: 'apagado.txt', mimeType: 'text/plain', sizeBytes: 50, dataBase64: TXT, deletedAt: new Date() },
+      { id: newId(), ticketId: sup.id, fieldId: outro, fileName: 'de outro campo.txt', mimeType: 'text/plain', sizeBytes: 50, dataBase64: TXT },
+    ]);
+  });
+
+  it('na anotação: os anexos do rascunho vão no formato da NIA (sem o prefixo data URL), e o que ela leu volta', async () => {
+    responder = () => ({ corpo: { ok: true, comando: 'corrigir', entrega: 'texto', alcance: 'card inteiro', alteracoes: [], anexosLidos: lidos } });
+    const r = await propor(sup.codigo, {
+      comando: 'corrigir', campo: 'anotacao', anotacao: 'olha o print',
+      anexos: [{ fileName: 'print do erro.png', conteudo: `data:image/png;base64,${PNG}` }, { fileName: 'relato.txt', conteudo: TXT }],
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().anexosLidos).toEqual(lidos);
+    expect(recebidos.find((x) => x.url.endsWith('/executar'))!.corpo.anexos).toEqual([{ nome: 'print do erro.png', base64: PNG }, { nome: 'relato.txt', base64: TXT }]);
+    expect((await auditoria())[0]!.summary).toMatch(/, com 2 anexos$/);
+  });
+
+  it('num campo com anexos: os daquele campo (não os de outro campo nem os apagados); sem anexos, nada vai', async () => {
+    responder = () => ({ corpo: { ok: true, comando: 'resumir', entrega: 'texto', texto: 'ok' } });
+    await propor(sup.codigo, { comando: 'resumir', campo: `campo:${campoComAnexos}` });
+    expect(recebidos.find((x) => x.url.endsWith('/executar'))!.corpo.anexos).toEqual([{ nome: 'log do sbc.txt', base64: TXT }]);
+    recebidos = [];
+    await propor(sup.codigo, { comando: 'resumir', campo: 'descricao' });
+    expect(recebidos.find((x) => x.url.endsWith('/executar'))!.corpo.anexos).toBeUndefined();
+    // os anexos que vierem no pedido fora da anotação não vão
+    recebidos = [];
+    await propor(sup.codigo, { comando: 'resumir', campo: 'descricao', anexos: [{ fileName: 'x.txt', conteudo: TXT }] });
+    expect(recebidos.find((x) => x.url.endsWith('/executar'))!.corpo.anexos).toBeUndefined();
+  });
+
+  it('mais de 10 arquivos ou mais de 14 MB somando: barrado no Gestor, sem chamar a NIA', async () => {
+    await app.db.insert(ticketAttachments).values(Array.from({ length: 10 }, (_, i) => (
+      { id: newId(), ticketId: sup.id, fieldId: campoComAnexos, fileName: `foto ${i}.txt`, mimeType: 'text/plain', sizeBytes: 50, dataBase64: TXT })));
+    const muitos = await propor(sup.codigo, { comando: 'resumir', campo: `campo:${campoComAnexos}` });
+    expect(muitos.json()).toMatchObject({ ok: false, erro: 'A NIA lê até 10 arquivos de uma vez, e aqui há 11. Tire alguns e chame a NIA de novo.' });
+    const oito = Buffer.alloc(7.5 * 1024 * 1024, 1).toString('base64');
+    const pesado = await propor(sup.codigo, { comando: 'corrigir', campo: 'anotacao', anexos: [{ fileName: 'a.pdf', conteudo: oito }, { fileName: 'b.pdf', conteudo: oito }] });
+    expect(pesado.statusCode, pesado.body.slice(0, 200)).toBe(200);
+    expect(pesado.json()).toMatchObject({ ok: false, erro: 'Os anexos somam 15 MB, e a NIA lê até 14 MB de uma vez. Tire algum e chame a NIA de novo.' });
+    expect(recebidos.filter((x) => x.url.endsWith('/executar'))).toHaveLength(0);
+  });
+
+  it('o anexo recusado pela NIA: o erro como veio (nada muda no card)', async () => {
+    responder = () => ({ corpo: { ok: false, erro: 'o anexo "programa.exe" não foi aceito: tipo não aceito. Aceitos: PDF, imagens, Word, Excel, PowerPoint e texto.' } });
+    const antes = await ficha(sup.codigo);
+    const r = await propor(sup.codigo, { comando: 'corrigir', campo: 'anotacao', anexos: [{ fileName: 'programa.exe', conteudo: TXT }] });
+    expect(r.json()).toMatchObject({ ok: false, erro: expect.stringMatching(/^o anexo "programa\.exe" não foi aceito/) });
+    expect((await ficha(sup.codigo)).historico).toHaveLength(antes.historico.length);
+  });
+
+  it('o Aplicar leva os nomes dos anexos lidos para o Histórico', async () => {
+    const r = await aplicar(sup.codigo, { comando: 'corrigir', campos: { descricao: 'Testado o ramal 203 no SBC.' }, anexosLidos: ['print do erro.png', 'relato.txt'] });
+    expect(r.statusCode, r.body).toBe(200);
+    const f: FichaChamado = r.json();
+    expect(f.historico.filter((e) => e.tipo === 'nia').at(-1)!.texto)
+      .toBe('aplicou a NIA (Corrigir o português): mudou Descrição (com base em: print do erro.png, relato.txt)');
+    expect((await eventosNia(sup.id)).at(-1)!.data).toMatchObject({ campos: ['Descrição'], anexos: ['print do erro.png', 'relato.txt'] });
+  });
+});
+
 describe('a chave nunca vai para o navegador', () => {
-  it('em nenhuma resposta dos testes', async () => {
+  it('em nenhuma resposta dos testes, nem na auditoria, nem nos ajustes em claro, nem no Histórico (só cifrada no cofre)', async () => {
     expect(respostas.length).toBeGreaterThan(10);
     for (const corpo of respostas) expect(corpo).not.toContain(CHAVE);
+    // nem a tela de Integrações, nem o catálogo que a ficha lê
+    expect((await s.get('/atendimento/integracoes/nia-acoes')).body).not.toContain(CHAVE);
+    expect((await marina.get('/atendimento/nia/acoes')).body).not.toContain(CHAVE);
+    // nem a auditoria, nem os ajustes guardados em claro, nem o Histórico: a chave só existe cifrada, no cofre
+    const emClaro = JSON.stringify([
+      await app.db.select().from(auditLog), await app.db.select().from(settings), await app.db.select().from(ticketEvents),
+    ]);
+    expect(emClaro).not.toContain(CHAVE);
+    expect(JSON.stringify(await app.db.select().from(secrets))).not.toContain(CHAVE);
     const [linha] = await app.db.select({ id: tickets.id }).from(tickets).where(eq(tickets.id, sup.id));
     expect(linha).toBeTruthy();
   });

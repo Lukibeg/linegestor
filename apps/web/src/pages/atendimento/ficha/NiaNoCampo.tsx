@@ -20,9 +20,9 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CircleAlert, Info, WandSparkles } from 'lucide-react';
+import { CircleAlert, Info, Paperclip, WandSparkles } from 'lucide-react';
 import {
-  comComandoEscolhido, diferencaPorPalavras, lerComandoDaNia, NOME_DA_LISTA_DA_NIA, NOME_DO_CAMPO_DA_NIA, NOME_GRAVIDADE, problemaDoTamanho, textoSemOComando,
+  comComandoEscolhido, diferencaPorPalavras, lerComandoDaNia, problemaDosAnexosDaNia, textoDosAnexosLidos, NOME_DA_LISTA_DA_NIA, NOME_DO_CAMPO_DA_NIA, NOME_GRAVIDADE, problemaDoTamanho, textoSemOComando,
   type AcaoDaNia, type AlteracaoDaNia, type CatalogoDaNia, type ComandoDigitando, type FichaChamado, type IdsDasListasDaNia, type ListaDaNia,
   type NiaAplicarEntrada, type PropostaDaNia,
 } from '@gestor/shared';
@@ -61,6 +61,11 @@ export function useNiaNoCampo(o: {
   setTexto: (t: string) => void;
   salvo?: string;
   aoMandar?: () => void;
+  /**
+   * os anexos que vão junto (2.4.2: o Gestor só junta e manda; quem lê é a NIA): na anotação, os do rascunho (com o
+   * conteúdo, ainda no navegador); num campo do card, os daquele campo (o servidor lê do banco: aqui, só para mostrar)
+   */
+  anexos?: Array<{ nome: string; bytes: number; conteudo?: string }>;
 }) {
   const { f, pode } = useAberta();
   const cat = useCatalogoDaNia(pode);
@@ -79,6 +84,8 @@ export function useNiaNoCampo(o: {
 
   const d: ComandoDigitando | null = disponivel && (foco || lendo) ? lerComandoDaNia(o.texto, cursor, acoes) : null;
   const menuAberto = !!d && !lendo && foco && !d.passouDaPalavra && fechado !== d.inicio;
+  const anexos = o.anexos ?? [];
+  const problemaDosAnexos = anexos.length ? problemaDosAnexosDaNia(anexos) : null;
   const sugestoes = menuAberto ? d!.sugestoes : [];
 
   // o campo de agora (o editor abre e fecha: a caixa nasce e some) — os ouvintes vão para o que estiver na tela
@@ -97,6 +104,8 @@ export function useNiaNoCampo(o: {
   const mandar = async (dd: ComandoDigitando, valor: string) => {
     const acao = dd.acao!;
     const resto = textoSemOComando(valor, dd);
+    // mais do que a NIA lê de uma vez: não manda até a pessoa tirar algum (o rascunho fica como está)
+    if (problemaDosAnexos) { setErro(problemaDosAnexos); return; }
     if (o.salvo !== undefined && resto.trim() !== o.salvo.trim()) {
       setErro('Salve o que você escreveu antes de chamar a NIA: ela lê o que está gravado no card.');
       return;
@@ -106,7 +115,8 @@ export function useNiaNoCampo(o: {
     o.setTexto(resto);
     try {
       const r = await api.atendimento.niaPropor(f.id, {
-        comando: acao.comando, instrucao: dd.instrucao, campo: o.campo, ...(o.campo === 'anotacao' ? { anotacao: resto } : {}),
+        comando: acao.comando, instrucao: dd.instrucao, campo: o.campo,
+        ...(o.campo === 'anotacao' ? { anotacao: resto, ...(anexos.length ? { anexos: anexos.map((a) => ({ fileName: a.nome, conteudo: a.conteudo ?? '' })) } : {}) } : {}),
       });
       if (!r.ok) { setErro(r.erro?.trim() || NIA_NAO_RESPONDEU); o.setTexto(valor); ocupada.current = false; return; }
       setAberta({ proposta: r, acao, campo: o.campo });
@@ -123,6 +133,7 @@ export function useNiaNoCampo(o: {
   // o último estado, para os ouvintes do campo (eles não são recriados a cada tecla)
   const atual = useRef({ marcado, acoes, lendo, fechado, mandar, escolher });
   atual.current = { marcado, acoes, lendo, fechado, mandar, escolher };
+  const onde = o.campo === 'anotacao' ? 'desta anotação' : 'deste campo';
 
   // os ouvintes no próprio campo: veem a tecla antes dos atalhos da ficha (e a seguram só quando ela é do /nia)
   useEffect(() => {
@@ -196,6 +207,12 @@ export function useNiaNoCampo(o: {
           onMouseDown={(e) => e.preventDefault()}
           style={{ left: pos?.left ?? -9999, top: pos?.top, bottom: pos?.bottom, maxHeight: Math.min(pos?.maxHeight ?? 380, 380), width: 380, maxWidth: 'calc(100vw - 16px)', visibility: pos ? 'visible' : 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}>
           <div className="eyebrow px-2 pt-1 pb-1.5 flex items-center gap-1.5"><WandSparkles size={12} aria-hidden /> NIA · escolha o que ela vai fazer</div>
+          {anexos.length > 0 && (
+            <p className={`mx-1 mb-1.5 rounded-lg px-2 py-1.5 text-[12px] leading-snug ${problemaDosAnexos ? 'bg-signal-soft text-signal' : 'bg-accent-soft text-accent-ink'}`} id="nia-menu-anexos">
+              <Paperclip size={12} className="inline -mt-0.5 mr-1" aria-hidden />
+              {problemaDosAnexos ?? <>A NIA vai ler os anexos {onde}: <b className="font-semibold">{anexos.map((a) => a.nome).join(', ')}</b></>}
+            </p>
+          )}
           {cat.data?.erro ? <p className="px-2 py-1.5 text-[12.5px] text-bad" role="alert">{cat.data.erro}</p> : sugestoes.length ? sugestoes.map((a, i) => (
             <div key={a.comando} role="option" aria-selected={i === marcado} data-nia-comando={a.comando}
               className={`px-2.5 py-1.5 rounded-lg cursor-pointer ${i === marcado ? 'bg-accent-soft' : 'hover:bg-surface-2'}`}
@@ -215,11 +232,13 @@ export function useNiaNoCampo(o: {
 
   const aviso: ReactNode = lendo ? (
     <p role="status" className="flex items-center gap-1.5 text-[12.5px] text-accent-ink mt-1.5" data-nia-lendo="">
-      <Spinner /> a NIA está lendo…
+      <Spinner /> {anexos.length ? 'a NIA está lendo os anexos…' : 'a NIA está lendo…'}
     </p>
   ) : erro ? <ErroPerto erro={erro} /> : null;
 
-  return { disponivel, lendo, ocupada, janelas, aviso, comandoDigitando: d };
+  // o comando vem do catálogo da NIA (nada fixo no Gestor): a dica do relato vazio só aparece se ela tiver o criar-chamado
+  const temComando = (comando: string) => acoes.some((a) => a.comando === comando);
+  return { disponivel, lendo, ocupada, janelas, aviso, comandoDigitando: d, temComando };
 }
 
 // =====================================================================
@@ -277,6 +296,11 @@ function JanelaDaProposta({ a, setTexto, onFechar }: { a: Aberta; setTexto: (t: 
   return (
     <Modal open onClose={onFechar} titulo={titulo} largura="max-w-4xl">
       <div id="janela-da-nia" data-entrega={entrega} className="min-w-0">
+        {!!p.anexosLidos?.length && (
+          <p className="flex items-start gap-1.5 rounded-lg bg-surface-2 text-ink-2 px-3 py-2 text-[13px] mb-3" id="nia-anexos-lidos">
+            <Paperclip size={14} className="shrink-0 mt-0.5 text-muted" aria-hidden /> <span>A NIA leu: <b className="font-semibold">{textoDosAnexosLidos(p.anexosLidos)}</b></span>
+          </p>
+        )}
         {entrega === 'campos'
           ? <PropostaDeCampos a={a} onFechar={onFechar} />
           : p.alteracoes?.length || (!p.texto && p.alteracoes)
@@ -341,7 +365,7 @@ function PropostaDeAlteracoes({ a, setTexto, onFechar }: { a: Aberta; setTexto: 
       if (problema) { acao.setErro(problema); return; }
     }
     if (doCard.length) {
-      const corpo: NiaAplicarEntrada = { comando: a.acao.comando, resumo: p.resumo ?? null, campos: Object.fromEntries(doCard.map((x) => [x.campo, x.depois])) };
+      const corpo: NiaAplicarEntrada = { comando: a.acao.comando, resumo: p.resumo ?? null, campos: Object.fromEntries(doCard.map((x) => [x.campo, x.depois])), ...lidosDe(p) };
       const r = await acao.rodar(() => api.atendimento.niaAplicar(f.id, corpo), `Aplicado: ${lista(doCard.map((x) => nomeDe(x.campo, x.nome)))}`);
       if (!r.ok) return;
     }
@@ -396,7 +420,7 @@ function PropostaDeTexto({ a, setTexto, onFechar }: { a: Aberta; setTexto: (t: s
     if (a.campo === 'anotacao') { setTexto(texto); onFechar(); return; }
     const problema = problemaDoTamanho(a.campo, texto, onde);
     if (problema) { acao.setErro(problema); return; }
-    const r = await acao.rodar(() => api.atendimento.niaAplicar(f.id, { comando: a.acao.comando, resumo: p.resumo ?? null, campos: { [a.campo]: texto } }), `Aplicado: ${onde}`);
+    const r = await acao.rodar(() => api.atendimento.niaAplicar(f.id, { comando: a.acao.comando, resumo: p.resumo ?? null, campos: { [a.campo]: texto }, ...lidosDe(p) }), `Aplicado: ${onde}`);
     if (r.ok) onFechar();
   };
   const atual = a.campo === 'anotacao' ? null : valorDoCampo(f, a.campo);
@@ -419,6 +443,9 @@ function PropostaDeTexto({ a, setTexto, onFechar }: { a: Aberta; setTexto: (t: s
     </>
   );
 }
+
+/** Os nomes dos anexos que a NIA leu, para o Histórico. */
+const lidosDe = (p: PropostaDaNia) => (p.anexosLidos?.length ? { anexosLidos: p.anexosLidos.map((x) => x.nome).slice(0, 20) } : {});
 
 function valorDoCampo(f: FichaChamado, chave: string): string {
   if (chave.startsWith('campo:')) { const v = f.campos[chave.slice(6)]; return typeof v === 'string' ? v : ''; }
@@ -464,7 +491,7 @@ function PropostaDeCampos({ a, onFechar }: { a: Aberta; onFechar: () => void }) 
   const marcadas = linhas.filter((l) => l.aplicavel && marcas[l.chave]);
 
   const aplicar = async () => {
-    const corpo: NiaAplicarEntrada = { comando: a.acao.comando, resumo: p.resumo ?? null, campos: {}, listas: {} };
+    const corpo: NiaAplicarEntrada = { comando: a.acao.comando, resumo: p.resumo ?? null, campos: {}, listas: {}, ...lidosDe(p) };
     for (const l of marcadas) {
       if (l.chave === 'titulo' || l.chave === 'relato' || l.chave === 'descricao') corpo.campos![l.chave] = l.proposto;
       else if (l.chave === 'cliente') corpo.listas!.clienteId = ids.clienteId ?? null;

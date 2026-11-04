@@ -35,6 +35,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/chamados/:id/nia/propor', {
     ...trabalhar,
+    // os anexos do rascunho da anotação vêm no pedido: 5 arquivos de 10 MB em base64 passam de 60 MB (a NIA recebe só
+    // até 14 MB: o que passar é barrado antes, com a mensagem)
+    bodyLimit: 75 * 1024 * 1024,
     schema: {
       tags, params: Id, body: NiaProporSchema,
       summary: 'Pedir a proposta da NIA para o card: o Gestor manda o card inteiro (lido do banco) e devolve a resposta dela como veio. Não grava nada e não vai para o Histórico.',
@@ -43,7 +46,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     const r = await nia.proporANia(app, ator(req), req.params.id, req.body);
     await app.audit(req, {
       action: 'chamado_nia_proposta', entityType: 'ticket', entityId: r.chamado.id,
-      summary: `Pediu à NIA (${r.nome}) uma proposta para ${r.chamado.codigo}${req.body.campo ? `, do campo ${req.body.campo}` : ''}${r.proposta.ok ? '' : ` — não veio: ${r.proposta.erro}`}`,
+      summary: `Pediu à NIA (${r.nome}) uma proposta para ${r.chamado.codigo}${req.body.campo ? `, do campo ${req.body.campo}` : ''}${r.anexos ? `, com ${r.anexos} ${r.anexos === 1 ? 'anexo' : 'anexos'}` : ''}${r.proposta.ok ? '' : ` — não veio: ${r.proposta.erro}`}`,
     });
     return r.proposta;
   });

@@ -71,8 +71,42 @@ const primeiraFrase = (t: string | undefined) => {
 };
 const nomeDe = (c: string) => (NOME_DO_CAMPO_DA_NIA as Record<string, string>)[c] ?? c;
 
-/** O que a NIA de exemplo responderia ao /api/nia/executar. */
+// ---------- os anexos (a NIA de verdade decide o tipo pelo CONTEÚDO; a de exemplo, pela extensão) ----------
+
+const TIPOS_DOS_ANEXOS: Record<string, { tipo: string; como: string; texto?: boolean }> = {
+  pdf: { tipo: 'PDF', como: 'lido inteiro' }, png: { tipo: 'imagem', como: 'lido inteiro' }, jpg: { tipo: 'imagem', como: 'lido inteiro' },
+  jpeg: { tipo: 'imagem', como: 'lido inteiro' }, webp: { tipo: 'imagem', como: 'lido inteiro' }, heic: { tipo: 'imagem', como: 'lido inteiro' },
+  docx: { tipo: 'Word', como: 'texto extraído' }, xlsx: { tipo: 'Excel', como: 'texto extraído' }, pptx: { tipo: 'PowerPoint', como: 'texto extraído' },
+  txt: { tipo: 'texto', como: 'lido inteiro', texto: true }, csv: { tipo: 'texto', como: 'lido inteiro', texto: true },
+  log: { tipo: 'texto', como: 'lido inteiro', texto: true }, eml: { tipo: 'e-mail', como: 'lido inteiro', texto: true },
+};
+const ACEITOS = 'PDF, imagens (PNG, JPG, WEBP, HEIC), Word (.docx), Excel (.xlsx), PowerPoint (.pptx) e texto (.txt, .csv, .log, .eml)';
+
+function textoDoBase64(b64: string): string {
+  try {
+    const bin = atob(b64);
+    return new TextDecoder('utf-8').decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+  } catch { return ''; }
+}
+
+/** O que a NIA de exemplo responderia ao /api/nia/executar: os anexos primeiro (o que não serve recusa o pedido inteiro). */
 export function respostaDaNiaDemo(p: PedidoParaANia): RespostaDaNia {
+  const anexos = p.anexos ?? [];
+  const lidos: Array<{ nome: string; tipo: string; como: string }> = [];
+  const textos: string[] = [];
+  for (const a of anexos) {
+    const t = TIPOS_DOS_ANEXOS[(a.nome.split('.').pop() ?? '').toLowerCase()];
+    if (!t) return { ok: false, comando: p.comando, erro: `o anexo "${a.nome}" não foi aceito: tipo não aceito. Aceitos: ${ACEITOS}.` };
+    lidos.push({ nome: a.nome, tipo: t.tipo, como: t.como });
+    if (t.texto) textos.push(textoDoBase64(a.base64).trim());
+  }
+  const r = semOsAnexos(textos.length || anexos.length ? { ...p, anexosTexto: textos.filter(Boolean).join('\n'), nomesDosAnexos: anexos.map((a) => a.nome) } : p);
+  return r.ok && lidos.length ? { ...r, anexosLidos: lidos } : r;
+}
+
+type PedidoComAnexos = PedidoParaANia & { anexosTexto?: string; nomesDosAnexos?: string[] };
+
+function semOsAnexos(p: PedidoComAnexos): RespostaDaNia {
   const acao = CATALOGO_DA_NIA_DEMO.find((a) => a.comando === p.comando);
   if (!acao) return { ok: false, erro: `Não conheço o comando "${p.comando}".` };
   const ch = p.chamado as Record<string, string | undefined>;
@@ -106,12 +140,14 @@ export function respostaDaNiaDemo(p: PedidoParaANia): RespostaDaNia {
       primeiraFrase(ch.causa) && `Causa: ${primeiraFrase(ch.causa)}`,
       primeiraFrase(ch.solucao) && `Solução: ${primeiraFrase(ch.solucao)}`,
       primeiraFrase(ch.anotacao) && `Na anotação: ${primeiraFrase(ch.anotacao)}`,
+      primeiraFrase(p.anexosTexto) && `Nos anexos: ${primeiraFrase(p.anexosTexto)}`,
     ].filter(Boolean).map((x) => pontuar(String(x)));
     return { ok: true, comando: 'resumir', entrega: 'texto', alcance: 'card inteiro', texto: partes.join(' '), resumo: 'NIA (Resumir): o resumo do card.', observacao: null, erro: null, duracaoMs: 1500 };
   }
 
   // a entrega "campos": o que dá para achar no texto (a ligação, ou o que já está no card)
-  const fonte = acao.comando === 'criar-chamado' ? p.instrucao : [ch.titulo, ch.relato, ch.descricao].filter(Boolean).join('\n');
+  // os anexos são contexto: o texto deles entra na leitura (a NIA de exemplo só lê os de texto; a de verdade lê todos)
+  const fonte = [acao.comando === 'criar-chamado' ? p.instrucao : [ch.titulo, ch.relato, ch.descricao, ch.anotacao].filter(Boolean).join('\n'), p.anexosTexto ?? ''].filter((x) => x.trim()).join('\n');
   if (!fonte.trim()) return { ok: false, comando: acao.comando, erro: acao.comando === 'criar-chamado' ? 'Descreva o que aconteceu depois do comando: "/nia criar-chamado foi a Michele do Labchecap…".' : 'O card está vazio: não há o que ler.' };
   const b = ` ${paraBusca(fonte)} `;
   const o = p.opcoes ?? {};
@@ -137,7 +173,12 @@ export function respostaDaNiaDemo(p: PedidoParaANia): RespostaDaNia {
   const titulo = folha ? `${folha}${cliente ? ` — ${cliente}` : ''}` : pontuar(fonte.split(/\s+/).slice(0, 8).join(' ')).replace(/\.$/, '');
   const campos: RespostaDaNia['campos'] = acao.comando === 'criar-chamado'
     ? { titulo, relato: corrigirDemo(fonte), descricao: null }
-    : { titulo: ch.titulo?.trim() ? null : titulo };
+    : {
+      titulo: ch.titulo?.trim() ? null : titulo,
+      // o card vazio com anexos: o relato sai do texto dos anexos, e a descrição diz de onde
+      ...(p.anexosTexto?.trim() && !ch.relato?.trim() ? { relato: corrigirDemo(p.anexosTexto.trim().slice(0, 600)) } : {}),
+      ...(p.nomesDosAnexos?.length && !ch.descricao?.trim() ? { descricao: `Conferido nos anexos: ${p.nomesDosAnexos.join(', ')}.` } : {}),
+    };
   if (o.cliente?.length) campos.cliente = cliente;
   if (o.produto?.length) campos.produto = produtos.length ? produtos : null;
   if (o.tipo?.length) campos.tipo = tipo;
