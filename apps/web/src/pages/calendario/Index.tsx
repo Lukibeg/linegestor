@@ -8,15 +8,15 @@
  * com a lista de caixas de marcar —, os tipos — o mesmo botão desde o 2.1, com a cor de cada um —, só os
  * meus e a busca) ficam no endereço, como nos chamados (o filtro de cliente saiu no 2.0.2: "n precisa de filtro por
  * cliente"; a busca acha o cliente); a visão Mês (a grade, com o dia escolhido ao lado ou embaixo) e a
- * Lista (o mês dia a dia). O evento abre numa janela (Janela.tsx); quem trabalha nos chamados cria e
+ * Lista (o mês dia a dia); desde o 2.4.1, a Semana (Semana.tsx, como no Outlook), que é a que abre. O evento abre numa janela (Janela.tsx); quem trabalha nos chamados cria e
  * muda; quem cuida deles muda os tipos. O endereço com `?evento=` (o lembrete do sininho e do WhatsApp,
  * 2.0.2) abre o calendário no dia, com a janela do evento.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid, List, Plus, Shapes, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Columns3, LayoutGrid, List, Plus, Shapes, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
 import {
-  DIAS_DA_SEMANA, diaCurto, diaPorExtenso, diasDaGradeDoMes, diaValido, eventosDoDia, filtrarEventos, hojeNoCalendario, mesDoDia, ordemDoDia,
-  somarDias, somarMeses, textoDoHorario, textoDoMes, textoDoPeriodo, tipoDoEvento,
+  DIAS_DA_SEMANA, diaCurto, diaPorExtenso, diasDaGradeDoMes, diasDaSemanaDoDia, diaValido, eventosDoDia, filtrarEventos, hojeNoCalendario, mesDoDia, numeroDaSemana,
+  ordemDoDia, somarDias, somarMeses, textoDaSemana, textoDoHorario, textoDoMes, textoDoPeriodo, tipoDoEvento,
   type CalendarioOpcoes, type CorPainel, type EventoDoCalendario, type FiltroDoCalendario,
 } from '@gestor/shared';
 import { Carregando, Chip, mensagemErro, useToast } from '../../components/ui/index.js';
@@ -29,11 +29,24 @@ import {
 } from './comum.js';
 import { JanelaDoEvento, type AberturaDoEvento } from './Janela.js';
 import { JanelaDosTipos } from './Tipos.js';
+import { GradeDaSemana } from './Semana.js';
 
 /** Quantos eventos cabem no quadradinho do dia (o resto vira "+2"). */
 const NO_DIA = 3;
 const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
 const listaDoEndereco = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
+
+/**
+ * Como ver: a Semana (2.4.1, "como no outlook"; a que abre, o Luan: "eu quero q a visualização padrão seja essa"), o Mês ou a
+ * Lista. A última escolhida fica lembrada neste navegador.
+ */
+type Ver = 'mes' | 'semana' | 'lista';
+const VER_GUARDADO = 'gestor:calendario-ver';
+const ehVer = (v: string | null | undefined): v is Ver => v === 'mes' || v === 'semana' || v === 'lista';
+function verGuardado(): Ver {
+  try { const v = localStorage.getItem(VER_GUARDADO); return ehVer(v) ? v : 'semana'; } catch { return 'semana'; }
+}
+function guardarVer(v: Ver) { try { localStorage.setItem(VER_GUARDADO, v); } catch { /* sem o navegador guardar, vale o do endereço */ } }
 
 export function Calendario() {
   const { user } = useAuth();
@@ -41,9 +54,13 @@ export function Calendario() {
   const opcoes = useOpcoesDoCalendario();
   const hoje = opcoes.data?.hoje ?? hojeNoCalendario();
   const mes = MES.test(valor('mes')) ? valor('mes') : mesDoDia(hoje);
-  const ver: 'mes' | 'lista' = valor('ver') === 'lista' ? 'lista' : 'mes';
+  const ver: Ver = ehVer(valor('ver')) ? valor('ver') as Ver : verGuardado();
   const grade = useMemo(() => diasDaGradeDoMes(mes), [mes]);
-  const eventos = useEventosDoPeriodo(grade[0]!, grade[grade.length - 1]!, !!opcoes.data);
+  // o dia escolhido (o do endereço; senão hoje, se o mês é o de hoje; senão o dia 1); a semana é a dele
+  const diaEscolhido = diaValido(valor('dia')) && grade.includes(valor('dia')) ? valor('dia') : mes === mesDoDia(hoje) ? hoje : `${mes}-01`;
+  const semana = useMemo(() => diasDaSemanaDoDia(diaEscolhido), [diaEscolhido]);
+  const [de, ate] = ver === 'semana' ? [semana[0]!, semana[6]!] : [grade[0]!, grade[grade.length - 1]!];
+  const eventos = useEventosDoPeriodo(de, ate, !!opcoes.data);
   const deHoje = useEventosDoPeriodo(hoje, hoje, !!opcoes.data);
   const nomes = useNomesDasPessoas(opcoes.data);
   const [janela, setJanela] = useState<AberturaDoEvento | null>(null);
@@ -76,10 +93,13 @@ export function Calendario() {
     mudar({ evento: null });
   }, [doEndereco, eventos.data, eventos.isFetching]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // o dia escolhido (o do endereço; senão hoje, se o mês é o de hoje; senão o dia 1)
-  const diaEscolhido = diaValido(valor('dia')) && grade.includes(valor('dia')) ? valor('dia') : mes === mesDoDia(hoje) ? hoje : `${mes}-01`;
   const irParaMes = (m: string) => mudar({ mes: m === mesDoDia(hoje) ? null : m, dia: null });
-  const novo = (dia: string) => setJanela({ novo: { inicio: dia, fim: dia, paineis: filtro.paineis.length ? filtro.paineis : undefined } });
+  // na semana, as setas andam sete dias (o mês acompanha, para o Mês abrir no mesmo dia)
+  const irParaDia = (d: string) => mudar({ mes: mesDoDia(d) === mesDoDia(hoje) ? null : mesDoDia(d), dia: d === hoje ? null : d });
+  const andar = (n: number) => (ver === 'semana' ? irParaDia(somarDias(diaEscolhido, 7 * n)) : irParaMes(somarMeses(mes, n)));
+  const verComo = (v: Ver) => { guardarVer(v); mudar({ ver: v === 'semana' ? null : v }); };
+  const novo = (dia: string, horario?: { horaInicio: string; horaFim: string }) =>
+    setJanela({ novo: { inicio: dia, fim: dia, paineis: filtro.paineis.length ? filtro.paineis : undefined, ...(horario ? { diaInteiro: false, ...horario } : {}) } });
 
   if (opcoes.isLoading) return <Carregando texto="Abrindo o calendário…" />;
   if (opcoes.isError || !opcoes.data) {
@@ -98,11 +118,13 @@ export function Calendario() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3 pb-2 shadow-[inset_0_-1px_0_var(--line)]" id="calendario-topo">
         <h1 className="font-display text-xl font-semibold inline-flex items-center gap-2"><CalendarDays size={20} className="text-muted" aria-hidden /> Calendário</h1>
         <div className="flex items-center gap-1">
-          <button type="button" className="btn-ghost btn-sm px-2" onClick={() => irParaMes(somarMeses(mes, -1))} aria-label="Mês anterior" title="Mês anterior"><ChevronLeft size={17} /></button>
-          <button type="button" className="btn-secondary btn-sm" onClick={() => mudar({ mes: null, dia: null })} title="Volta para o mês de hoje">Hoje</button>
-          <button type="button" className="btn-ghost btn-sm px-2" onClick={() => irParaMes(somarMeses(mes, 1))} aria-label="Próximo mês" title="Próximo mês"><ChevronRight size={17} /></button>
+          <button type="button" className="btn-ghost btn-sm px-2" onClick={() => andar(-1)} aria-label={ver === 'semana' ? 'Semana anterior' : 'Mês anterior'} title={ver === 'semana' ? 'Semana anterior' : 'Mês anterior'}><ChevronLeft size={17} /></button>
+          <button type="button" className="btn-secondary btn-sm" onClick={() => mudar({ mes: null, dia: null })} title={ver === 'semana' ? 'Volta para a semana de hoje' : 'Volta para o mês de hoje'}>Hoje</button>
+          <button type="button" className="btn-ghost btn-sm px-2" onClick={() => andar(1)} aria-label={ver === 'semana' ? 'Próxima semana' : 'Próximo mês'} title={ver === 'semana' ? 'Próxima semana' : 'Próximo mês'}><ChevronRight size={17} /></button>
         </div>
-        <h2 className="font-display text-[17px] font-semibold first-letter:uppercase min-w-[150px]" aria-live="polite" id="calendario-mes">{textoDoMes(mes)}</h2>
+        <h2 className="font-display text-[17px] font-semibold first-letter:uppercase min-w-[150px]" aria-live="polite" id="calendario-mes">
+          {ver === 'semana' ? <>{textoDaSemana(semana)} <span className="text-muted font-normal">(Semana {numeroDaSemana(semana[0]!)})</span></> : textoDoMes(mes)}
+        </h2>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {/* no celular, o "Só os meus" à vista, ao lado do Filtros (2.4, o Luan: "n aparece de cara o botão 'só os meus' no
               calendário, fica só no filtro, quero que esse botão já fique na cara tbm"); no computador, ele fica nos filtros */}
@@ -112,8 +134,8 @@ export function Calendario() {
             <SlidersHorizontal size={14} aria-hidden /> Filtros{ligados ? ` (${ligados})` : ''}
           </button>
           <div className="inline-flex rounded-lg border border-line-strong p-0.5 bg-surface" role="radiogroup" aria-label="Como ver">
-            {([['mes', 'Mês', LayoutGrid], ['lista', 'Lista', List]] as const).map(([v, nome, Icone]) => (
-              <button key={v} type="button" role="radio" aria-checked={ver === v} onClick={() => mudar({ ver: v === 'mes' ? null : v })}
+            {([['semana', 'Semana', Columns3], ['mes', 'Mês', LayoutGrid], ['lista', 'Lista', List]] as const).map(([v, nome, Icone]) => (
+              <button key={v} type="button" role="radio" aria-checked={ver === v} onClick={() => verComo(v)} id={`calendario-ver-${v}`}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[13px] font-semibold ${ver === v ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}>
                 <Icone size={14} aria-hidden />{nome}
               </button>
@@ -143,11 +165,13 @@ export function Calendario() {
           <PainelDoDia dia={diaEscolhido} eventos={filtrados} op={op} nomes={nomes} hoje={hoje} filtrando={filtrando} eu={user?.id ?? null}
             onAbrir={(e) => setJanela({ evento: e })} onNovo={novo} />
         </div>
+      ) : ver === 'semana' ? (
+        <GradeDaSemana dias={semana} eventos={filtrados} op={op} hoje={hoje} carregando={eventos.isFetching && !eventos.data} onAbrir={(e) => setJanela({ evento: e })} onNovo={novo} />
       ) : (
         <ListaDoMes mes={mes} eventos={filtrados} op={op} nomes={nomes} hoje={hoje} filtrando={filtrando} eu={user?.id ?? null} onAbrir={(e) => setJanela({ evento: e })} />
       )}
 
-      {janela && <JanelaDoEvento key={'evento' in janela ? janela.evento.id : `novo-${janela.novo.inicio}`} abertura={janela} opcoes={op} onFechar={() => setJanela(null)} />}
+      {janela && <JanelaDoEvento key={'evento' in janela ? janela.evento.id : `novo-${janela.novo.inicio}-${janela.novo.horaInicio ?? ''}`} abertura={janela} opcoes={op} onFechar={() => setJanela(null)} />}
       {tipos && <JanelaDosTipos tipos={op.tipos} onFechar={() => setTipos(false)} />}
     </div>
   );

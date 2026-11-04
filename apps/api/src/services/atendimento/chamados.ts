@@ -676,7 +676,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
         campo(x.chave, x.nome, x.valorAntes === null ? null : reais(x.valorAntes), conta.valor === null ? null : reais(conta.valor), x.valorAntes);
       }
     }
-    // as condições combinadas (2.4: o desconto por um tempo, a ativação mais tarde e em vezes): uma linha no histórico
+    // as condições especiais (2.4; 2.4.1: o desconto na mensalidade e na ativação, a ativação em vezes ou mais tarde): uma linha no histórico
     if (d.condicoes !== undefined) {
       const antes = condicoesGuardadas(t.negotiationTerms);
       const depois = semCondicoes(d.condicoes) ? null : d.condicoes;

@@ -240,6 +240,7 @@ type EtapaDoModelo = Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios
 
 const CURADORIA = 'Curadoria';
 const MODULOS_A_ATIVAR = 'Módulos a ativar';
+const ATIVACAO_DOS_MODULOS = 'Ativação dos módulos';
 const CONFIGURACAO = 'Configuração';
 const TESTES = 'Testes';
 
@@ -292,12 +293,13 @@ export const MODELO_DA_IMPLANTACAO: {
     { nome: 'Números da rota de entrada', tipo: 'texto_longo', parte: CURADORIA, produto: 'linepbx', dica: 'Os números que entram e para onde vai cada um.', opcoes: [] },
     { nome: 'Estrutura da URA', tipo: 'texto_longo', parte: CURADORIA, produto: 'linepbx', dica: 'As mensagens e as opções de cada menu.', opcoes: [] },
     { nome: MODULOS_A_ATIVAR, tipo: 'modulos', parte: CURADORIA, produto: 'linepbx', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
-    // a configuração (a equipe técnica marca o que já fez); sem a Ativação dos módulos desde o 2.4 (o Luan: "esse ativação dos
-    // módulos vc pode tirar n precisa") — os módulos escolhidos na Curadoria ligam no Implantado do mesmo jeito
+    // a configuração (a equipe técnica marca o que já fez). A Ativação dos módulos saiu no 2.4 e voltou no 2.4.1 (o Luan:
+    // "gostaria de retroceder uma questão" — "Que ela volte"): o checklist dos módulos escolhidos na Curadoria
     {
       nome: 'Configuração do ambiente', tipo: 'caixinhas', parte: CONFIGURACAO, produto: 'linechat', dica: 'Marque o que já foi feito.',
       opcoes: ['Criação dos usuários', 'Criação das equipes', 'Configuração dos chatbots', 'Configuração do horário de atendimento', 'Ativação dos números'],
     },
+    { nome: ATIVACAO_DOS_MODULOS, tipo: 'modulos', parte: CONFIGURACAO, produto: 'linechat', dica: 'Os módulos escolhidos na Curadoria: marque conforme ativar.', opcoes: [], escolhidosEm: MODULOS_A_ATIVAR },
     {
       nome: 'Configuração do ambiente', tipo: 'caixinhas', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Marque o que já foi feito.',
       // em pastas (2.3, o Luan: "configurações do servidor, configuirações do asterisk, do linepbx web, dos módulos")
@@ -309,6 +311,7 @@ export const MODELO_DA_IMPLANTACAO: {
         ...naPasta('Telefones', 'Configuração dos telefones'),
       ],
     },
+    { nome: ATIVACAO_DOS_MODULOS, tipo: 'modulos', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Os módulos escolhidos na Curadoria: marque conforme ativar.', opcoes: [], escolhidosEm: MODULOS_A_ATIVAR },
     // os testes (o suporte confere antes de validar)
     {
       nome: 'Testes realizados', tipo: 'caixinhas', parte: TESTES, produto: 'linechat', dica: 'Marque o que já foi testado com o cliente.',

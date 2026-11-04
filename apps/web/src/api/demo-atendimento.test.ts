@@ -1217,9 +1217,9 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
     expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado']);
     expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
-    // os 17 campos do modelo (sem a Ativação dos módulos, 2.4), em três partes, de dois produtos
+    // os 19 campos do modelo (a Ativação dos módulos saiu no 2.4 e voltou no 2.4.1), em três partes, de dois produtos
     const campos = op.campos.filter((c) => c.painelId === imp.id);
-    expect(campos).toHaveLength(17);
+    expect(campos).toHaveLength(19);
     expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
 
     const q = await api.quadro({ painel: imp.id });
@@ -1227,8 +1227,8 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Implantado: ['Ótica Visão Clara'] });
     // o cartão mostra a conta da parte da etapa (a Configuração do LineChat: 3 de 5)
     const movimento = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados[0]!;
-    // 3 de 5 caixinhas (sem a Ativação dos módulos desde o 2.4)
-    expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 3, total: 5 });
+    // 3 de 5 caixinhas + 1 de 2 módulos escolhidos na Curadoria (o checklist conta)
+    expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 4, total: 7 });
 
     const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado')!.chamados[0]!.codigo);
     expect(vc.origem).toBe('comercial');
@@ -1346,24 +1346,29 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     const semTelefones = await api.salvarCaixinhas(conf.id, { opcoes: novo.opcoes.filter((o) => o.nome !== 'Configuração dos telefones').map((o) => ({ id: o.id, nome: o.nome, pasta: o.pasta ?? null })) });
     expect(semTelefones.opcoes.some((o) => o.nome === 'Configuração dos telefones')).toBe(false);
     const conta = (await api.chamado(visao.codigo)).partes.find((p) => p.parte === 'Configuração')!;
-    expect(conta.feitos).toBe(9);
+    // as 9 caixinhas que ficaram marcadas + os 2 módulos da Ativação dos módulos (de volta no 2.4.1)
+    expect(conta.feitos).toBe(11);
     expect((await erroDe(api.salvarCaixinhas(campoDe(op, imp.id, 'Módulos a ativar', pbx).id, { opcoes: [{ nome: 'X' }] }))).status).toBe(400);
     await entrar('operador');
     expect((await erroDe(api.salvarCaixinhas(conf.id, { opcoes: [{ nome: 'X' }] }))).status).toBe(403);
   });
 
-  it('os módulos: a Curadoria escolhe e o Implantado liga os escolhidos (a Ativação dos módulos saiu no 2.4)', async () => {
+  it('os módulos: a Curadoria escolhe, o checklist da Configuração mostra só os escolhidos, o Implantado avisa o que falta (voltou no 2.4.1)', async () => {
     await entrar('admin');
     const op = await api.opcoes();
     const imp = painel(op, 'IMP');
     const pbx = produto(op, 'LinePBX');
     const escolha = campoDe(op, imp.id, 'Módulos a ativar', pbx);
+    const checklist = campoDe(op, imp.id, 'Ativação dos módulos', pbx);
     expect(escolha.parte).toBe('Curadoria');
-    expect(op.campos.some((c) => c.painelId === imp.id && c.nome === 'Ativação dos módulos')).toBe(false);
+    expect(checklist).toMatchObject({ parte: 'Configuração', escolhidosEm: escolha.id });
     const horizonte = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Construtora Horizonte')!;
+    // o checklist conta os escolhidos: o FOP2 marcado, o Callback faltando
+    const ficha = await api.chamado(horizonte.codigo);
+    expect(contaDoCampo(checklist, ficha.campos[checklist.id], ficha.campos)).toEqual({ feitos: 1, total: 2 });
     const plano = (await api.aoMover(horizonte.id, { etapaId: imp.etapas.find((e) => e.nome === 'Implantado')!.id })).cadastro!;
     expect(plano.modulos.map((m) => m.nome)).toEqual(['FOP2', 'Callback']);
-    expect(plano.semMarcar).toBeUndefined();
+    expect(plano.semMarcar).toEqual([expect.objectContaining({ nome: 'Callback', produto: 'LinePBX', campo: 'Ativação dos módulos' })]);
   });
 
   it('2.4: excluir o campo e a caixinha, os grupos de campos, o documento e as condições da negociação, como o servidor', async () => {
@@ -1437,7 +1442,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(novo.etapas.map((e) => [e.nome, !!e.ligaNoCadastro])).toEqual([['Stand By', false], ['Curadoria', false], ['Configuração', false], ['Testes', false], ['Concluído', false], ['Implantado', true]]);
     expect(novo.ajustes.contaPrazo).toBe(false);
     const op = await api.opcoes();
-    expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(17);
+    expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(19);
     const pbx = produto(op, 'LinePBX');
     const chat = produto(op, 'LineChat');
     // os módulos precisam do produto

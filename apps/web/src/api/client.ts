@@ -132,6 +132,7 @@ export const realApi: Api = {
     update: (id, d) => http('PATCH', `/circuits/${id}`, d),
     remove: (id) => http('DELETE', `/circuits/${id}`),
     createRange: (id, d) => http('POST', `/circuits/${id}/dids/range`, d),
+    movimentacoes: (q) => http('GET', `/circuits/movimentacoes${qs(q)}`),
   },
   dids: {
     list: (q) => http('GET', `/dids${qs(q)}`),

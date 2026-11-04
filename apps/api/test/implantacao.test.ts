@@ -65,11 +65,13 @@ describe('o modelo Implantação', () => {
     expect(imp.ajustes.camposDesligados).toEqual(expect.arrayContaining(['assunto', 'prioridade', 'relato', 'solucao']));
     const o: OpcoesAtendimento = (await s.get('/atendimento/opcoes')).json();
     campos = o.campos.filter((c) => c.painelId === imp.id);
-    expect(campos).toHaveLength(17);
-    // os módulos: escolhidos na Curadoria; a Ativação dos módulos saiu no 2.4 ("vc pode tirar n precisa")
+    expect(campos).toHaveLength(19);
+    // os módulos: escolhidos na Curadoria; o checklist da Configuração segue a escolha do mesmo produto (saiu no 2.4 e voltou
+    // no 2.4.1: "Que ela volte")
     for (const codigo of ['linechat', 'linepbx'] as const) {
-      expect(campo('Módulos a ativar', codigo)).toMatchObject({ parte: 'Curadoria', escolhidosEm: null });
-      expect(campos.some((c) => c.nome === 'Ativação dos módulos')).toBe(false);
+      const escolha = campo('Módulos a ativar', codigo);
+      expect(escolha).toMatchObject({ parte: 'Curadoria', escolhidosEm: null });
+      expect(campo('Ativação dos módulos', codigo)).toMatchObject({ parte: 'Configuração', escolhidosEm: escolha.id });
     }
     // os grupos de campos do modelo (2.4), no meio da ficha
     expect(imp.ajustes.partes).toEqual([{ nome: 'Curadoria', lugar: 'meio' }, { nome: 'Configuração', lugar: 'meio' }, { nome: 'Testes', lugar: 'meio' }]);
@@ -100,6 +102,7 @@ describe('o modelo Implantação', () => {
     const base = { tipo: 'modulos', parte: 'Configuração', produtoId: produto.linepbx };
     expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Módulos a ativar', 'linechat').id })).statusCode).toBe(400);
     expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Configuração do ambiente', 'linepbx').id })).statusCode).toBe(400);
+    expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Ativação dos módulos', 'linepbx').id })).statusCode).toBe(400);
     const checklist = await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Módulos a ativar', 'linepbx').id });
     expect(checklist.statusCode, checklist.body).toBe(201);
     expect(checklist.json().escolhidosEm).toBe(campo('Módulos a ativar', 'linepbx').id);
@@ -112,8 +115,9 @@ describe('o modelo Implantação', () => {
     // a escolha que alguém segue só se exclui junto com quem a segue (2.4)
     const excluirEscolha = await s.del(`/atendimento/campos/${escolha.id}`);
     expect(excluirEscolha.statusCode).toBe(400);
-    expect(excluirEscolha.json().error).toMatch(/Checklist X segue Módulos a ativar/);
-    // exclui os de teste (o painel volta aos 17)
+    // quem a segue: a Ativação dos módulos (o modelo) e o Checklist X
+    expect(excluirEscolha.json().error).toMatch(/segue Módulos a ativar/);
+    // exclui os de teste (o painel volta aos 19)
     expect((await s.del(`/atendimento/campos/${checklist.json().id}`)).statusCode).toBe(200);
     expect((await s.del(`/atendimento/campos/${noOutro.json().id}`)).statusCode).toBe(200);
   });
@@ -311,8 +315,8 @@ describe('o card da implantação', () => {
       modulos: [{ id: modulo.id, acao: 'liga', produto: 'LineChat' }],
     });
     expect(plano.cadastro.produtos.map((p: { acao: string }) => p.acao)).toEqual(['ativa', 'ativa']);
-    // sem a Ativação dos módulos (2.4), não há checklist a avisar: o escolhido na Curadoria liga direto
-    expect(plano.cadastro.semMarcar).toBeUndefined();
+    // o escolhido na Curadoria que o checklist da Configuração ainda não marcou: a janela avisa (não trava)
+    expect(plano.cadastro.semMarcar).toEqual([{ id: modulo.id, nome: modulo.nome, produto: 'LineChat', campo: 'Ativação dos módulos' }]);
     // a negociação vai junto para o Implantado do Comercial
     expect(plano.negociacao).toEqual({ id: neg.id, codigo: neg.codigo, titulo: 'Padaria Sol', de: 'Em processo de Implantação', para: 'Implantado' });
     const r = await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: validado.id });

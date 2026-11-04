@@ -11,6 +11,7 @@ import * as audit from '../services/audit.js';
 import * as clientsSvc from '../services/clients.js';
 import * as circuitsSvc from '../services/circuits.js';
 import * as didsSvc from '../services/dids.js';
+import * as movCircuitos from '../services/movimentacoesCircuitos.js';
 import * as inv from '../services/inventory.js';
 import * as novidades from '../services/releaseNotes.js';
 import { BadRequest, Forbidden } from '../plugins/errors.js';
@@ -77,8 +78,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       if (type === 'ticket' && !req.user!.permissions.includes('tickets.manage')) throw new Forbidden('Esta ação exige a permissão "tickets.manage"');
       let label = id;
       if (type === 'client') label = (await clientsSvc.restore(app.db, id)).tradeName;
-      else if (type === 'circuit') label = (await circuitsSvc.restore(app.db, id)).name;
-      else if (type === 'did') label = (await didsSvc.restore(app.db, id)).number;
+      else if (type === 'circuit') { const c = await circuitsSvc.restore(app.db, id); await movCircuitos.aoMexerNaLixeiraDoCircuito(app.db, req.user!.id, c, 'circuito_restaurado'); label = c.name; }
+      else if (type === 'did') { const d = await didsSvc.restore(app.db, id); await movCircuitos.aoMexerNaLixeiraDosDids(app.db, req.user!.id, [d], 'did_restaurado'); label = d.number; }
       else if (type === 'device') label = inv.nomeAparelho(await inv.restoreDevice(app.db, id), id);
       else if (type === 'deviceModel') label = (await inv.restoreModel(app.db, id)).name;
       else if (type === 'product') label = (await svc.restoreProduct(app.db, id)).name;

@@ -27,6 +27,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [carriers](#carriers) — Catálogo: operadoras que fornecem circuitos (ALGAR, VC1...).
 - [circuits](#circuits) — Um circuito (feixe) contratado junto a uma operadora.
 - [dids](#dids) — Um número telefônico.
+- [circuit_movements](#circuit_movements) — As movimentações dos circuitos e dos DIDs (2.4.1): cada mudança numa linha — o circuito novo, alterado, na lixeira ou restaurado; os DIDs novos, alterados, na lixeira ou restaurados; a importação da planilha.
 - [device_categories](#device_categories) — Catálogo: categoria de aparelho (Telefone IP, Periférico, ATA...).
 - [device_models](#device_models) — Um modelo de aparelho (ex.: Grandstream GXP1610).
 - [device_model_images](#device_model_images) — A foto do modelo, no próprio banco (como a logo do cliente).
@@ -373,6 +374,21 @@ Um número telefônico. "Linha" no Nexus; DID aqui (decisão V2).
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## circuit_movements
+
+As movimentações dos circuitos e dos DIDs (2.4.1): cada mudança numa linha — o circuito novo, alterado, na lixeira ou restaurado; os DIDs novos, alterados, na lixeira ou restaurados; a importação da planilha. A aba Movimentações (Circuitos e DIDs) e a ficha do circuito leem daqui. As linhas de antes do 2.4.1 vieram da auditoria (a migração 0033).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `user_id` | texto | Quem fez (nulo: o sistema, ou a pessoa que não existe mais) | liga com **users** |
+| `kind` | texto | O que aconteceu: circuito_criado | circuito_editado | circuito_lixeira | circuito_restaurado | dids_criados | did_editado | dids_editados | dids_lixeira | did_restaurado | importacao | obrigatório |
+| `circuit_ids` | texto | Os circuitos envolvidos (o DID que trocou de circuito: o de antes e o de depois) | obrigatório · padrão: [] · lista |
+| `did_numbers` | texto | Os números envolvidos, só com dígitos | obrigatório · padrão: [] · lista |
+| `summary` | texto | A frase do que aconteceu, escrita na hora ("Atribuiu o DID (71) 3034-8350 a Clínica Aurora") | obrigatório |
+| `details` | JSON | Os fatos, crus (os nomes são escritos na hora de mostrar): o antes e o depois do circuito, a senha definida ou trocada (nunca a senha), cada DID com o antes e o depois, as contas da importação. Ver DetalhesDaMovimentacao no @gestor/shared. | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
 
 
 ---
@@ -1182,7 +1198,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `product_values` | JSON | A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma | obrigatório · padrão: {} |
 | `setup_cents` | bigint | A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela | — |
 | `product_setup` | JSON | A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma | obrigatório · padrão: {} |
-| `negotiation_terms` | JSON | A negociação: as CONDIÇÕES combinadas (2.4, o Luan: "concedi um desconto de 200 reais até março do ano que vem, além disso a ativação só vai ser paga a partir de março tbm e dividida em 6 vezes") — {descontos: [{valor, de, ate}], ativacao: {aPartirDe, vezes}, observacao}. Dizem como a mensalidade e a ativação vão ser cobradas; não mudam o valor. Nulo: nada combinado. | — |
+| `negotiation_terms` | JSON | A negociação: as CONDIÇÕES ESPECIAIS (2.4, o Luan: "concedi um desconto de 200 reais até março do ano que vem, além disso a ativação só vai ser paga a partir de março tbm e dividida em 6 vezes"; refeitas no 2.4.1) — {descontos: [{valor, ate}], ativacao: {desconto, vezes, aPartirDe}, observacao}. Os descontos vêm em sequência, do 1º mês de faturamento (o do Ganho); ate nulo: sem prazo (só o último); aPartirDe nulo: no 1º mês. As do 2.4 (com o "de") são lidas sem ele. Dizem como a mensalidade e a ativação vão ser cobradas; não mudam o valor. Nulo: nada combinado. | — |
 | `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
 | `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
 | `external_ref` | texto | De onde veio, quando veio de outro sistema (2.0.3, decisão 0054): "helena:<id do card>" — o Trazer do Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único. | — |

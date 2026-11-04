@@ -19,6 +19,7 @@ import { cnpjLimpo, cnpjValido, consertarAcentos, didLimpo, didValido, paraCenta
 import { BadRequest } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 import * as clientsSvc from './clients.js';
+import * as mov from './movimentacoesCircuitos.js';
 
 export type Entity = 'clients' | 'circuits' | 'dids';
 
@@ -234,6 +235,8 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
   if (p.summary.error > 0) throw new BadRequest(`Há ${p.summary.error} linha(s) com erro. Corrija o arquivo e envie de novo — nada foi gravado.`);
   return db.transaction(async (tx) => {
     let created = 0, updated = 0;
+    // a aba Movimentações dos circuitos (2.4.1): os circuitos e os números que a planilha criou ou mudou
+    const movCircuitos: Array<string | null | undefined> = []; const movNumeros: string[] = [];
     if (p.entity === 'clients') {
       const hostings = await tx.select().from(hostingProviders);
       for (const r of p.rows) {
@@ -281,12 +284,16 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
           // login no arquivo = autenticação por login e senha; sem login = por IP
           if (d.authUsername !== undefined) set.authType = d.authUsername ? 'login' : 'ip';
           await tx.update(circuits).set(set).where(eq(circuits.id, d.targetId));
+          movCircuitos.push(d.targetId);
           updated++;
         } else {
-          await tx.insert(circuits).values({ id: newId(), name: d.name, code: d.code, keyNumber: d.keyNumber ?? null, carrierId: d.carrierId ?? null, channels: d.channels ?? 0, signalingIp: d.signalingIp ?? null, authIp: d.authIp ?? null, authUsername: d.authUsername ?? null, authType: d.authUsername ? 'login' : 'ip', monthlyValueCents: d.monthlyValueCents ?? null, ownerClientId: d.ownerClientId ?? null, notes: d.notes ?? null, authPasswordSecretId: await secret(null) });
+          const novoId = newId();
+          movCircuitos.push(novoId);
+          await tx.insert(circuits).values({ id: novoId, name: d.name, code: d.code, keyNumber: d.keyNumber ?? null, carrierId: d.carrierId ?? null, channels: d.channels ?? 0, signalingIp: d.signalingIp ?? null, authIp: d.authIp ?? null, authUsername: d.authUsername ?? null, authType: d.authUsername ? 'login' : 'ip', monthlyValueCents: d.monthlyValueCents ?? null, ownerClientId: d.ownerClientId ?? null, notes: d.notes ?? null, authPasswordSecretId: await secret(null) });
           created++;
         }
       }
+      await mov.aoImportar(tx, userId, { entidade: 'circuitos', criados: created, alterados: updated, circuitos: movCircuitos, numeros: [] });
     } else {
       const inserts: (typeof dids.$inferInsert)[] = [];
       for (const r of p.rows) {
@@ -296,14 +303,20 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
           if (d.circuitId !== undefined) set.circuitId = d.circuitId;
           if (d.clientId !== undefined) { set.clientId = d.clientId; set.inUse = false; }
           if (d.note !== undefined) set.note = d.note;
+          const [antes] = await tx.select({ circuitId: dids.circuitId, number: dids.number }).from(dids).where(eq(dids.id, d.targetId));
           await tx.update(dids).set(set).where(eq(dids.id, d.targetId));
+          movCircuitos.push(antes?.circuitId, d.circuitId);
+          movNumeros.push(antes?.number ?? d.number);
           updated++;
         } else {
           inserts.push({ id: newId(), number: d.number, circuitId: d.circuitId, clientId: d.clientId ?? null, inUse: false, note: d.note ?? null });
+          movCircuitos.push(d.circuitId);
+          movNumeros.push(d.number);
           created++;
         }
       }
       for (let i = 0; i < inserts.length; i += 500) await tx.insert(dids).values(inserts.slice(i, i + 500));
+      await mov.aoImportar(tx, userId, { entidade: 'dids', criados: created, alterados: updated, circuitos: movCircuitos, numeros: movNumeros });
     }
     return { created, updated };
   });

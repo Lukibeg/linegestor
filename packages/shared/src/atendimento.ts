@@ -1562,7 +1562,7 @@ export const ChamadoAlterarSchema = z.object({
   valoresDosProdutos: ValoresDosProdutosSchema.nullable().optional(),
   ativacao: ValorEmCentavosSchema.nullable().optional(),
   ativacoesDosProdutos: ValoresDosProdutosSchema.nullable().optional(),
-  /** as condições combinadas da negociação (2.4: o desconto por um tempo, a ativação mais tarde e em vezes); nulo tira */
+  /** as condições especiais da negociação (2.4; 2.4.1: o desconto na mensalidade, com prazo ou sem, e na ativação, a ativação em vezes ou mais tarde); nulo tira */
   condicoes: CondicoesDaNegociacaoSchema.nullable().optional(),
   empresa: TextoOpcional(120).optional(),
   motivoPerda: TextoOpcional(200).optional(),
@@ -2047,7 +2047,7 @@ export type CartaoChamado = {
   ativacao: number | null;
   /** a ativação de cada produto, pelo id */
   ativacoesDosProdutos: ValoresDosProdutos;
-  /** a negociação: o que foi combinado além do valor (2.4: o desconto por um tempo, a ativação mais tarde e em vezes) */
+  /** a negociação: o que foi combinado além do valor (as Condições especiais: o desconto na mensalidade e na ativação, a ativação em vezes ou mais tarde) */
   condicoes: CondicoesDaNegociacao | null;
   empresa: string | null;
   /** como acabou (a etapa final do painel de Vendas: Ganho ou Perdido) e, no Perdido, o motivo */

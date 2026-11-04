@@ -47,8 +47,9 @@ Voltar a negociação e mover de novo não abre outro card.
 - **A Curadoria.** Quem cuida da curadoria preenche os dados do cliente (os usuários, os números, o chatbot, o horário, o
   acesso à BM, os ramais, a URA) e marca os **Módulos a ativar**: os que o cliente contratou. Para o card sair da
   Curadoria, alguém precisa ser o responsável (a janela pergunta).
-- **A Configuração.** A equipe técnica marca as caixinhas do que já fez. Cada caixinha marcada mostra quem marcou e quando.
-  (A Ativação dos módulos saiu no 2.4: os módulos escolhidos na Curadoria ligam no Implantado.)
+- **A Configuração.** A equipe técnica marca as caixinhas do que já fez. A **Ativação dos módulos** é o checklist dos
+  módulos marcados na Curadoria (só eles aparecem): marque cada um conforme ativar. Cada caixinha marcada mostra quem
+  marcou e quando. (Ela saiu no 2.4 e voltou no 2.4.1, com o que os cards já tinham marcado.)
 - **Os Testes.** O suporte marca o que já testou com o cliente.
 - **As pastas.** A Configuração do LinePBX vem em pastas (Servidor, Asterisk, LinePBX Web, Módulos, Telefones), cada uma
   com a conta. Quem cuida dos chamados muda ali mesmo: **Editar as caixinhas** › Nova pasta, Incluir caixinha, as setas
@@ -71,7 +72,8 @@ Quando os testes acabarem, mova o card para **Concluído**. Feita a implantaçã
 
 - os produtos sem data ganham a data de hoje (o que o cliente não tinha entra ativo; o Equipamentos, que não tem data,
   entra sem ela; o que estava encerrado fica como está);
-- os módulos marcados em Módulos a ativar (a Curadoria) ficam ligados.
+- os módulos marcados em Módulos a ativar (a Curadoria) ficam ligados. Se algum ainda não foi marcado na Ativação dos
+  módulos (a Configuração), a janela avisa, mas não trava.
 
 **Mover e ligar no cadastro.** Na ficha do cliente (Clientes › o cliente › Produtos), o produto que ainda está em
 implantação aparece como **em implantação**; depois do Implantado, **ativo desde** o dia.

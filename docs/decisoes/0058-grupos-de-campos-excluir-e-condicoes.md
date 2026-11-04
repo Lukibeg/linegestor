@@ -78,3 +78,46 @@ O documento do Luan de 31/10 ("melhorias 3110"), com doze prints:
 
 - As condições no relatório do Comercial (as ativações mês a mês pelas parcelas combinadas, e não pelo dia do Ganho).
 - O lugar do grupo dentro da lateral (hoje, sempre abaixo da Classificação).
+
+## Revisto no 2.4.1 (03/11/2026): a Ativação dos módulos volta
+
+Com o 2.4 no ar, o Luan mandou o print da Configuração com a Ativação dos módulos: *"gostaria de retroceder uma questão"* e, à
+pergunta (que ela suma ou que volte), *"Que ela volte"*. Desfaz o item 5:
+
+- **O modelo Implantação** volta a criar a **Ativação dos módulos** na Configuração, de cada produto (o LinePBX e o LineChat),
+  seguindo o Módulos a ativar da Curadoria: os 19 campos do 2.3.
+- **Nos painéis que existem**, a migração `0032` traz de volta os checklists que a `0031` excluiu, com o que os cards já tinham
+  marcado (nada tinha sido apagado). Só volta o que ainda faz sentido: a escolha que ele segue continua no painel, o grupo
+  dele ainda tem campo, nenhum outro campo ativo do painel tem o mesmo nome no mesmo produto, e ninguém o excluiu pela tela (a
+  auditoria diria).
+- **As regras de etapa** que a `0031` tirou (o checklist pedido para entrar numa etapa ou para abrir) **não voltam sozinhas**:
+  a `0031` não guardou quais eram, e o modelo não pedia nenhuma. Quem tinha ligado uma liga de novo em Painéis › Ajustes ›
+  Campos (Editar o campo).
+- **No Implantado**, a janela volta a avisar o módulo escolhido na Curadoria que o checklist ainda não marcou (sem travar),
+  como no 2.3.
+
+O resto do 2.4 continua: o Excluir o campo, a caixinha excluída de verdade, os grupos de campos, todos os produtos nas partes,
+o tipo Documento e as condições da negociação.
+
+## Revisto no 2.4.1 (03/11/2026): as Condições especiais
+
+Antes de o 2.4.1 subir, o Luan mandou o print da janela das condições: *"essa parte aqui n ficou legal n, o formato n ta legal
+e tem outras coisa, n precisa ter o de, pq subentendesse que vai ser a partir do primeiro mes de faturameno que é quando eu
+marco cmo ganho, se eu quiser fornecer um desconto sem prazo, temq ter essa opção tbm, a ativação tbm n ficou legal o formato,
+se dar um desconto na aticvação? e o nome tem q ser condições especiais"*. Muda o item 8:
+
+- **O nome** passa a ser **Condições especiais** (o cartão, a janela e a linha do histórico).
+- **O 1º mês de faturamento é o mês do Ganho** (o dia que ficou no Ganho, em Brasília). Antes do Ganho, as contas usam o mês
+  de hoje, de exemplo, e a janela diz isso.
+- **Sem o "De"**: os descontos na mensalidade vêm **em sequência** — o primeiro começa no 1º mês de faturamento e cada um
+  seguinte começa quando o anterior acaba ("R$ 200 até março, depois R$ 100 sem prazo"). Cada um tem o valor por mês e **até
+  que mês** vai, ou **Sem prazo** (só o último). Até 5.
+- **A ativação**: o **desconto** nela (em reais, até o valor dela), o que **fica para pagar**, **em quantas vezes** (de 1 a 24,
+  com o valor da parcela na escolha) e **quando começa a pagar** (no 1º mês ou num mês escolhido). Sem nada diferente disso
+  (sem desconto, à vista, no 1º mês), não há ativação combinada.
+- **Como fica a cobrança**: uma coluna para cada coisa (Mês, Mensalidade, Desconto, Ativação com a parcela, Total do mês), do
+  1º mês até a mensalidade voltar cheia (com o sem prazo, o mês em que ele começa e mais dois). Sem a ativação combinada, a
+  ativação vai inteira no 1º mês (antes, ela ficava fora da tabela).
+- **O que foi guardado no 2.4 continua valendo**, sem migração: o "de" fica de fora (o desconto começa no 1º mês), os descontos
+  vão na ordem do mês em que acabam e a ativação de antes é a mesma, sem desconto.
+

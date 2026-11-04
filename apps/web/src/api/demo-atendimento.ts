@@ -196,7 +196,7 @@ type ChamadoRow = {
   marcas?: MarcasDosCampos;
   /** a negociação que abriu este card na implantação (2.3) */
   daNegociacaoId?: string | null;
-  /** a negociação: as condições combinadas (2.4: o desconto por um tempo, a ativação mais tarde e em vezes) */
+  /** a negociação: as condições especiais (2.4; refeitas no 2.4.1: o desconto na mensalidade, com prazo ou sem, e na ativação) */
   condicoes?: CondicoesDaNegociacao | null;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
@@ -1230,7 +1230,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           campo(x.chave, x.nome, x.valorAntes === null ? null : reais(x.valorAntes), conta.valor === null ? null : reais(conta.valor), x.valorAntes);
         }
       }
-      // as condições combinadas (2.4), como o servidor: uma linha no histórico
+      // as condições especiais (2.4; 2.4.1), como o servidor: uma linha no histórico
       if (d.condicoes !== undefined) {
         const antes = t.condicoes ?? null;
         const depois = semCondicoes(d.condicoes) ? null : d.condicoes;
@@ -4240,7 +4240,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       } catch (err) { A.erros.push(`comercial ${n.chave}: ${err instanceof Error ? err.message : String(err)}`); }
     }
     com.ajustes.metaMensal = META_DO_COMERCIAL * 100;
-    // as condições combinadas (2.4), no exemplo do Luan: o Hotel Beira Mar com R$ 200 de desconto até março do ano que vem e a
+    // as condições especiais (2.4), no exemplo do Luan: o Hotel Beira Mar com R$ 200 de desconto até março do ano que vem e a
     // ativação a partir de março, em 6 vezes
     {
       const beira = negociacaoDoExemplo.get('beira-mar');

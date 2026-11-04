@@ -225,15 +225,19 @@ traz; dá para mudar em **Painéis › Ajustes**. Não tem valor, ganhos nem a p
 chamados ficam abertos, resolvidos e fechados e o que cada etapa vira. No painel de Gestão que já existe,
 nenhuma etapa dele sai: as do Helena que faltam entram antes das de fim.
 
-## As condições combinadas (2.4)
+## As Condições especiais (2.4; refeitas no 2.4.1)
 
-Na ficha da negociação, abaixo de **A negociação**, o cartão **Condições combinadas** guarda o que foi acertado com o
-cliente além do valor: **Combinar** (ou **Mudar**) abre a janela com:
+Na ficha da negociação, abaixo de **A negociação**, o cartão **Condições especiais** guarda o que foi acertado com o
+cliente além do valor: **Combinar** (ou **Mudar**) abre a janela. No alto, a mensalidade, a ativação e o **1º mês de
+faturamento**, que é o mês do Ganho (antes do Ganho, a conta usa o mês de hoje, de exemplo). Depois:
 
-- **Desconto na mensalidade**: o valor por mês, de um mês (opcional) até o último mês com o desconto — até 5 descontos;
-- **A ativação**: "começa a ser paga depois, ou em vezes" — o mês da 1ª parcela e em quantas vezes (até 24);
+- **Desconto na mensalidade**: o valor por mês e **até que mês** vai, ou **Sem prazo**. Começa no 1º mês de faturamento;
+  com mais de um (até 5), cada um começa quando o anterior acaba — por exemplo, R$ 200 até março, depois R$ 100 sem prazo.
+  Só o último pode ser sem prazo. Embaixo de cada um aparece de que mês a que mês ele vai e quanto fica a mensalidade.
+- **Ativação**: o **desconto** nela (opcional), o que **fica para pagar**, **em quantas vezes** (de 1 a 24, cada opção já
+  mostra o valor da parcela) e **quando começa a pagar**: no 1º mês ou em outro mês.
 - **O que mais foi combinado**, em texto.
 
-Embaixo, **Como fica a cobrança** mostra mês a mês a mensalidade com o desconto e a parcela da ativação, até a
+Embaixo, **Como fica a cobrança** mostra mês a mês a mensalidade, o desconto, a parcela da ativação e o total do mês, até a
 mensalidade voltar cheia. As condições não mudam o valor: a mensalidade e a ativação continuam as que contam no quadro, na
 meta, no Ganho e no relatório. Mudar vai para o histórico (uma linha) e para a auditoria; **Tirar as condições** apaga.

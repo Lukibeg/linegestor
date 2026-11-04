@@ -470,6 +470,87 @@ export function diaPorExtenso(dia: string): string {
   return `${DIAS_POR_EXTENSO[diaDaSemana(dia)]}, ${Number(dia.slice(8, 10))} de ${NOMES_DOS_MESES[Number(dia.slice(5, 7)) - 1]}`;
 }
 
+// =====================================================================
+//  A SEMANA (2.4.1, o Luan: "no calendário eu quero q tenha a opção de visualização somente da semana tbm, como no outlook")
+// =====================================================================
+
+/** Os sete dias da semana do dia, de segunda a domingo. */
+export function diasDaSemanaDoDia(dia: string): string[] {
+  const segunda = somarDias(dia, -diaDaSemana(dia));
+  return Array.from({ length: 7 }, (_, i) => somarDias(segunda, i));
+}
+/**
+ * O número da semana no ano, como o Outlook mostra (ISO 8601: a semana começa na segunda e é do ano da quinta-feira dela; a
+ * primeira semana é a que tem a primeira quinta-feira de janeiro).
+ */
+export function numeroDaSemana(dia: string): number {
+  const quinta = somarDias(dia, 3 - diaDaSemana(dia));
+  return Math.floor(diasEntre(`${quinta.slice(0, 4)}-01-01`, quinta) / 7) + 1;
+}
+/** "02–08 de novembro de 2026"; "27 de outubro – 02 de novembro de 2026"; "29 de dezembro de 2026 – 04 de janeiro de 2027". */
+export function textoDaSemana(dias: readonly string[]): string {
+  const a = dias[0]!; const b = dias[dias.length - 1]!;
+  const dd = (d: string) => d.slice(8, 10);
+  const mes = (d: string) => NOMES_DOS_MESES[Number(d.slice(5, 7)) - 1];
+  if (a.slice(0, 7) === b.slice(0, 7)) return `${dd(a)}–${dd(b)} de ${mes(a)} de ${a.slice(0, 4)}`;
+  if (a.slice(0, 4) === b.slice(0, 4)) return `${dd(a)} de ${mes(a)} – ${dd(b)} de ${mes(b)} de ${a.slice(0, 4)}`;
+  return `${dd(a)} de ${mes(a)} de ${a.slice(0, 4)} – ${dd(b)} de ${mes(b)} de ${b.slice(0, 4)}`;
+}
+/** "14:30" → 870 (os minutos do dia); o que não é hora, null. */
+export function minutosDaHora(h: string | null | undefined): number | null {
+  const m = h ? /^([01]\d|2[0-3]):([0-5]\d)$/.exec(h) : null;
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+/** Os minutos de agora no dia de Brasília (a linha da hora, na semana de hoje). */
+export function minutosAgoraEmBrasilia(agora: Date = new Date()): number {
+  const [h, m] = FMT_HORA_MINUTO.format(agora).split(':').map(Number);
+  return ((h ?? 0) % 24) * 60 + (m ?? 0);
+}
+const FMT_HORA_MINUTO = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/**
+ * O evento vai na faixa de cima da semana (a do dia inteiro)? O de dia inteiro, o sem hora e o que começa num dia e termina
+ * noutro (como no Outlook: a virada que entra na madrugada fica em cima, com a hora no texto).
+ */
+export const naFaixaDoDiaInteiro = (e: Pick<EventoDoCalendario, 'diaInteiro' | 'horaInicio' | 'inicio' | 'fim'>) =>
+  e.diaInteiro || minutosDaHora(e.horaInicio) === null || e.inicio !== e.fim;
+
+/** Um evento com hora no dia da semana: onde começa e termina (em minutos) e em que coluna fica quando se encontra com outro. */
+export type EventoNaHora = { evento: EventoDoCalendario; inicio: number; fim: number; coluna: number; colunas: number };
+/** Sem a hora de terminar, o evento ocupa uma hora (o mesmo do formulário). */
+export const DURACAO_SEM_FIM = 60;
+
+/**
+ * Os eventos com hora de um dia, arrumados como no Outlook: os que se encontram ficam lado a lado, cada um com a sua coluna, e
+ * todos do grupo com a mesma largura. O que termina antes de começar (ou na mesma hora) ocupa meia hora, para dar para clicar.
+ */
+export function arrumarNoDia(eventos: readonly EventoDoCalendario[], dia: string): EventoNaHora[] {
+  const doDia = eventos
+    .filter((e) => cobreODia(e, dia) && !naFaixaDoDiaInteiro(e))
+    .map((e) => {
+      const inicio = minutosDaHora(e.horaInicio)!;
+      const fimEscrito = minutosDaHora(e.horaFim);
+      const fim = fimEscrito === null ? Math.min(inicio + DURACAO_SEM_FIM, 1440) : Math.max(fimEscrito, inicio + 30);
+      return { evento: e, inicio, fim: Math.min(fim, 1440), coluna: 0, colunas: 1 };
+    })
+    .sort((a, b) => a.inicio - b.inicio || b.fim - a.fim || ordemDoDia(a.evento, b.evento));
+  // os grupos de eventos que se encontram (um grupo acaba quando o próximo começa depois de todos terminarem)
+  let grupo: EventoNaHora[] = [];
+  let fimDoGrupo = -1;
+  const fechar = () => { const n = Math.max(...grupo.map((x) => x.coluna)) + 1; for (const x of grupo) x.colunas = n; grupo = []; };
+  for (const x of doDia) {
+    if (grupo.length && x.inicio >= fimDoGrupo) fechar();
+    // a primeira coluna livre (a que o último evento dela já terminou)
+    const ocupadas = grupo.filter((y) => y.fim > x.inicio).map((y) => y.coluna);
+    let c = 0; while (ocupadas.includes(c)) c++;
+    x.coluna = c;
+    grupo.push(x);
+    fimDoGrupo = Math.max(fimDoGrupo, x.fim);
+  }
+  if (grupo.length) fechar();
+  return doDia;
+}
+
 /** O evento acontece no dia? */
 export const cobreODia = (e: Pick<EventoDoCalendario, 'inicio' | 'fim'>, dia: string) => e.inicio <= dia && dia <= e.fim;
 
