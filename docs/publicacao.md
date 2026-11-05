@@ -166,27 +166,21 @@ O `publicar.sh` faz backup antes, baixa o código, reconstrói, aplica as migra�
 considera pronto quando o sistema responde. Se não responder, ele mostra o registro e diz como
 voltar à versão anterior (`git reset --hard HEAD~1 && ./scripts/publicar.sh`).
 
-### O certificado da NIA (o /nia no card, 2.4.2)
+### O certificado da NIA (o /nia no card)
 
 O /nia do card fala com a **NIA** (a IA do suporte) pelo servidor do Gestor. Enquanto o painel da NIA
 não tiver domínio, o HTTPS dela é da **CA interna do Caddy de lá** — um certificado que nenhum sistema
 conhece de fábrica. Para o Gestor confiar nele **sem desligar a verificação** (o `rejectUnauthorized:
-false` mandaria a chave da NIA para qualquer um no meio do caminho), o arquivo **`nia-ca.crt`** fica no
-servidor e o Node o soma às CAs que já confia (`NODE_EXTRA_CA_CERTS`, no `docker-compose.prod.yml`).
+false` mandaria a chave da NIA para qualquer um no meio do caminho), o Node soma o **`nia-ca.crt`** às
+CAs que já confia (`NODE_EXTRA_CA_CERTS`, no `docker-compose.prod.yml`).
 
-**Onde o arquivo fica: `/opt/gestao/certs/nia-ca.crt`** (no container, `/certs/nia-ca.crt`, só leitura).
+**Desde o 2.4.3, o arquivo vem com o código**: é o `certs/nia-ca.crt` do repositório (o certificado
+público da CA, sem chave privada). O `git pull` do `publicar.sh` o traz para `/opt/gestao/certs/`, e o
+`up -d` recria o sistema, que lê o arquivo ao subir (no container, `/certs/nia-ca.crt`, só leitura).
+**Não há nada a copiar no servidor.**
 
-Uma vez, no servidor (com o arquivo já copiado para a sua pasta pessoal, por exemplo com o `scp`):
-
-```bash
-cd /opt/gestao
-mkdir -p certs
-cp ~/nia-ca.crt certs/nia-ca.crt
-chmod 644 certs/nia-ca.crt
-docker compose -f docker-compose.prod.yml up -d --force-recreate app   # o Node lê o arquivo só ao subir
-```
-
-Para conferir, no log do sistema **não** pode aparecer *"Ignoring extra certs from /certs/nia-ca.crt"*:
+Para conferir, depois de publicar, no log do sistema **não** pode aparecer *"Ignoring extra certs from
+/certs/nia-ca.crt"*:
 
 ```bash
 docker compose -f docker-compose.prod.yml logs --since 10m app | grep -i "extra certs" || echo "certificado lido"
@@ -194,15 +188,19 @@ docker compose -f docker-compose.prod.yml logs --since 10m app | grep -i "extra 
 
 Depois, na tela: **Painéis › Ajustes › Integrações › NIA (/nia)** — o endereço (`https://2.24.93.36:8443`
 hoje), a **chave de serviço** (vai para o cofre e nunca volta para a tela) e **Testar**: tem de dizer
-*"A NIA respondeu: 5 comandos."*. Se disser *"O Gestor não confiou no certificado da NIA"*, o arquivo não
-foi lido (o caminho, ou faltou o `--force-recreate`).
+*"A NIA respondeu: 5 comandos."*. Se disser *"O Gestor não confiou no certificado da NIA"*, o sistema não
+leu o arquivo (confira o log acima) ou a NIA trocou de certificado (aí o `nia-ca.crt` novo entra no
+repositório, num patch).
 
-- **Sem o arquivo**, o sistema sobe do mesmo jeito: o Node só avisa no log, e o /nia responde que não
-  confiou no certificado. Nada mais quebra.
+- **Se o `git pull` parar** com *"untracked working tree files would be overwritten"* por causa do
+  `certs/nia-ca.crt` (um copiado à mão antes do 2.4.3): `mv certs/nia-ca.crt ~/nia-ca.crt.antigo` e rode o
+  `publicar.sh` de novo.
 - **Quando a NIA ganhar domínio** (com o certificado de verdade, do Let's Encrypt), troque o endereço na
   tela e **cole a chave de novo** — a chave só vai para o servidor onde foi colada (trocar o endereço para
-  outro servidor sem a chave é recusado, de propósito). O `nia-ca.crt` deixa de ser preciso e pode ficar.
-- O `certs/` está no `.gitignore`: o certificado é da instalação, não do código.
+  outro servidor sem a chave é recusado, de propósito). O `nia-ca.crt` deixa de ser preciso; pode ficar (o
+  Node só soma a CA) ou sair do repositório num patch, junto com o `NODE_EXTRA_CA_CERTS`.
+- Os outros arquivos de `certs/` continuam fora do código (o `.gitignore` ignora `certs/*`, menos o
+  `nia-ca.crt`).
 
 ---
 

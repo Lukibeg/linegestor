@@ -10,5 +10,8 @@ apps/web/dist-demo
 backups/
 # cópia dos ajustes de aviso gravada pelo sistema no servidor (tem o token da API de avisos)
 config/
-# os certificados do servidor (2.4.2: o nia-ca.crt da NIA): são da instalação, não do código
-certs/
+# os certificados que o sistema confia ficam no servidor, fora do código — menos o nia-ca.crt (2.4.3): é o certificado
+# PÚBLICO da CA interna da NIA (sem chave privada), e vem com o código para a publicação não depender de cópia à mão.
+# Precisa ser "certs/*" e não "certs/": o Git não olha dentro de pasta ignorada, e o "!" não teria efeito
+certs/*
+!certs/nia-ca.crt

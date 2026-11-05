@@ -840,8 +840,9 @@ function FormNiaNoCard({ inicial, aoMudar, toast }: { inicial: NiaAcoesTela; aoM
           <ShieldCheck size={15} className="mt-0.5 shrink-0 text-ok" />
           <span>
             A chave é do servidor: vai para o cofre, nunca volta para a tela e só vai para o servidor onde foi colada (trocar o
-            endereço para outro servidor pede a chave de novo). Enquanto a NIA não tiver domínio, o servidor do Gestor precisa do
-            certificado dela, o <span className="font-mono">nia-ca.crt</span> (o passo a passo está no guia de publicação).
+            endereço para outro servidor pede a chave de novo). Enquanto a NIA não tiver domínio, o Gestor confia nela pelo
+            certificado público dela, o <span className="font-mono">nia-ca.crt</span>, que vem junto com o sistema: não há nada a
+            copiar no servidor.
           </span>
         </p>
       </Explicacao>
