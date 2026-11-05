@@ -32,6 +32,14 @@ chamado."*
    `NODE_EXTRA_CA_CERTS` apontando para ele. Nada de `rejectUnauthorized: false`. Sem o arquivo, o sistema sobe e o /nia
    diz que não confiou no certificado.
 
+   **Revisto no 2.4.3** (05/11, o Luan: *"quero que esse arquivo vá junto com o código, para entrar sozinho na próxima
+   publicação normal, sem nenhum passo manual no servidor"*): o `nia-ca.crt` passa a morar no repositório, em
+   `certs/nia-ca.crt` (o `.gitignore` ignora `certs/*`, menos ele). Pode, porque é o certificado **público** da CA (sem a
+   chave privada: quem tem o arquivo só consegue conferir a NIA, não se passar por ela); e deve, porque o passo à mão
+   dependia de alguém com acesso ao servidor, e sem ele o /nia ficava fora do ar depois de cada instalação nova. O
+   `git pull` do `publicar.sh` traz o arquivo e o `up -d` recria o sistema, que o lê ao subir; o volume e o
+   `NODE_EXTRA_CA_CERTS` não mudaram. Se a NIA trocar de CA, o arquivo novo entra num patch.
+
 4. **O menu vem da NIA.** O nome e a descrição de cada comando são os do catálogo dela: comando novo é cadastro do lado
    da NIA, não um patch do Gestor. O comando que vier quebrado sai sozinho, sem derrubar o menu.
 

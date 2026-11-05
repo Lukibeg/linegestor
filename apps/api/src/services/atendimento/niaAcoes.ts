@@ -39,7 +39,7 @@ import { acharAssunto } from './entrada.js';
 export const NIA_NAO_RESPONDEU = 'A NIA não respondeu agora. Tente de novo.';
 export const NIA_CHAVE_RECUSADA = 'A chave da NIA foi recusada; confira em Painéis › Ajustes › Integrações.';
 export const NIA_NAO_CONFIGURADA = 'A NIA ainda não está ligada: o endereço e a chave ficam em Painéis › Ajustes › Integrações.';
-export const NIA_CERTIFICADO = 'O Gestor não confiou no certificado da NIA (falta o nia-ca.crt no servidor, ou ele venceu). Avise a administração.';
+export const NIA_CERTIFICADO = 'O Gestor não confiou no certificado da NIA (o sistema não leu o nia-ca.crt que vem com ele, ou a NIA trocou de certificado). Avise a administração.';
 export const NIA_NAO_ENTENDEU = 'A NIA respondeu de um jeito que o Gestor não entendeu. Tente de novo; se continuar, avise a administração.';
 
 /** Os erros de certificado do Node (o HTTPS da NIA é da CA interna do Caddy até ela ter domínio). */

@@ -35,8 +35,9 @@ services:
       # grandes demais para o banco, ficam no volume "portal"
       PORTAL_DIR: /portal
       # o /nia no card (2.4.2): enquanto a NIA não tem domínio, o HTTPS dela é da CA interna do Caddy de lá. O Node SOMA
-      # esta CA às que já confia (a verificação continua ligada; nunca rejectUnauthorized: false). O arquivo fica em
-      # /opt/gestao/certs/nia-ca.crt no servidor; sem ele, o Node só avisa no log e o /nia responde que não confiou
+      # esta CA às que já confia (a verificação continua ligada; nunca rejectUnauthorized: false). Desde o 2.4.3 o
+      # certs/nia-ca.crt vem com o código (o git pull do publicar.sh o traz); sem ele, o Node só avisa no log e o /nia
+      # responde que não confiou
       NODE_EXTRA_CA_CERTS: /certs/nia-ca.crt
     volumes:
       # os backups, para o sistema conseguir mandá-los ao Google Drive
@@ -45,7 +46,8 @@ services:
       - ./config:/dados
       # os vídeos do portal do cliente (não entram no backup diário do banco: guarde o original)
       - portal:/portal
-      # os certificados que o sistema precisa confiar (2.4.2: o nia-ca.crt da NIA). A pasta, e não o arquivo: montar um
+      # os certificados que o sistema precisa confiar (o nia-ca.crt da NIA, que vem com o código desde o 2.4.3). A pasta,
+      # e não o arquivo: montar um
       # arquivo que ainda não existe faz o Docker criar uma PASTA com o nome dele
       - ./certs:/certs:ro
     networks: [interna]
