@@ -16,13 +16,18 @@
  * sem ela (foi para a lixeira ou desligou), a mexida por último. A cada salvamento da principal, o cenário principal
  * dela vai para o card (`levarParaANegociacao`: o que era o "Levar para a COM-x"), sem a linha no histórico da
  * negociação ("n precisa registrar as mudanças"). A negociação ganha ou perdida não muda.
+ *
+ * As Condições especiais da negociação (2.4.4, o Luan: "eu consedi um desconto para ele de 200 rais até março do ano que
+ * vem, isso ai vc já deveria contabilizar no simulador"): a negociação ligada vem com as condições dela
+ * (`condicoesNoSimulador`), e a conta de cada cenário as usa — no editor, na lista, na ficha da negociação, no Excel e na
+ * margem das ganhas. O valor que vai para o card continua o cheio (o desconto fica nas condições).
  */
 import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { clients, newId, products, salesSimulations, ticketStages, tickets, users, type Db } from '@gestor/db';
 import {
-  AjustesDoSimuladorSchema, SimulacaoGravarSchema, ajustesDoSimulador, campoLigado, cenarioPrincipal, mesmoValorPorProduto, mudancasDaSimulacao, mudancasDosAjustes, planilhaDaSimulacao,
-  resumoDoCenario, semOQueSaiu, valoresParaANegociacao,
-  type AjustesDoSimulador, type CenarioDaSimulacao, type MargemDaNegociacao, type NegociacaoDaSimulacao, type ProdutoDoSimulador, type Simulacao,
+  AjustesDoSimuladorSchema, SimulacaoGravarSchema, ajustesDoSimulador, campoLigado, cenarioPrincipal, condicoesGuardadas, condicoesNoSimulador, mesmoValorPorProduto, mudancasDaSimulacao,
+  mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario, semOQueSaiu, valoresParaANegociacao,
+  type AjustesDoSimulador, type CenarioDaSimulacao, type CondicoesNoSimulador, type MargemDaNegociacao, type NegociacaoDaSimulacao, type ProdutoDoSimulador, type Simulacao,
   type SimulacaoDaNegociacao, type SimulacaoGravar, type SimulacaoGravarEntrada, type SimulacaoNaLista, type SimuladorOpcoes,
 } from '@gestor/shared';
 import { BadRequest, Forbidden, NotFound } from '../plugins/errors.js';
@@ -60,15 +65,36 @@ export async function margensDasNegociacoes(db: Db, negociacoes: string[]): Prom
   const ajustes = await lerAjustes(db);
   const margens = new Map<string, MargemDaNegociacao>();
   if (!negociacoes.length) return { margens, ajustes };
-  const linhas = await db.select().from(salesSimulations)
-    .where(and(inArray(salesSimulations.ticketId, negociacoes), isNull(salesSimulations.deletedAt)))
-    .orderBy(desc(salesSimulations.isMain), desc(salesSimulations.updatedAt));
+  const [linhas, condicoes] = await Promise.all([
+    db.select().from(salesSimulations)
+      .where(and(inArray(salesSimulations.ticketId, negociacoes), isNull(salesSimulations.deletedAt)))
+      .orderBy(desc(salesSimulations.isMain), desc(salesSimulations.updatedAt)),
+    condicoesDasNegociacoes(db, negociacoes),
+  ]);
   for (const l of linhas) {
     if (!l.ticketId || margens.has(l.ticketId)) continue;
-    const r = resumoDoCenario(cenarioPrincipal({ cenarios: cenariosDaLinha(l), principal: l.principal }), ajustes);
-    margens.set(l.ticketId, { simulacaoId: l.id, simulacao: l.name, mensalTotal: r.mensalTotal, sobraMensal: r.sobraMensal });
+    // com o desconto sem prazo das Condições especiais (2.4.4), a margem é sobre o que o cliente paga de fato
+    const r = resumoDoCenario(cenarioPrincipal({ cenarios: cenariosDaLinha(l), principal: l.principal }), ajustes, condicoes.get(l.ticketId));
+    margens.set(l.ticketId, { simulacaoId: l.id, simulacao: l.name, mensalTotal: r.mensalComDesconto, sobraMensal: r.sobraMensal });
   }
   return { margens, ajustes };
+}
+
+/**
+ * As Condições especiais das negociações (pelo id), como o Simulador conta (2.4.4): o que foi combinado e o 1º mês de
+ * faturamento (o mês do Ganho; antes dele, o de hoje). Só as que têm o que mude a conta.
+ */
+async function condicoesDasNegociacoes(db: Db, ids: string[]): Promise<Map<string, CondicoesNoSimulador>> {
+  const fora = new Map<string, CondicoesNoSimulador>();
+  const unicos = [...new Set(ids)];
+  if (!unicos.length) return fora;
+  const linhas = await db.select({ id: tickets.id, termos: tickets.negotiationTerms, fechadoEm: tickets.closedAt, resultado: ticketStages.outcome })
+    .from(tickets).leftJoin(ticketStages, eq(ticketStages.id, tickets.stageId)).where(inArray(tickets.id, unicos));
+  for (const t of linhas) {
+    const c = condicoesNoSimulador({ condicoes: condicoesGuardadas(t.termos), resultado: t.resultado, fechadoEm: t.fechadoEm?.toISOString() ?? null });
+    if (c) fora.set(t.id, c);
+  }
+  return fora;
 }
 
 const podeEditar = (a: Ator) => podeVerVendas(a) && podeTrabalhar(a);
@@ -95,6 +121,7 @@ async function negociacoesVisiveis(db: Db, ator: Ator, ids: string[]): Promise<M
   const { paineis } = await carregarPaineis(db);
   const linhas = await db.select({
     id: tickets.id, codigo: tickets.code, titulo: tickets.title, painelId: tickets.panelId, cliente: clients.tradeName, prospect: tickets.prospect, resultado: ticketStages.outcome,
+    termos: tickets.negotiationTerms, fechadoEm: tickets.closedAt,
   }).from(tickets)
     .leftJoin(clients, eq(clients.id, tickets.clientId))
     .leftJoin(ticketStages, eq(ticketStages.id, tickets.stageId))
@@ -102,9 +129,11 @@ async function negociacoesVisiveis(db: Db, ator: Ator, ids: string[]): Promise<M
   for (const t of linhas) {
     const p = paineis.find((x) => x.id === t.painelId);
     if (!p || p.tipo !== 'vendas' || !podeVerPainel(p, ator)) continue;
+    const resultado = t.resultado === 'ganho' || t.resultado === 'perdido' ? t.resultado : null;
     fora.set(t.id, {
-      id: t.id, codigo: t.codigo, titulo: t.titulo, empresa: t.cliente ?? t.prospect ?? null,
-      resultado: t.resultado === 'ganho' || t.resultado === 'perdido' ? t.resultado : null,
+      id: t.id, codigo: t.codigo, titulo: t.titulo, empresa: t.cliente ?? t.prospect ?? null, resultado,
+      // as Condições especiais dela, como o Simulador conta (2.4.4)
+      condicoes: condicoesNoSimulador({ condicoes: condicoesGuardadas(t.termos), resultado, fechadoEm: t.fechadoEm?.toISOString() ?? null }),
     });
   }
   return fora;
@@ -159,7 +188,7 @@ export async function listar(db: Db, ator: Ator): Promise<SimulacaoNaLista[]> {
     const s = paraTela(l, negociacoes, nomes);
     return {
       id: s.id, nome: s.nome, negociacao: s.negociacao, negociacaoOculta: !!l.ticketId && !s.negociacao, cenarios: s.cenarios.length,
-      principal: resumoDoCenario(cenarioPrincipal(s), ajustes), criadoPor: s.criadoPor, alteradoPor: s.alteradoPor, alteradoEm: s.alteradoEm,
+      principal: resumoDoCenario(cenarioPrincipal(s), ajustes, s.negociacao?.condicoes), criadoPor: s.criadoPor, alteradoPor: s.alteradoPor, alteradoEm: s.alteradoEm,
     };
   });
 }
@@ -183,7 +212,8 @@ export async function planilha(db: Db, ator: Ator, id: string): Promise<{ bytes:
 
 /** As simulações ligadas a uma negociação (a ficha dela). Quem não vê a negociação não vê nada. */
 export async function daNegociacao(db: Db, ator: Ator, ticketId: string): Promise<SimulacaoDaNegociacao[]> {
-  if (!(await negociacoesVisiveis(db, ator, [ticketId])).has(ticketId)) return [];
+  const n = (await negociacoesVisiveis(db, ator, [ticketId])).get(ticketId);
+  if (!n) return [];
   const [linhas, ajustes] = await Promise.all([
     // a principal primeiro (2.3), depois da mexida mais recente para a mais antiga
     db.select().from(salesSimulations).where(and(eq(salesSimulations.ticketId, ticketId), isNull(salesSimulations.deletedAt)))
@@ -192,7 +222,7 @@ export async function daNegociacao(db: Db, ator: Ator, ticketId: string): Promis
   ]);
   return linhas.map((l) => {
     const cenarios = cenariosDaLinha(l);
-    return { id: l.id, nome: l.name, cenarios: cenarios.length, principal: resumoDoCenario(cenarioPrincipal({ cenarios, principal: l.principal }), ajustes), principalDaNegociacao: l.isMain };
+    return { id: l.id, nome: l.name, cenarios: cenarios.length, principal: resumoDoCenario(cenarioPrincipal({ cenarios, principal: l.principal }), ajustes, n.condicoes), principalDaNegociacao: l.isMain };
   });
 }
 

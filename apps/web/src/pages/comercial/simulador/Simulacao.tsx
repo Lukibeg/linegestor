@@ -17,13 +17,18 @@
  * Luan: "quando eu colocar os valores na simulação ele já deve ir para o card do cliente já preenchendo nos campos de
  * valores"). Ao lado do chip da negociação, o "principal · preenche o card"; numa outra simulação da mesma
  * negociação, o "Tornar a principal".
+ *
+ * Desde o 2.4.4, a conta usa as Condições especiais da negociação ligada (o Luan: "eu consedi um desconto para ele de 200
+ * rais até março do ano que vem, isso ai vc já deveria contabilizar no simulador"): o desconto na mensalidade de cada mês e
+ * a ativação combinada — que troca o "A ativação em" do cenário. As condições mudam na ficha da negociação.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, AppWindow, ArrowLeft, Calculator, Check, Copy, FileSpreadsheet, Link2, Maximize2, Star, Trash2, X } from 'lucide-react';
 import {
-  LINECHAT_DO_SIMULADOR, MAX_CENARIOS, MAX_PARCELAS, PRAZOS_COMUNS, SimulacaoGravarSchema, TIPO_DO_XLSX, cenarioNovo, comPrecoPorProduto, contasDoCenario, duplicarCenario, idLocal,
+  LINECHAT_DO_SIMULADOR, MAX_CENARIOS, MAX_PARCELAS, NOME_CONDICOES, PRAZOS_COMUNS, SimulacaoGravarSchema, TIPO_DO_XLSX, cenarioNovo, comPrecoPorProduto, condicoesNoSimulador, contasDoCenario,
+  duplicarCenario, idLocal, mesEscrito,
   linhasParaOLineChat, linhasSemOLineChat, normalizarPorProduto, pagamentoPorProduto, percentual, proximoNomeDeCenario, textoDoSePagaEm,
   type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type FichaChamado, type ModeloDeSimulacao, type NegociacaoDaSimulacao, type ProdutoDoSimulador,
   type Simulacao, type SimulacaoGravar,
@@ -176,8 +181,14 @@ function daFicha(f: FichaChamado, ajustes: AjustesDoSimulador, produtos: Produto
   const empresa = f.cliente?.nome ?? f.empresa ?? null;
   return {
     nome: [empresa, f.titulo].filter(Boolean).join(' — ').slice(0, 120), negociacaoId: f.id, cenarios: [a], principal: a.id,
-    negociacao: { id: f.id, codigo: f.codigo, titulo: f.titulo, empresa, resultado: f.resultado === 'ganho' || f.resultado === 'perdido' ? f.resultado : null },
+    negociacao: negociacaoDaFicha(f, empresa),
   };
+}
+
+/** A negociação da ficha, como o Simulador mostra: com as Condições especiais dela (2.4.4: a conta usa). */
+function negociacaoDaFicha(f: FichaChamado, empresa: string | null): NegociacaoDaSimulacao {
+  const resultado = f.resultado === 'ganho' || f.resultado === 'perdido' ? f.resultado : null;
+  return { id: f.id, codigo: f.codigo, titulo: f.titulo, empresa, resultado, condicoes: condicoesNoSimulador({ condicoes: f.condicoes, resultado, fechadoEm: f.fechadoEm }) };
 }
 
 function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar, naJanela, depois }: {
@@ -204,7 +215,9 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar, 
   // há o que salvar: a versão de agora não é a salva (ou ainda não dá para salvar e a pessoa mexeu)
   const pendente = podeEditar && (assinaturaDeAgora == null ? mexeu || !!idAtual : assinaturaDeAgora !== salvo);
   const c = r.cenarios.find((x) => x.id === aberto) ?? r.cenarios[0]!;
-  const contas = useMemo(() => r.cenarios.map((x) => contasDoCenario(x, ajustes)), [r.cenarios, ajustes]);
+  // as Condições especiais da negociação ligada (2.4.4): a conta de cada cenário usa
+  const condicoes = r.negociacao?.condicoes ?? null;
+  const contas = useMemo(() => r.cenarios.map((x) => contasDoCenario(x, ajustes, condicoes)), [r.cenarios, ajustes, condicoes]);
   const k = contas[r.cenarios.indexOf(c)]!;
   const nomeDoProduto = useCallback((codigo: string) => produtos.find((p) => p.codigo === codigo)?.nome ?? codigo, [produtos]);
 
@@ -439,12 +452,23 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar, 
                   </label>
                 </>
               )}
-              <label className="min-w-0">
-                <span className="label">A ativação em</span>
-                <select className="input" value={c.parcelas} onChange={(e) => mudarCenario({ parcelas: Number(e.target.value) })} disabled={!podeEditar} id="simulador-parcelas">
-                  {Array.from({ length: Math.min(MAX_PARCELAS, Math.max(1, c.prazo)) }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n === 1 ? 'à vista' : `${n}x`}</option>)}
-                </select>
-              </label>
+              {k.condicoes?.ativacao ? (
+                // a ativação combinada nas Condições especiais (2.4.4) manda: as vezes e o mês da 1ª parcela vêm de lá
+                <div className="min-w-0" id="simulador-parcelas-das-condicoes">
+                  <span className="label">A ativação em</span>
+                  <div className="input bg-surface-2 text-ink-2 cursor-default" title={`Como foi combinado nas ${NOME_CONDICOES} da ${r.negociacao?.codigo ?? 'negociação'} (muda na ficha dela)`}>
+                    {k.condicoes.ativacao.vezes === 1 ? 'à vista' : `${k.condicoes.ativacao.vezes}x`}{k.condicoes.ativacao.mes > 1 ? `, a partir do ${k.condicoes.ativacao.mes}º mês` : ''}
+                  </div>
+                  <span className="text-[11.5px] text-muted">pelas {NOME_CONDICOES}{k.condicoes.ativacao.aPartirDe ? ` (${mesEscrito(k.condicoes.ativacao.aPartirDe)})` : ''}</span>
+                </div>
+              ) : (
+                <label className="min-w-0">
+                  <span className="label">A ativação em</span>
+                  <select className="input" value={c.parcelas} onChange={(e) => mudarCenario({ parcelas: Number(e.target.value) })} disabled={!podeEditar} id="simulador-parcelas">
+                    {Array.from({ length: Math.min(MAX_PARCELAS, Math.max(1, c.prazo)) }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n === 1 ? 'à vista' : `${n}x`}</option>)}
+                  </select>
+                </label>
+              )}
               <label className="min-w-0">
                 <span className="label">O prazo do contrato</span>
                 <CampoInteiro valor={c.prazo} vazio={1} sufixo="meses" onChange={(v) => mudarCenario({ prazo: Math.max(1, Math.min(120, v)), parcelas: Math.min(c.parcelas, Math.max(1, v)) })} disabled={!podeEditar} id="simulador-prazo" />
@@ -474,6 +498,12 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar, 
               {k.entradaTotal > 0 && <> e <b className="tabular-nums">{reaisLimpo(k.entradaTotal)}</b> de ativação{k.parcelas.length > 1 ? ` em ${k.parcelas.length}x` : ''}</>}
               {k.vendaDeAparelhos > 0 && <span className="text-muted"> (com {reaisLimpo(k.vendaDeAparelhos)} dos aparelhos vendidos)</span>}
               , por {c.prazo} {c.prazo === 1 ? 'mês' : 'meses'}.
+              {/* o que foi combinado na negociação (2.4.4): já está na conta */}
+              {k.condicoes && (
+                <span className="block mt-1 text-[12.5px] text-muted" id="simulador-o-cliente-paga-condicoes">
+                  Com as {NOME_CONDICOES} da {r.negociacao?.codigo ?? 'negociação'}: {k.condicoes.texto}. Já na conta, mês a mês.
+                </span>
+              )}
             </p>
           </section>
           {/* no celular, os números ficam lá embaixo: aqui, o resumo deles */}
@@ -489,7 +519,7 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar, 
           {r.cenarios.length > 1 && <LadoALado cenarios={r.cenarios} contas={contas} principal={r.principal} aberto={c.id} abrir={setAberto} />}
         </div>
         <div className="min-w-0 lg:sticky lg:top-4">
-          <OsNumeros c={c} k={k} ajustes={ajustes} />
+          <OsNumeros c={c} k={k} ajustes={ajustes} negociacao={r.negociacao} />
         </div>
       </div>
 
@@ -585,7 +615,7 @@ function Negociacao({ r, mudar, podeEditar, naFicha }: { r: Rascunho; mudar: (n:
       const [f, opcoes] = await Promise.all([api.atendimento.chamado(ref), api.atendimento.opcoes()]);
       const painel = opcoes.paineis.find((p) => p.id === f.painelId);
       if (painel?.tipo !== 'vendas') { setErro(`${f.codigo} é um chamado, não uma negociação.`); return; }
-      mudar({ id: f.id, codigo: f.codigo, titulo: f.titulo, empresa: f.cliente?.nome ?? f.empresa ?? null, resultado: f.resultado === 'ganho' || f.resultado === 'perdido' ? f.resultado : null });
+      mudar(negociacaoDaFicha(f, f.cliente?.nome ?? f.empresa ?? null));
       setCodigo('');
     } catch (e) {
       setErro(e instanceof ApiError && e.status === 404 ? `Não achei a ${ref.toUpperCase()} (ou ela é de um painel que você não vê).` : erroDoSimulador(e));
@@ -600,11 +630,12 @@ function Negociacao({ r, mudar, podeEditar, naFicha }: { r: Rascunho; mudar: (n:
       </>
     );
     return (
-      <span className="inline-flex items-center gap-1.5 min-w-0" id="simulador-negociacao">
+      // no celular, o chip encolhe (o nome corta com "…") e o X de desligar fica na tela
+      <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full" id="simulador-negociacao">
         {n ? (n.id === naFicha ? (
-          <span className="chip bg-surface-2 text-ink-2 max-w-full" title="A negociação desta simulação: a ficha dela está atrás desta janela">{conteudo}</span>
+          <span className="chip bg-surface-2 text-ink-2 max-w-full min-w-0" title="A negociação desta simulação: a ficha dela está atrás desta janela">{conteudo}</span>
         ) : (
-          <LinkDoChamado codigo={n.codigo} className="chip bg-surface-2 text-ink-2 hover:bg-accent-soft hover:text-accent-ink max-w-full" id="simulador-abrir-negociacao"
+          <LinkDoChamado codigo={n.codigo} className="chip bg-surface-2 text-ink-2 hover:bg-accent-soft hover:text-accent-ink max-w-full min-w-0" id="simulador-abrir-negociacao"
             title={`Abrir a ${n.codigo} numa janela, por cima da simulação`}>
             {conteudo}
             <span className="shrink-0 inline-flex items-center gap-1 ml-0.5 pl-1.5 border-l border-line-strong text-accent font-semibold"><AppWindow size={12} aria-hidden /> Abrir</span>

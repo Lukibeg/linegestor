@@ -13,7 +13,7 @@ import { CircleAlert, Pencil } from 'lucide-react';
 import { campoAparece, campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
-import { ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
+import { BolinhaDoQueFalta, ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
 import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
 import { DicaDoCriarChamado, useNiaNoCampo } from './NiaNoCampo.js';
 
@@ -159,6 +159,7 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
   return (
     <div id={id} className="py-3.5 first:pt-0 last:pb-0 min-w-0 rounded-sm scroll-mt-24 transition-shadow">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
+        <BolinhaDoQueFalta campo={chave} />
         <h3 className="font-display font-semibold text-[14.5px]">{titulo}</h3>
         {dica && <span className="text-[12px] text-muted">{dica}</span>}
         <MarcaFalta campo={chave} />

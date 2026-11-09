@@ -47,7 +47,7 @@ import { incluirOpcao } from './ajustes.js';
 import { avisarEquipe, avisarObservadores, trecho } from './avisos.js';
 import { etiquetasDoCatalogo, levarEtiquetas } from './etiquetas.js';
 import {
-  camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, eventoParaTela, exigirTrabalhar, integracaoDoAtor, lerAjustesDaNia, lerModeloDaConversa, pessoaCurta, pessoaDoAtor,
+  camposComAnexoDe, camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, eventoParaTela, exigirTrabalhar, integracaoDoAtor, lerAjustesDaNia, lerModeloDaConversa, pessoaCurta, pessoaDoAtor,
   podeCuidar, podeVerPainel, quemVeOPainel, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, minutosGastos } from './leitura.js';
@@ -853,7 +853,7 @@ async function conferirMovimento(
 ): Promise<'sobe' | 'desce' | null> {
   const painel = o.painel ?? e.painel;
   const dados = {
-    ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id)),
+    ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id), (await camposComAnexoDe(db, [e.t.id])).get(e.t.id)),
     ...(o.responsavelId !== undefined ? { responsavelId: o.responsavelId } : {}),
     // o motivo da perda vem junto com o marcar como perdido (o de antes, de uma perda desfeita, não vale)
     ...(para.resultado === 'perdido' ? { motivoPerda: o.venda?.motivoPerda ?? null } : {}),
@@ -1136,7 +1136,7 @@ export async function assumir(app: FastifyInstance, ator: Ator, ref: string, opt
   if (opts.mover !== false && e.painel.tipo !== 'vendas' && e.etapa?.tipo === 'entrada') {
     const alvo = etapaAoAssumir(e.painel.etapas, t.stageId);
     if (alvo) {
-      const dados = { ...dadosDaLinha(t, await minutosGastos(app.db, t.id)), responsavelId: ator.id };
+      const dados = { ...dadosDaLinha(t, await minutosGastos(app.db, t.id), (await camposComAnexoDe(app.db, [t.id])).get(t.id)), responsavelId: ator.id };
       if (!faltaParaEtapa(dados, alvo, { de: e.etapa, painel: e.painel }).length) para = alvo;
     }
   }

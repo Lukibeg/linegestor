@@ -158,7 +158,7 @@ async function lembretesDoCalendario(app: FastifyInstance, agora: Date, volta: V
 // =====================================================================
 
 /** O cartão só é usado pelos prazos: as contagens de filhos e anotações não importam aqui. */
-const SEM_PARENTES: Parentes = { filhos: new Map(), incidentes: new Map(), anotacoes: new Map(), codigos: new Map() };
+const SEM_PARENTES: Parentes = { filhos: new Map(), incidentes: new Map(), anotacoes: new Map(), codigos: new Map(), camposComAnexo: new Map() };
 const NOME_DO_PRAZO = { resposta: 'resposta', solucao: 'solução' } as const;
 const qualPrazo = (a: AlertaPrazo) => (a.startsWith('resposta') ? 'resposta' : 'solucao') as 'resposta' | 'solucao';
 const uteis = (e: EstadoPrazo) => (e.conta === 'uteis' ? ' úteis' : '');

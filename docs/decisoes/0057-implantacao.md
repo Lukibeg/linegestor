@@ -142,3 +142,20 @@ a gente concluir a implantação no painel de implantação"*.
 - Os módulos que faltam no catálogo de verdade para o LinePBX (Callback, WebRTC, NPS - WhatsApp e Filas - Dashboard): o
   Luan inclui em Administração › Produtos, e o campo Módulos a ativar acompanha sozinho.
 - Trazer os cards antigos do Ingline - Ativações pelo Trazer do Helena (os campos do Helena não têm a parte nem o produto).
+
+## Revisto no 2.4.4 (09/11/2026): a bolinha do que falta e o documento que conta como preenchido
+
+O documento do Luan de 09/11, com dois prints de um card da Implantação: *"Ficou legal o contabilizador mas eu quero algo
+que sinalize tbm na opção que ta faltando, como uma bolinha em vermelho ou algo do tipo"* (a Curadoria em "11 de 12") e
+*"Creio um documento tem q contar como preenchido o campo"* (a Estrutura do chatbot com dois PDFs anexados e "Ainda não
+escrito.").
+
+- **A bolinha vermelha**: cada parte (`partesDoChamado`) diz os campos que faltam (`faltam`, na ordem em que aparecem): o
+  vazio e o de caixinhas com alguma por marcar — o mesmo que o "N de M" conta. Na ficha, a bolinha fica antes do nome de
+  cada um (`BolinhaDoQueFalta`, pelo contexto `FaltaNaParte` que a parte põe em volta dos campos dela); fora das partes
+  (a classificação, os grupos da lateral), não aparece.
+- **O anexo conta como preenchido**: o campo com um arquivo anexado (o do próprio campo, não o de uma caixinha nem o de uma
+  anotação; fora os tirados) conta como feito na parte (`contaDoCampo` e `progressoDasPartes` com os campos com anexo) e
+  como preenchido no que a etapa pede (`DadosObrigatorios.camposComAnexo`). O servidor lê os campos com anexo de cada card
+  (`camposComAnexoDe`) para o quadro, a lista, a ficha e o mover; a prévia, do mesmo jeito. Tirar o anexo volta a faltar.
+  O valor do campo não muda (o texto continua vazio; o tipo Documento, do 2.4, continua contando os arquivos).

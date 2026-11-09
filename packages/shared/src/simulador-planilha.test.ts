@@ -195,3 +195,32 @@ describe('a planilha da simulação', () => {
     expect(cel.get(`L${usuarios}`)!.v).toMatch(/^por faixas: até 3, incluso; de 4 a 20, R\$\s19,90 cada/);
   });
 });
+
+describe('as Condições especiais da negociação na planilha (2.4.4)', () => {
+  it('o desconto sem prazo, a ativação combinada e o desconto de cada mês viram células amarelas; os números são os da tela', () => {
+    const a = pbx();
+    const cond = { condicoes: { descontos: [{ valor: 20_000, ate: '2027-03' }, { valor: 5_000, ate: null }], ativacao: { desconto: 40_000, vezes: 6, aPartirDe: '2027-01' }, observacao: null }, desde: '2026-11', doGanho: false };
+    const s = { ...simulacao([a]), negociacao: { ...simulacao([a]).negociacao, condicoes: cond } };
+    const z = lerZipSemCompressao(planilhaDaSimulacao({ simulacao: s, faixas: A, quem: null, quando: QUANDO }).bytes);
+    const c = celulas(new TextDecoder().decode(z.get('xl/worksheets/sheet1.xml')));
+    const k = contasDoCenario(a, A, cond);
+    expect(c.get('A5')!.v).toMatch(/^Condições especiais da COM-12: Desconto de R\$\s200,00\/mês até mar\/2027, depois R\$\s50,00\/mês sem prazo · Ativação com R\$\s400,00 de desconto, em 6 vezes, a partir de jan\/2027\. O 1º mês do contrato é nov\/2026 \(o mês de hoje, de exemplo, até o Ganho\)\.$/);
+    // as vezes combinadas, o sem prazo, o desconto na ativação e o mês da 1ª parcela (jan/2027 é o 3º mês)
+    expect([c.get('B9')!.v, c.get('B12')!.v, c.get('B13')!.v, c.get('B14')!.v]).toEqual(['6', '50', '400', '3']);
+    expect(aoLado(c, 'O cliente paga por mês')!.f).toMatch(/-\$B\$12$/);
+    expect(Number(aoLado(c, 'O cliente paga por mês')!.v)).toBe(k.condicoes!.mensalComDesconto / 100);
+    expect(Number(aoLado(c, 'A ativação')!.v)).toBe((k.entradaTotal - 40_000) / 100);
+    expect(Number(aoLado(c, 'Sobra por mês')!.v)).toBeCloseTo(k.sobraMensal / 100, 2);
+    expect(Number(aoLado(c, /^No contrato/)!.v)).toBeCloseTo(k.resultado / 100, 2);
+    // o mês a mês: a coluna do desconto (G) e o mês do calendário (H); cada mês com os valores da tela
+    const t0 = Number([...c].find(([ref, x]) => ref.startsWith('A') && x.v === 'Mês')![0].slice(1));
+    expect([c.get(`G${t0}`)!.v, c.get(`H${t0}`)!.v]).toEqual(['Desconto na mensalidade', 'O mês']);
+    expect([1, 2, 5, 6, 7].map((m) => [c.get(`G${t0 + m}`)!.v, c.get(`H${t0 + m}`)!.v])).toEqual([['200', 'nov/2026'], ['200', 'dez/2026'], ['200', 'mar/2027'], ['50', 'abr/2027'], ['50', 'mai/2027']]);
+    k.meses.forEach((m, i) => {
+      expect(Number(c.get(`B${t0 + 1 + i}`)!.v)).toBeCloseTo(m.faturamento / 100, 2);
+      expect(Number(c.get(`E${t0 + 1 + i}`)!.v)).toBeCloseTo(m.acumulado / 100, 2);
+    });
+    expect(c.get(`B${t0 + 3}`)!.f).toContain('$B$14');
+    expect(c.get(`B${t0 + 1}`)!.f).toContain(`+($B$12-G${t0 + 1})`);
+  });
+});

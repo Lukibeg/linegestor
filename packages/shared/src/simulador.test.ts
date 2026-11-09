@@ -10,7 +10,8 @@ import {
   TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, pagamentoPorProduto, valoresParaANegociacao, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOQueSaiu,
   LINECHAT_DO_SIMULADOR, ehLinhaDoLineChat, linhasParaOLineChat, linhasSemOLineChat, mudarQuantidadeDoLineChat, quadroDoLineChat, textoDosInclusos,
   sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
-  type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
+  condicoesNoSimulador,
+  type AjustesDoSimulador, type CenarioDaSimulacao, type CondicoesNoSimulador, type CustoDaTabela, type LinhaDoCenario,
 } from './simulador.js';
 
 const FAIXAS = { verde: 35, vermelho: 20 };
@@ -313,7 +314,7 @@ describe('a conta do cenário', () => {
 
   it('o resumo do cenário (a lista e a negociação)', () => {
     expect(resumoDoCenario(exemplo(), FAIXAS)).toEqual({
-      nome: 'Cenário A', prazo: 24, mensalTotal: 99_000, entradaTotal: 150_000, sobraMensal: 59_580, margem: 59_580 / 99_000, sinal: 'verde',
+      nome: 'Cenário A', prazo: 24, mensalTotal: 99_000, mensalComDesconto: 99_000, entradaTotal: 150_000, sobraMensal: 59_580, margem: 59_580 / 99_000, sinal: 'verde',
       investimento: 312_420, sePagaEm: { tipo: 'mes', mes: 7, depoisDoPrazo: false }, resultado: 1_057_920, faltam: 0,
     });
   });
@@ -661,5 +662,91 @@ describe('o LineChat simples: mudar as quantidades (21/10)', () => {
     // o que vem na licença, numa frase
     const q = quadroDoLineChat(c, contasDoCenario(c, a), a)!;
     expect(textoDosInclusos(q)).toBe('3 usuários e 1 canal oficial');
+  });
+});
+
+describe('as Condições especiais da negociação no Simulador (2.4.4)', () => {
+  // o Luan (09/11), com a simulação da Clínica SOS: "eu consedi um desconto para ele de 200 rais até março do ano que vem,
+  // isso ai vc já deveria contabilizar no simulador"
+  const sos = (): CenarioDaSimulacao => ({
+    id: 'a', nome: 'Cenário A', mensalidade: 169_000, ativacao: 300_000, parcelas: 3, prazo: 12, imposto: 8, produtos: ['linechat'],
+    linhas: [
+      linha({ id: 'helena', nome: 'Helena', tipo: 'mensal', valor: 35_890 }),
+      linha({ id: 'vultr', nome: 'Máquina em nuvem Vultr', tipo: 'mensal', valor: 15_000 }),
+      linha({ id: 'luki', nome: 'Comissão Luki', tipo: 'pct_mensalidade', valor: 5 }),
+    ],
+  });
+  const ate = (descontos: Array<{ valor: number; ate: string | null }>, ativacao: { desconto: number | null; vezes: number; aPartirDe: string | null } | null = null): CondicoesNoSimulador =>
+    ({ condicoes: { descontos, ativacao, observacao: null }, desde: '2026-11', doGanho: false });
+
+  it('sem condições, a conta do print: sobra R$ 961,40, o contrato fatura R$ 23.280 e dá R$ 14.296,80', () => {
+    const k = contasDoCenario(sos(), FAIXAS);
+    expect(k.sobraMensal).toBe(96_140);
+    expect(k.meses.reduce((s, m) => s + m.faturamento, 0)).toBe(2_328_000);
+    expect(k.meses.reduce((s, m) => s + m.custos, 0)).toBe(898_320);
+    expect(k.resultado).toBe(1_429_680);
+    expect(k.condicoes).toBeNull();
+    // a negociação sem nada que mude a conta (só a observação) não muda nada
+    expect(contasDoCenario(sos(), FAIXAS, { condicoes: { descontos: [], ativacao: null, observacao: 'paga no boleto' }, desde: '2026-11', doGanho: false }))
+      .toEqual(k);
+  });
+
+  it('R$ 200 até março: os 5 meses (nov a mar) faturam R$ 200 a menos, o imposto e a comissão acompanham; a sobra por mês é a de depois', () => {
+    const k = contasDoCenario(sos(), FAIXAS, ate([{ valor: 20_000, ate: '2027-03' }]));
+    expect(k.condicoes!.descontos).toEqual([20_000, 20_000, 20_000, 20_000, 20_000, 0, 0, 0, 0, 0, 0, 0]);
+    expect(k.condicoes!.meses.slice(0, 6)).toEqual(['2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04']);
+    expect(k.meses.reduce((s, m) => s + m.faturamento, 0)).toBe(2_228_000);
+    // cada mês com desconto: R$ 200 a menos de faturamento, R$ 26 a menos de imposto (8%) e de comissão (5%)
+    expect(k.meses.reduce((s, m) => s + m.custos, 0)).toBe(898_320 - 5 * 2_600);
+    expect(k.resultado).toBe(1_429_680 - 5 * 17_400);
+    expect(k.condicoes!.descontoNoContrato).toBe(100_000);
+    // a sobra, a margem e o sinal: os de depois de março (o desconto acaba)
+    expect(k.sobraMensal).toBe(96_140);
+    expect(k.condicoes!.faixas).toEqual([{ de: '2026-11', ate: '2027-03', valor: 20_000, mesesNoContrato: 5, sobra: 78_740 }]);
+    // o 1º mês, parte a parte: a mensalidade, o desconto (com o sinal de menos) e a 1ª parcela da ativação
+    expect(k.meses[0]!.entra).toEqual([
+      { rotulo: 'Mensalidade', valor: 169_000 }, { rotulo: 'Desconto (Condições especiais)', valor: -20_000 }, { rotulo: 'Ativação (parcela 1 de 3)', valor: 100_000 },
+    ]);
+    expect([k.meses[0]!.faturamento, k.meses[0]!.calendario, k.meses[0]!.desconto]).toEqual([249_000, '2026-11', 20_000]);
+    expect(k.meses[0]!.sai.find((p) => p.rotulo === 'Imposto')!.valor).toBe(Math.round(0.08 * (149_000 + 100_000)));
+    expect(k.meses[5]!.entra.map((p) => p.rotulo)).toEqual(['Mensalidade']);
+    // os números fecham com o acumulado
+    for (const m of k.meses) expect(m.faturamento - m.custos).toBe(m.lucro);
+    // o resumo da lista e da negociação contam igual
+    expect(resumoDoCenario(sos(), FAIXAS, ate([{ valor: 20_000, ate: '2027-03' }])).resultado).toBe(k.resultado);
+  });
+
+  it('o desconto sem prazo não acaba: a sobra, a margem e o que o cliente paga por mês já são com ele', () => {
+    const k = contasDoCenario(sos(), FAIXAS, ate([{ valor: 20_000, ate: '2027-01' }, { valor: 10_000, ate: null }]));
+    expect(k.condicoes!.descontos).toEqual([20_000, 20_000, 20_000, ...Array(9).fill(10_000)]);
+    expect(k.condicoes!.descontoSemPrazo).toBe(10_000);
+    expect(k.condicoes!.mensalComDesconto).toBe(159_000);
+    expect(k.mensalTotal).toBe(169_000);
+    // R$ 1.590 menos R$ 508,90 de custo fixo e 13% (R$ 206,70)
+    expect(k.sobraMensal).toBe(87_440);
+    expect(k.margem).toBeCloseTo(87_440 / 159_000, 10);
+    expect(k.impostoMensal).toBe(12_720);
+    expect(k.condicoes!.faixas.map((f) => [f.mesesNoContrato, f.sobra])).toEqual([[3, 78_740], [9, 87_440]]);
+    expect(k.resultado).toBe(1_429_680 - 3 * 17_400 - 9 * 8_700);
+  });
+
+  it('a ativação combinada troca a do cenário: o desconto, as vezes e o mês da 1ª parcela', () => {
+    const k = contasDoCenario(sos(), FAIXAS, ate([], { desconto: 50_000, vezes: 6, aPartirDe: '2027-03' }));
+    // R$ 3.000 − R$ 500 = R$ 2.500 em 6 vezes, de março (o 5º mês) a agosto
+    expect(k.parcelas).toEqual([41_670, 41_666, 41_666, 41_666, 41_666, 41_666]);
+    expect(k.condicoes!.ativacao).toEqual({ desconto: 50_000, vezes: 6, mes: 5, aPartirDe: '2027-03' });
+    expect(k.meses.map((m) => m.faturamento)).toEqual([169_000, 169_000, 169_000, 169_000, 210_670, 210_666, 210_666, 210_666, 210_666, 210_666, 169_000, 169_000]);
+    expect(k.meses[4]!.entra[1]).toEqual({ rotulo: 'Ativação (parcela 1 de 6)', valor: 41_670 });
+    expect(k.impostoDaEntrada).toBe(20_000);
+    expect(k.meses.reduce((s, m) => s + m.faturamento, 0)).toBe(169_000 * 12 + 250_000);
+  });
+
+  it('o 1º mês do contrato: o do Ganho, ou o de hoje (de exemplo) antes dele', () => {
+    const condicoes = { descontos: [{ valor: 20_000, ate: '2027-03' }], ativacao: null, observacao: null };
+    const agora = new Date('2026-11-09T12:45:00Z');
+    expect(condicoesNoSimulador({ condicoes, resultado: null, fechadoEm: null }, agora)).toEqual({ condicoes, desde: '2026-11', doGanho: false });
+    expect(condicoesNoSimulador({ condicoes, resultado: 'ganho', fechadoEm: '2026-09-15T15:00:00.000Z' }, agora)).toEqual({ condicoes, desde: '2026-09', doGanho: true });
+    expect(condicoesNoSimulador({ condicoes: { descontos: [], ativacao: null, observacao: 'x' }, resultado: null, fechadoEm: null }, agora)).toBeNull();
+    expect(condicoesNoSimulador({ condicoes: null, resultado: null, fechadoEm: null }, agora)).toBeNull();
   });
 });

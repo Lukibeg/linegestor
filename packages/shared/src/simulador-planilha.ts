@@ -11,11 +11,16 @@
  * servidor): mudar a mensalidade na planilha refaz a sobra, a margem, o sinal e o mês a mês. A fórmula vai
  * com o valor que a tela mostra, e o Excel confere ao abrir. O preço por faixas (os usuários, os canais e os
  * contatos do LineChat da Helena) vira uma fórmula com as faixas dentro.
+ *
+ * As Condições especiais da negociação ligada (2.4.4) entram como na tela: o desconto sem prazo e a ativação combinada (o
+ * desconto e o mês da 1ª parcela) viram células amarelas no alto (as linhas 12 a 14), as vezes da ativação são as
+ * combinadas, e o mês a mês ganha a coluna do desconto na mensalidade de cada mês (G, amarela), com o mês do calendário (H).
  */
 import { diaLocal, horaLocal } from './atendimento-prazos.js';
+import { NOME_CONDICOES, mesEscrito, mesMais } from './negociacao.js';
 import {
-  GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_PARCELAS_DA_COMPRA, MAX_PRAZO, NOME_DA_MODALIDADE, NOME_DO_GRUPO, NOME_DO_SINAL, NOME_DO_TIPO_DE_CUSTO, contasDoCenario, textoDasFaixas,
-  textoDasFaixasDePreco, textoDoSePagaEm,
+  GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_PARCELAS_DA_COMPRA, MAX_PRAZO, NOME_DA_MODALIDADE, NOME_DO_GRUPO, NOME_DO_SINAL, NOME_DO_TIPO_DE_CUSTO, contasDoCenario, descontosDosMeses,
+  textoDasFaixas, textoDasFaixasDePreco, textoDoSePagaEm,
   type CenarioDaSimulacao, type ContasDoCenario, type FaixaDePreco, type FaixasDoSinal, type LinhaDoCenario, type Simulacao,
 } from './simulador.js';
 import { montarXlsx, nomesDasFolhas, refDaFolha, type CelulaDaPlanilha, type FolhaDaPlanilha } from './xlsx.js';
@@ -59,6 +64,10 @@ const L_ATIVACAO = 8;
 const L_VEZES = 9;
 const L_PRAZO = 10;
 const L_IMPOSTO = 11;
+// as Condições especiais da negociação (2.4.4): só quando ela tem
+const L_DESCONTO_SEM_PRAZO = 12;
+const L_DESCONTO_DA_ATIVACAO = 13;
+const L_INICIO_DA_ATIVACAO = 14;
 const L_CABECALHO_DOS_CUSTOS = 16;
 const L_PRIMEIRO_CUSTO = 17;
 
@@ -123,6 +132,15 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   });
   const dia = diaLocal(p.quando).split('-').reverse().join('/');
   g.por(4, 0, { v: `Exportada do Gestor em ${dia} às ${horaLocal(p.quando)}${p.quem ? `, por ${p.quem}` : ''}. Mude as células amarelas: o resto da conta se refaz sozinho.`, s: 'nota' });
+  // as Condições especiais da negociação (2.4.4): o que foi combinado e o 1º mês do contrato
+  const cond = k.condicoes;
+  const condNaNegociacao = cond ? neg?.condicoes ?? null : null;
+  if (cond) {
+    g.por(5, 0, {
+      v: `${NOME_CONDICOES}${neg ? ` da ${neg.codigo}` : ''}: ${cond.texto}. O 1º mês do contrato é ${mesEscrito(cond.desde)} (${cond.doGanho ? 'o mês do Ganho' : 'o mês de hoje, de exemplo, até o Ganho'}).`,
+      s: 'nota',
+    });
+  }
 
   // o que o cliente paga; com o preço por produto, a mensalidade e a ativação são as somas da tabela ao lado
   // (H a J: as notas da coluna C cabem até a G)
@@ -143,9 +161,20 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
     g.item(L_MENSALIDADE, 'Mensalidade', { v: reais(c.mensalidade), s: 'reaisEntrada' });
     g.item(L_ATIVACAO, 'Ativação', { v: reais(c.ativacao), s: 'reaisEntrada' });
   }
-  g.item(L_VEZES, 'A ativação em (vezes)', { v: c.parcelas, s: 'inteiroEntrada' }, 'à vista = 1; a primeira parcela entra no 1º mês, o da assinatura');
+  const combinada = cond?.ativacao ?? null;
+  if (combinada) g.item(L_VEZES, 'A ativação em (vezes)', { v: combinada.vezes, s: 'inteiroEntrada' }, `as vezes combinadas nas ${NOME_CONDICOES}`);
+  else g.item(L_VEZES, 'A ativação em (vezes)', { v: c.parcelas, s: 'inteiroEntrada' }, 'à vista = 1; a primeira parcela entra no 1º mês, o da assinatura');
   g.item(L_PRAZO, 'O prazo do contrato (meses)', { v: c.prazo, s: 'inteiroEntrada' }, `até ${MAX_PRAZO} meses`);
   g.item(L_IMPOSTO, 'Imposto', { v: c.imposto / 100, s: 'pctEntrada' }, 'sobre tudo o que o cliente paga: a mensalidade, a ativação e os aparelhos');
+  if (cond) {
+    g.item(L_DESCONTO_SEM_PRAZO, 'Desconto sem prazo', { v: reais(cond.descontoSemPrazo), s: 'reaisEntrada' },
+      `${NOME_CONDICOES}: o desconto na mensalidade que não acaba (os que acabam estão no mês a mês, na coluna G)`);
+    if (combinada) {
+      g.item(L_DESCONTO_DA_ATIVACAO, 'Desconto na ativação', { v: reais(combinada.desconto), s: 'reaisEntrada' }, `${NOME_CONDICOES}`);
+      g.item(L_INICIO_DA_ATIVACAO, 'A 1ª parcela da ativação no mês', { v: combinada.mes, s: 'inteiroEntrada' },
+        `${NOME_CONDICOES}: 1 = o 1º mês, o da assinatura${combinada.aPartirDe ? ` (${mesEscrito(combinada.aPartirDe)})` : ''}`);
+    }
+  }
 
   // os custos, linha a linha
   g.por(15, 0, { v: 'OS CUSTOS', s: 'secao' });
@@ -176,6 +205,7 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   const refsMensais: string[] = [];
   const linhasDosAparelhos: number[] = [];
   const refsPctAtivacao: string[] = [];
+  const refsPctMensalidade: string[] = [];
   let pctAtivacao = 0;
   if (!c.linhas.length) g.por(L_PRIMEIRO_CUSTO, 0, { v: 'Nenhum custo neste cenário.', s: 'nota' });
   for (const [r, nome] of nomesDosGrupos) g.por(r, 0, { v: nome, s: 'forte' });
@@ -210,6 +240,7 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
       refsMensais.push(`${SAI_POR_MES}${r}`);
     } else if (l.tipo === 'pct_mensalidade') {
       g.por(r, COL.saiPorMes, { f: `${VALOR}${r}*$B$${L.mensal}`, v: reais(conta.custo), s: 'reais' });
+      refsPctMensalidade.push(`$${VALOR}$${r}`);
       notas.push('sobre o que o cliente paga por mês');
     } else {
       refsPctAtivacao.push(`${VALOR}${r}`);
@@ -232,8 +263,17 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   // os números
   const B = (linha: number) => `$B$${linha}`;
   g.por(numeros, 0, { v: 'OS NÚMEROS', s: 'secao' });
-  g.item(L.mensal, 'O cliente paga por mês', { f: `B${L_MENSALIDADE}+${ENTRA_POR_MES}${total}`, v: reais(k.mensalTotal), s: 'reais' }, 'a mensalidade e o aluguel dos aparelhos');
-  g.item(L.ativacao, 'A ativação', { f: `B${L_ATIVACAO}+${ENTRA_UMA_VEZ}${total}`, v: reais(k.entradaTotal), s: 'reais' }, 'com os aparelhos vendidos');
+  if (cond) {
+    g.item(L.mensal, 'O cliente paga por mês', { f: `B${L_MENSALIDADE}+${ENTRA_POR_MES}${total}-$B$${L_DESCONTO_SEM_PRAZO}`, v: reais(cond.mensalComDesconto), s: 'reais' },
+      'a mensalidade e o aluguel dos aparelhos, menos o desconto sem prazo');
+    if (combinada) {
+      g.item(L.ativacao, 'A ativação', { f: `MAX(0,B${L_ATIVACAO}+${ENTRA_UMA_VEZ}${total}-$B$${L_DESCONTO_DA_ATIVACAO})`, v: reais(k.entradaTotal - combinada.desconto), s: 'reais' },
+        'com os aparelhos vendidos, menos o desconto na ativação');
+    } else g.item(L.ativacao, 'A ativação', { f: `B${L_ATIVACAO}+${ENTRA_UMA_VEZ}${total}`, v: reais(k.entradaTotal), s: 'reais' }, 'com os aparelhos vendidos');
+  } else {
+    g.item(L.mensal, 'O cliente paga por mês', { f: `B${L_MENSALIDADE}+${ENTRA_POR_MES}${total}`, v: reais(k.mensalTotal), s: 'reais' }, 'a mensalidade e o aluguel dos aparelhos');
+    g.item(L.ativacao, 'A ativação', { f: `B${L_ATIVACAO}+${ENTRA_UMA_VEZ}${total}`, v: reais(k.entradaTotal), s: 'reais' }, 'com os aparelhos vendidos');
+  }
   const fixosDoMes = refsMensais.length ? refsMensais.join('+') : '0';
   g.item(L.fixo, 'O custo fixo do mês', { f: fixosDoMes, v: reais(k.custoMensalFixo), s: 'reais' }, 'as linhas por mês: a nuvem, os números, as licenças');
   g.item(L.variavel, 'O custo variável do mês', { f: `${SAI_POR_MES}${total}-(${fixosDoMes})+B${L_IMPOSTO}*B${L.mensal}`, v: reais(k.impostoMensal + k.comissaoMensal), s: 'reais' },
@@ -249,14 +289,18 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   g.item(L.comissaoDaAtivacao, 'A comissão da ativação', refsPctAtivacao.length ? { f: refsPctAtivacao.join('+'), v: pctAtivacao, s: 'pct' } : { v: 0, s: 'pct' }, 'tirada de cada parcela, como o imposto');
   g.item(L.investimento, { v: 'O investimento', s: 'forte' }, { f: `${SAI_UMA_VEZ}${total}+B${L.comissaoDaAtivacao}*B${L.ativacao}`, v: reais(k.totalInvestido), s: 'reaisForte' },
     'o total pago uma vez: os aparelhos, a instalação e a comissão da venda');
-  g.item(L.vezes, 'A ativação em (vezes)', { f: `MIN(MAX(1,B${L_VEZES}),MAX(1,B${L_PRAZO}))`, v: k.parcelas.length, s: 'inteiro' }, 'não mais que o prazo');
+  if (combinada) g.item(L.vezes, 'A ativação em (vezes)', { f: `MAX(1,B${L_VEZES})`, v: k.parcelas.length, s: 'inteiro' }, `as vezes combinadas nas ${NOME_CONDICOES}`);
+  else g.item(L.vezes, 'A ativação em (vezes)', { f: `MIN(MAX(1,B${L_VEZES}),MAX(1,B${L_PRAZO}))`, v: k.parcelas.length, s: 'inteiro' }, 'não mais que o prazo');
   g.item(L.saiAntes, { v: 'Sai antes', s: 'forte' }, { f: `MAX(0,-ROUND(MIN(E${T0}:E${TN}),2))`, v: reais(k.investimento), s: 'reaisForte' }, 'o pior momento do contrato, antes de a venda se pagar (no mês a mês)');
   const negativo = `MAX($F$${T0}:$F$${TN})`;
   const fimDoPrazo = `INDEX($E$${T0}:$E$${TN},${B(L_PRAZO)})`;
   // nunca no vermelho: sem nada de uma vez e sem ativação, "desde o 1º mês"; a ativação cobrindo sozinha o que sai
   // na assinatura (o lucro do 1º mês sem a sobra), "já na ativação"; senão, "em 1 mês"
+  // com o desconto (2.4.4), a sobra do 1º mês é a de sempre mais o que o desconto dele tira (ou devolve) perto do sem prazo
+  const pctDaMensalidade = refsPctMensalidade.length ? `+${refsPctMensalidade.join('+')}` : '';
+  const sobraDoMes = (r: number) => (cond ? `(${B(L.sobra)}+(${B(L_DESCONTO_SEM_PRAZO)}-$G$${r})*(1-${B(L_IMPOSTO)}${pctDaMensalidade.replace(/\+/g, '-')}))` : B(L.sobra));
   g.item(L.sePaga, { v: 'Se paga', s: 'forte' }, {
-    f: `IF(${negativo}=-1,IF(AND($${SAI_UMA_VEZ}$${total}=0,${B(L.ativacao)}=0),"desde o 1º mês",IF(ROUND($D$${T0}-${B(L.sobra)},2)>=0,"já na ativação","em 1 mês")),`
+    f: `IF(${negativo}=-1,IF(AND($${SAI_UMA_VEZ}$${total}=0,${B(L.ativacao)}=0),"desde o 1º mês",IF(ROUND($D$${T0}-${sobraDoMes(T0)},2)>=0,"já na ativação","em 1 mês")),`
       + `IF(${negativo}<${B(L_PRAZO)},"em "&(${negativo}+1)&IF(${negativo}+1=1," mês"," meses"),`
       + `IF(ROUND(${B(L.sobra)},2)>0,"em "&(${B(L_PRAZO)}+ROUNDUP(-ROUND(${fimDoPrazo},2)/ROUND(${B(L.sobra)},2),0))&" meses (depois do prazo)","não se paga")))`,
     v: textoDoSePagaEm(k.sePagaEm), s: 'forte',
@@ -272,8 +316,10 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
     v: 'O 1º mês é o da assinatura: nele entram a ativação (ou a 1ª parcela) e a 1ª mensalidade, e saem o que é pago de uma vez e os custos do mês. O acumulado é o que a venda deu até o mês: abaixo de zero, ela ainda não se pagou.',
     s: 'nota',
   });
-  ['Mês', 'Faturamento', 'Custos', 'Lucro do mês', 'Acumulado', '(o mês, se negativo)']
+  ['Mês', 'Faturamento', 'Custos', 'Lucro do mês', 'Acumulado', '(o mês, se negativo)', ...(cond ? ['Desconto na mensalidade', 'O mês'] : [])]
     .forEach((t, i) => g.por(tempo + 1, i, { v: t, s: 'cabecalho' }));
+  // o desconto de cada mês (2.4.4): o das condições, até o prazo máximo (mudar o prazo na planilha continua certo)
+  const descontosDaPlanilha = cond && condNaNegociacao ? descontosDosMeses(condNaNegociacao, k.mensalTotal, MAX_PRAZO) : [];
   const ativacaoEmCentavos = `ROUND(${B(L.ativacao)}*100,0)`;
   // o que sai pelos custos de uma vez: tudo no 1º mês, menos o que os aparelhos comprados parcelado deixam para os
   // meses seguintes (cada um em até 24 vezes e não mais que o prazo; a primeira leva o resto, como na ativação)
@@ -294,11 +340,22 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
     const parcela = m === 1
       ? `${ativacaoEmCentavos}-INT(${ativacaoEmCentavos}/${B(L.vezes)})*(${B(L.vezes)}-1)`
       : `INT(${ativacaoEmCentavos}/${B(L.vezes)})`;
-    // a parcela da ativação do mês: entra no faturamento, e o imposto e a comissão dela saem nos custos
-    const daAtivacao = `IF(${m}<=${B(L.vezes)},(${parcela})/100,0)`;
+    // a parcela da ativação do mês: entra no faturamento, e o imposto e a comissão dela saem nos custos; a combinada (2.4.4)
+    // começa no mês da linha 14
+    const ini = B(L_INICIO_DA_ATIVACAO);
+    const daAtivacao = combinada
+      ? `IF(AND(${m}>=${ini},${m}-${ini}<${B(L.vezes)}),IF(${m}=${ini},${ativacaoEmCentavos}-INT(${ativacaoEmCentavos}/${B(L.vezes)})*(${B(L.vezes)}-1),INT(${ativacaoEmCentavos}/${B(L.vezes)}))/100,0)`
+      : `IF(${m}<=${B(L.vezes)},(${parcela})/100,0)`;
+    // o desconto do mês (2.4.4): o faturamento é o de sempre mais o sem prazo menos o do mês; o imposto e a comissão acompanham
+    const doDesconto = cond ? `+(${B(L_DESCONTO_SEM_PRAZO)}-G${r})` : '';
+    const custoDoDesconto = cond ? `+(${B(L_DESCONTO_SEM_PRAZO)}-G${r})*(${B(L_IMPOSTO)}${pctDaMensalidade})` : '';
     g.por(r, 0, { f: se(String(m)), v: mes ? m : '', s: 'inteiro' });
-    g.por(r, 1, { f: se(`${B(L.mensal)}+${daAtivacao}`), v: mes ? reais(mes.faturamento) : '', s: 'reais' });
-    g.por(r, 2, { f: se(`${saiNoMes(m)}+${B(L.custoDoMes)}+${daAtivacao}*(${B(L_IMPOSTO)}+${B(L.comissaoDaAtivacao)})`), v: mes ? reais(mes.custos) : '', s: 'reais' });
+    g.por(r, 1, { f: se(`${B(L.mensal)}+${daAtivacao}${doDesconto}`), v: mes ? reais(mes.faturamento) : '', s: 'reais' });
+    g.por(r, 2, { f: se(`${saiNoMes(m)}+${B(L.custoDoMes)}+${daAtivacao}*(${B(L_IMPOSTO)}+${B(L.comissaoDaAtivacao)})${custoDoDesconto}`), v: mes ? reais(mes.custos) : '', s: 'reais' });
+    if (cond && condNaNegociacao) {
+      g.por(r, 6, { v: reais(descontosDaPlanilha[m - 1] ?? 0), s: 'reaisEntrada' });
+      g.por(r, 7, { v: mesEscrito(mesMais(condNaNegociacao.desde, m - 1)), s: 'sub' });
+    }
     g.por(r, 3, { f: se(`B${r}-C${r}`), v: mes ? reais(mes.lucro) : '', s: 'reais' });
     g.por(r, 4, { f: m === 1 ? `D${r}` : se(`E${r - 1}+D${r}`), v: mes ? reais(mes.acumulado) : '', s: 'reaisForte' });
     g.por(r, 5, { f: se(`IF(ROUND(E${r},2)<0,${m},-1)`), v: mes ? (mes.acumulado < 0 ? m : -1) : '', s: 'sub' });
@@ -331,8 +388,9 @@ function folhaLadoALado(p: PedidoDaPlanilha, cenarios: Array<{ c: CenarioDaSimul
   const principal = cenarios[iPrincipal]!;
   outros.forEach((x, j) => g.por(5, cenarios.length + 1 + j, { v: `Diferença: ${x.c.nome} − ${principal.c.nome}`, s: 'cabecalho' }));
   const linhas: Array<[string, keyof NumerosDaFolha, (x: { c: CenarioDaSimulacao; k: ContasDoCenario }) => string | number, CelulaDaPlanilha['s'], boolean]> = [
-    ['O cliente paga por mês', 'mensal', ({ k }) => reais(k.mensalTotal), 'reais', true],
-    ['A ativação', 'ativacao', ({ k }) => reais(k.entradaTotal), 'reais', true],
+    // com as Condições especiais (2.4.4), o que a folha do cenário mostra: depois do desconto sem prazo e do da ativação
+    ['O cliente paga por mês', 'mensal', ({ k }) => reais(k.condicoes?.mensalComDesconto ?? k.mensalTotal), 'reais', true],
+    ['A ativação', 'ativacao', ({ k }) => reais(k.entradaTotal - (k.condicoes?.ativacao?.desconto ?? 0)), 'reais', true],
     ['O prazo (meses)', 'prazo', ({ c }) => c.prazo, 'inteiro', true],
     ['O investimento (uma vez)', 'investimento', ({ k }) => reais(k.totalInvestido), 'reais', true],
     ['O custo fixo do mês', 'fixo', ({ k }) => reais(k.custoMensalFixo), 'reais', true],
@@ -369,7 +427,7 @@ export function planilhaDaSimulacao(p: PedidoDaPlanilha): { bytes: Uint8Array; n
   const nomes = nomesDasFolhas([...(varios ? ['Lado a lado'] : []), ...cenarios.map((c) => c.nome || 'Cenário')]);
   const nomesDosCenarios = varios ? nomes.slice(1) : nomes;
   const feitas = cenarios.map((c, i) => {
-    const k = contasDoCenario(c, p.faixas);
+    const k = contasDoCenario(c, p.faixas, p.simulacao.negociacao?.condicoes);
     return { c, k, ...folhaDoCenario(p, c, k, nomesDosCenarios[i]!) };
   });
   const folhas = [...(varios ? [folhaLadoALado(p, feitas, nomes[0]!)] : []), ...feitas.map((x) => x.folha)];

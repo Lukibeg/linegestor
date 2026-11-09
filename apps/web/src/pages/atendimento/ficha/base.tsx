@@ -155,6 +155,23 @@ export function MarcaFalta({ campo }: { campo: string }) {
   return <span className="chip bg-signal-soft text-signal font-medium">falta para ir para {proxima.nome}</span>;
 }
 
+/**
+ * Os campos da parte (a Curadoria, a Configuração, os Testes) que ainda têm o que fazer, pela chave (`campo:<id>`): a parte
+ * põe em volta dos campos dela. Fora das partes, nenhum (a bolinha não aparece).
+ */
+export const FaltaNaParte = createContext<ReadonlySet<string>>(new Set());
+
+/**
+ * A bolinha vermelha do campo que falta na parte (2.4.4, o Luan: "Ficou legal o contabilizador mas eu quero algo que
+ * sinalize tbm na opção que ta faltando, como uma bolinha em vermelho"): antes do nome do campo vazio — e do campo de
+ * caixinhas com alguma por marcar —, o mesmo que o "N de M" da parte conta.
+ */
+export function BolinhaDoQueFalta({ campo }: { campo: string }) {
+  const faltam = useContext(FaltaNaParte);
+  if (!faltam.has(campo)) return null;
+  return <span className="w-2 h-2 rounded-full bg-bad shrink-0" role="img" aria-label="falta fazer" title="Falta fazer: conta no N de M da parte" data-falta-na-parte="" />;
+}
+
 // =====================================================================
 //  O MENU QUE ABRE EMBAIXO DE UM BOTÃO
 // =====================================================================

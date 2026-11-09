@@ -63,6 +63,10 @@ Voltar a negociação e mover de novo não abre outro card.
   Sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
 - Cada parte mostra a conta (**3 de 5**); a parte da etapa em que o card está fica aberta, e as outras abrem com um
   clique. O cartão do quadro mostra a barrinha da parte da etapa.
+- **O que falta (2.4.4).** O campo que ainda falta tem uma **bolinha vermelha** antes do nome — o mesmo que a conta da
+  parte conta. Nas caixinhas, a bolinha fica até a última ser marcada.
+- **O documento conta (2.4.4).** O campo com um arquivo anexado conta como preenchido, mesmo sem nada escrito: na conta da
+  parte e no que a etapa pede. Tirando o anexo, ele volta a faltar.
 - Nada trava: dá para ir para a Configuração com a curadoria pela metade, e para o Implantado com teste faltando.
 
 ## 4. O Implantado liga no cadastro e leva a negociação

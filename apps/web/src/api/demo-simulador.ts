@@ -24,7 +24,7 @@
  * principal da sua negociação (uma por negociação).
  */
 import {
-  AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, cenarioNovo, cenarioPrincipal, linhaDaTabela, mudancasDaSimulacao,
+  AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, cenarioNovo, cenarioPrincipal, condicoesNoSimulador, linhaDaTabela, mudancasDaSimulacao,
   mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario, valoresParaANegociacao,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario, type MargemDaNegociacao, type ModeloDeSimulacao, type NegociacaoDaSimulacao,
   type Simulacao, type SimulacaoGravar,
@@ -112,8 +112,9 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     for (const r of [...X.simulacoes].filter((s) => !s.deletedAt && s.negociacaoId)
       .sort((p, q) => Number(q.principalDaNegociacao) - Number(p.principalDaNegociacao) || q.alteradoEm.localeCompare(p.alteradoEm))) {
       if (margens.has(r.negociacaoId!)) continue;
-      const k = resumoDoCenario(cenarioPrincipal(r), X.ajustes);
-      margens.set(r.negociacaoId!, { simulacaoId: r.id, simulacao: r.nome, mensalTotal: k.mensalTotal, sobraMensal: k.sobraMensal });
+      // com as Condições especiais da negociação (2.4.4), como o servidor
+      const k = resumoDoCenario(cenarioPrincipal(r), X.ajustes, condicoesDa(r.negociacaoId!));
+      margens.set(r.negociacaoId!, { simulacaoId: r.id, simulacao: r.nome, mensalTotal: k.mensalComDesconto, sobraMensal: k.sobraMensal });
     }
     return { margens, faixas: X.ajustes };
   });
@@ -126,13 +127,18 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
   const podeEditar = (a: AtorDemo) => a.tipo === 'pessoa' && a.permissoes.includes('sales.read') && a.permissoes.includes('tickets.work');
   const podeCuidar = (a: AtorDemo) => a.tipo === 'pessoa' && a.permissoes.includes('sales.read') && a.permissoes.includes('tickets.manage');
 
+  /** As Condições especiais da negociação, como o Simulador conta (2.4.4; como o servidor). */
+  function condicoesDa(id: string) {
+    const n = x().negociacao(id);
+    return n && n.id === id ? condicoesNoSimulador({ condicoes: n.condicoes, resultado: n.resultado, fechadoEm: n.fechadoEm }, agora()) : null;
+  }
   /** A negociação, como a pessoa vê: só a de um painel de Vendas que ela vê (como `negociacoesVisiveis` do servidor). */
   function negociacaoVisivel(id: string, a: AtorDemo): NegociacaoDaSimulacao | null {
     const n = x().negociacao(id);
     if (!n || n.id !== id) return null;
     const p = x().paineis().find((pp) => pp.id === n.painelId);
     if (!p || p.tipo !== 'vendas' || !x().podeVerPainel(p, a)) return null;
-    return { id: n.id, codigo: n.codigo, titulo: n.titulo, empresa: n.empresa, resultado: n.resultado };
+    return { id: n.id, codigo: n.codigo, titulo: n.titulo, empresa: n.empresa, resultado: n.resultado, condicoes: condicoesDa(id) };
   }
   function conferirNegociacao(id: string, a: AtorDemo): NegociacaoDaSimulacao {
     const n = negociacaoVisivel(id, a);
@@ -270,7 +276,7 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
         const s = paraTela(r, a);
         return {
           id: s.id, nome: s.nome, negociacao: s.negociacao, negociacaoOculta: !!r.negociacaoId && !s.negociacao, cenarios: s.cenarios.length,
-          principal: resumoDoCenario(cenarioPrincipal(s), X.ajustes), criadoPor: s.criadoPor, alteradoPor: s.alteradoPor, alteradoEm: s.alteradoEm,
+          principal: resumoDoCenario(cenarioPrincipal(s), X.ajustes, s.negociacao?.condicoes), criadoPor: s.criadoPor, alteradoPor: s.alteradoPor, alteradoEm: s.alteradoEm,
         };
       });
     },
@@ -282,10 +288,11 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     async daNegociacao(negociacaoId) {
       await ctx.wait(60);
       ctx.requirePerm('sales.read'); preparar();
-      if (!negociacaoVisivel(negociacaoId, x().eu())) return [];
+      const n = negociacaoVisivel(negociacaoId, x().eu());
+      if (!n) return [];
       return X.simulacoes.filter((r) => r.negociacaoId === negociacaoId && !r.deletedAt).sort((p, q) => q.alteradoEm.localeCompare(p.alteradoEm))
         .sort((p, q) => Number(q.principalDaNegociacao) - Number(p.principalDaNegociacao))
-        .map((r) => ({ id: r.id, nome: r.nome, cenarios: r.cenarios.length, principal: resumoDoCenario(cenarioPrincipal(r), X.ajustes), principalDaNegociacao: r.principalDaNegociacao }));
+        .map((r) => ({ id: r.id, nome: r.nome, cenarios: r.cenarios.length, principal: resumoDoCenario(cenarioPrincipal(r), X.ajustes, n.condicoes), principalDaNegociacao: r.principalDaNegociacao }));
     },
     async criar(d) {
       await ctx.wait(200);

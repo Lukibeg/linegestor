@@ -869,6 +869,8 @@ export type DadosObrigatorios = {
   tempoMinutos: number;
   /** os valores dos campos do painel (pelo id do campo) */
   campos: ValoresDosCampos;
+  /** os campos com um arquivo anexado (2.4.4: o anexo conta como preenchido; sem a lista, nenhum) */
+  camposComAnexo?: readonly string[];
   /** a negociação (painel de Vendas): o valor (a mensalidade) e a ativação em centavos, a empresa que ainda não é cliente e o motivo da perda */
   valor?: number | null;
   ativacao?: number | null;
@@ -880,7 +882,8 @@ const preenchido = (v: string | null | undefined) => !!v && v.trim().length > 0;
 
 function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
   const id = idDaChave(campo);
-  if (id) return !valorPreenchido(c.campos[id]);
+  // o campo com um arquivo anexado está preenchido (2.4.4, o Luan: "um documento tem q contar como preenchido o campo")
+  if (id) return !valorPreenchido(c.campos[id]) && !c.camposComAnexo?.includes(id);
   switch (campo as CampoObrigatorio) {
     // na negociação, a empresa que ainda não é cliente (escrita à mão) também conta como o cliente
     case 'cliente': return !c.clienteId && !preenchido(c.empresa);

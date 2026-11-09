@@ -23,10 +23,13 @@
  * desenhada depois, o cobria ("R$ 9," e "−R$ 1") — agora fica numa faixa só dele, acima (ou abaixo) do gráfico,
  * desenhado por último; e a marca do corte, um traço branco inclinado que passava da coluna, virou um vão reto na
  * largura da coluna. (As colunas saíram no 2.3; a escala redonda continua no acumulado.)
+ *
+ * Com as Condições especiais da negociação (2.4.4), cada mês diz o mês do calendário (nov/2026), o desconto entra no
+ * detalhe do faturamento (com o sinal de menos) e a linha da tabela do mês com desconto ganha a marca "desconto".
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { textoDoSePagaEm, type ContasDoCenario, type MesDoContrato } from '@gestor/shared';
+import { mesEscrito, textoDoSePagaEm, type ContasDoCenario, type MesDoContrato } from '@gestor/shared';
 import { reaisLimpo } from './comum.js';
 
 /** "15,6 mil", "−840": os números dos eixos (o R$ fica no título). */
@@ -116,10 +119,11 @@ const passoDoEixo = (n: number) => (n <= 13 ? 1 : n <= 25 ? 3 : n <= 49 ? 6 : 12
 
 /** Uma parte do faturamento ou dos custos: o nome que quebra fica recuado (a continuação não parece outra linha) e o valor não quebra. */
 function Parte({ rotulo, valor }: { rotulo: string; valor: number }) {
+  // o desconto das Condições especiais (2.4.4) vem negativo: com o sinal de menos
   return (
     <li className="flex justify-between gap-3">
       <span className="min-w-0 pl-3 -indent-3">{rotulo}</span>
-      <span className="tabular-nums whitespace-nowrap shrink-0">{reaisLimpo(valor)}</span>
+      <span className={`tabular-nums whitespace-nowrap shrink-0 ${valor < 0 ? 'text-bad' : ''}`}>{exato(valor)}</span>
     </li>
   );
 }
@@ -135,7 +139,7 @@ function DetalheDoMes({ m, pagou, deQual, largo = false }: { m: MesDoContrato; p
   return (
     <div className="flex flex-col gap-1">
       <div className="font-semibold text-ink flex flex-wrap items-baseline gap-x-2">
-        Mês {m.mes}{m.mes === 1 && <span className="font-normal text-muted">· o da assinatura</span>}
+        Mês {m.mes}{m.calendario && <span className="font-normal text-ink-2">· {mesEscrito(m.calendario)}</span>}{m.mes === 1 && <span className="font-normal text-muted">· o da assinatura</span>}
         {m.mes === pagou && <span className="text-[11.5px] font-semibold text-ok">se paga</span>}
       </div>
       <div className={largo ? 'grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-5 items-start' : 'flex flex-col gap-1'}>
@@ -224,7 +228,7 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
   return (
     <section className="card p-4 min-w-0" aria-label="O mês a mês do contrato" id="simulador-mes-a-mes">
       <header className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-        <h2 className="font-display font-semibold text-[15px]">Mês a mês <span className="font-body font-normal text-[12.5px] text-muted">· o faturamento, os custos e o lucro de cada mês, do 1º (o da assinatura) ao {prazo}º</span></h2>
+        <h2 className="font-display font-semibold text-[15px]">Mês a mês <span className="font-body font-normal text-[12.5px] text-muted">· o faturamento, os custos e o lucro de cada mês, do 1º (o da assinatura{k.condicoes ? `, ${mesEscrito(k.condicoes.desde)}` : ''}) ao {prazo}º</span></h2>
       </header>
       {/* os totais do contrato */}
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3" id="simulador-mes-a-mes-totais">
@@ -304,6 +308,7 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
       )}
       <p className="text-[12px] text-muted mt-2">
         O 1º mês é o da assinatura: nele entram a ativação (ou a 1ª parcela) e a 1ª mensalidade, e saem o que é pago de uma vez (os aparelhos à vista, a comissão da venda) e os custos do mês.
+        {k.condicoes && <> Com as Condições especiais da negociação: {k.condicoes.texto}.</>}
         {estreito ? '' : ' Passe o mouse num mês do gráfico, ou clique numa linha da tabela, para ver o detalhe.'}
       </p>
       {/* a tabela, sempre aberta (2.3): um clique na linha abre o detalhe do mês embaixo dela */}
@@ -328,7 +333,9 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
                     <span className="inline-flex items-center gap-1">
                       {aberto === i ? <ChevronDown size={13} className="text-muted" aria-hidden /> : <ChevronRight size={13} className="text-muted" aria-hidden />}
                       {m.mes === 1 ? '1 · a assinatura' : m.mes}
+                      {m.calendario && <span className="text-[11.5px] text-muted">· {mesEscrito(m.calendario)}</span>}
                     </span>
+                    {!!m.desconto && <span className="ml-1.5 chip bg-accent-soft text-accent-ink text-[10.5px] py-0" title={`R$ ${(m.desconto / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de desconto (Condições especiais)`} data-mes-com-desconto="">desconto</span>}
                     {m.mes === pagou && <span className="ml-1.5 text-[11.5px] font-semibold text-ok">se paga</span>}
                   </td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{reaisLimpo(m.faturamento)}</td>

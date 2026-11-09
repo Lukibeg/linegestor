@@ -5,12 +5,15 @@
  * fim); e os cenários lado a lado, com a diferença de cada um para o principal. O quadro "O preço" (a mensalidade
  * mínima pela margem que se queria e o desconto máximo sem sair do verde) saiu: o Luan, 21/10, "isso não precisa
  * ter"; a margem e o sinal ficam aqui.
+ *
+ * As Condições especiais da negociação (2.4.4): o cartão delas, embaixo dos números — cada desconto com os meses dele no
+ * contrato e a sobra enquanto vale, a ativação combinada e o desconto somado no contrato.
  */
 import { useId, type ReactNode } from 'react';
-import { AlertTriangle, Star } from 'lucide-react';
+import { AlertTriangle, BadgePercent, Star } from 'lucide-react';
 import {
-  percentual, percentualDaFracao, textoDasFaixas, textoDoSePagaEm,
-  type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario,
+  NOME_CONDICOES, mesEscrito, percentual, percentualDaFracao, textoDasFaixas, textoDoSePagaEm,
+  type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type NegociacaoDaSimulacao,
 } from '@gestor/shared';
 import { ChipDoSinal, reais, reaisLimpo } from './comum.js';
 
@@ -28,7 +31,7 @@ function Linha({ rotulo, valor, dica, tom, id, abaixo }: { rotulo: ReactNode; va
 }
 
 /** Os números do cenário aberto. */
-export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador }) {
+export function OsNumeros({ c, k, ajustes, negociacao = null }: { c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador; negociacao?: NegociacaoDaSimulacao | null }) {
   const ruimDePagar = k.sePagaEm.tipo === 'nunca' || (k.sePagaEm.tipo === 'mes' && k.sePagaEm.depoisDoPrazo);
   // o custo do mês, parte a parte e sem agrupar (o Luan, 21/10: "eu quero q ele sempre coloque detalhado todos os
   // custos n agrupe"): cada custo por mês pelo nome, o imposto e cada comissão — e o Helena numa linha só, com o
@@ -41,6 +44,15 @@ export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasD
     </ul>
   ) : undefined;
   const parcelado = k.linhas.filter((l) => l.parcelas > 1).reduce((s, l) => s + l.custo, 0);
+  // as Condições especiais (2.4.4): os descontos que acabam e estão no contrato, e o que o cliente paga de fato
+  const cond = k.condicoes;
+  const comPrazo = cond?.faixas.filter((f) => f.ate !== null && f.mesesNoContrato > 0) ?? [];
+  const ativacaoPaga = k.entradaTotal - (cond?.ativacao?.desconto ?? 0);
+  const dicaDoMensal = [
+    k.aluguel ? `mensalidade ${reaisLimpo(c.mensalidade)} + aluguel dos aparelhos ${reaisLimpo(k.aluguel)}` : '',
+    cond?.descontoSemPrazo ? `${reaisLimpo(k.mensalTotal)} menos ${reaisLimpo(cond.descontoSemPrazo)} de desconto sem prazo` : '',
+    ...comPrazo.map((f) => `${reaisLimpo(k.mensalTotal - f.valor)} até ${mesEscrito(f.ate!)}`),
+  ].filter(Boolean).join(' · ') || undefined;
   return (
     <div className="flex flex-col gap-4" id="simulador-numeros">
       <section className="card p-4" aria-label={`Os números do ${c.nome}`}>
@@ -51,12 +63,20 @@ export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasD
         <div className="mt-3 text-[13px] text-ink-2">Sobra por mês</div>
         <div className={`font-display text-[30px] leading-tight font-semibold tabular-nums ${k.sobraMensal < 0 ? 'text-bad' : 'text-ink'}`} id="simulador-sobra">{reais(k.sobraMensal)}</div>
         <div className="text-[12.5px] text-muted">{k.margem == null ? 'Ponha a mensalidade para ver a margem.' : `${percentualDaFracao(k.margem)} do que o cliente paga por mês`}</div>
+        {comPrazo.map((f) => (
+          <div key={f.de} className="text-[12.5px] text-ink-2" data-sobra-com-desconto={f.ate}>Com o desconto, até {mesEscrito(f.ate!)}: <b className="tabular-nums">{reaisLimpo(f.sobra)}</b> por mês.</div>
+        ))}
         <div className="text-[12px] text-muted" id="simulador-faixas-do-sinal">O sinal: {textoDasFaixas(ajustes)} (os Ajustes do Simulador).</div>
         <dl className="mt-3 divide-y divide-line text-[13.5px] border-t border-line">
-          <Linha rotulo="O cliente paga por mês" valor={reais(k.mensalTotal)} dica={k.aluguel ? `mensalidade ${reaisLimpo(c.mensalidade)} + aluguel dos aparelhos ${reaisLimpo(k.aluguel)}` : undefined} />
+          <Linha rotulo="O cliente paga por mês" valor={reais(cond?.mensalComDesconto ?? k.mensalTotal)} dica={dicaDoMensal} />
           <Linha rotulo="O custo do mês" valor={reais(k.custoMensal)} abaixo={partesDoCusto} id="simulador-custo-do-mes" />
-          <Linha rotulo="A ativação" valor={reais(k.entradaTotal)}
-            dica={[k.vendaDeAparelhos ? `ativação ${reaisLimpo(c.ativacao)} + aparelhos vendidos ${reaisLimpo(k.vendaDeAparelhos)}` : '', k.parcelas.length > 1 ? `em ${k.parcelas.length}x de ${reaisLimpo(k.parcelas[k.parcelas.length - 1]!)}` : ''].filter(Boolean).join(' · ') || undefined} />
+          <Linha rotulo="A ativação" valor={reais(ativacaoPaga)}
+            dica={[
+              k.vendaDeAparelhos ? `ativação ${reaisLimpo(c.ativacao)} + aparelhos vendidos ${reaisLimpo(k.vendaDeAparelhos)}` : '',
+              cond?.ativacao?.desconto ? `${reaisLimpo(k.entradaTotal)} menos ${reaisLimpo(cond.ativacao.desconto)} de desconto` : '',
+              k.parcelas.length > 1 ? `em ${k.parcelas.length}x de ${reaisLimpo(k.parcelas[k.parcelas.length - 1]!)}` : '',
+              cond?.ativacao && cond.ativacao.mes > 1 ? `a partir do ${cond.ativacao.mes}º mês${cond.ativacao.aPartirDe ? ` (${mesEscrito(cond.ativacao.aPartirDe)})` : ''}` : '',
+            ].filter(Boolean).join(' · ') || undefined} />
           <Linha rotulo="Investimento" valor={reais(k.totalInvestido)} id="simulador-total-investido"
             dica={`o total pago uma vez: os aparelhos e a comissão da venda${parcelado ? ` (${reaisLimpo(parcelado)} na compra parcelada)` : ''}`} />
           <Linha rotulo="Sai antes" valor={k.investimento ? reais(k.investimento) : 'nada'} id="simulador-investimento"
@@ -70,6 +90,8 @@ export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasD
         <LinhaDoTempo k={k} prazo={c.prazo} />
       </section>
 
+      {cond && <CondicoesDaNegociacao k={k} negociacao={negociacao} />}
+
       {k.faltam.length > 0 && (
         <div className="card p-3 border-signal text-[13px] flex gap-2" role="status" id="simulador-faltam">
           <AlertTriangle size={16} className="text-signal shrink-0 mt-0.5" aria-hidden />
@@ -77,6 +99,50 @@ export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasD
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * As Condições especiais da negociação na conta (2.4.4): o que foi combinado e o que isso faz no contrato. Elas mudam na
+ * ficha da negociação; aqui, só a conta.
+ */
+function CondicoesDaNegociacao({ k, negociacao }: { k: ContasDoCenario; negociacao: NegociacaoDaSimulacao | null }) {
+  const cond = k.condicoes!;
+  const n = k.meses.length;
+  return (
+    <section className="card p-4 text-[13px]" id="simulador-condicoes" aria-label={NOME_CONDICOES}>
+      <div className="flex items-center gap-2">
+        <BadgePercent size={15} className="text-accent shrink-0" aria-hidden />
+        <span className="eyebrow">{NOME_CONDICOES}{negociacao ? ` · ${negociacao.codigo}` : ''}</span>
+      </div>
+      <p className="mt-1.5 text-[12px] text-muted">Combinadas na negociação e já na conta, mês a mês. Mudam na ficha dela.</p>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {cond.faixas.map((f) => (
+          <li key={f.de} className="flex flex-col" data-condicao-desconto={f.ate ?? 'sem-prazo'}>
+            <span className="text-ink"><b className="tabular-nums">{reaisLimpo(f.valor)}</b>/mês de desconto {f.ate ? `até ${mesEscrito(f.ate)}` : 'sem prazo'}</span>
+            <span className="text-[12px] text-muted">
+              {f.mesesNoContrato
+                ? `${f.ate ? `de ${mesEscrito(f.de)} a ${mesEscrito(f.ate)}` : `de ${mesEscrito(f.de)} em diante`}: ${f.mesesNoContrato} ${f.mesesNoContrato === 1 ? 'mês' : 'meses'} do contrato, com sobra de ${reaisLimpo(f.sobra)} por mês`
+                : `fica fora dos ${n} meses do contrato`}
+            </span>
+          </li>
+        ))}
+        {cond.ativacao && (
+          <li className="flex flex-col" data-condicao-ativacao="">
+            <span className="text-ink">Ativação {cond.ativacao.vezes > 1 ? `em ${cond.ativacao.vezes}x` : 'à vista'}{cond.ativacao.desconto ? `, com ${reaisLimpo(cond.ativacao.desconto)} de desconto` : ''}</span>
+            <span className="text-[12px] text-muted">a 1ª parcela no {cond.ativacao.mes}º mês ({mesEscrito(cond.meses[cond.ativacao.mes - 1] ?? cond.desde)})</span>
+          </li>
+        )}
+      </ul>
+      {cond.descontoNoContrato > 0 && (
+        <div className="mt-2 pt-2 border-t border-line flex items-baseline justify-between gap-3">
+          <span className="text-ink-2">Desconto no contrato</span><b className="tabular-nums" id="simulador-desconto-no-contrato">{reaisLimpo(cond.descontoNoContrato)}</b>
+        </div>
+      )}
+      <p className="mt-2 text-[11.5px] text-muted">
+        O 1º mês do contrato é {mesEscrito(cond.desde)}: {cond.doGanho ? 'o mês do Ganho.' : 'o mês de hoje, de exemplo, até a negociação ser marcada como Ganho.'}
+      </p>
+    </section>
   );
 }
 

@@ -18,7 +18,7 @@ import { Modal, Spinner, mensagemErro } from '../../../components/ui/index.js';
 import { useDepoisDeMudar } from '../comum.js';
 import { caixinhasParaGravar, EditorDasCaixinhas, pastasDoEditor, problemaNasPastas, type PastaRascunho } from '../ajustes/EditorDasCaixinhas.js';
 import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
-import { ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
+import { BolinhaDoQueFalta, ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
 import { dataCompleta, emQuando } from './Cabecalho.js';
 
 const comoLista = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -72,6 +72,7 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
     <div id={`campo-c-${c.id}`} className="min-w-0 scroll-mt-24">
       {comTitulo && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
+          <BolinhaDoQueFalta campo={`campo:${c.id}`} />
           <h3 className="font-display font-semibold text-[14.5px]">{c.nome}</h3>
           {(c.tipo === 'caixinhas' || checklist) && contam.length > 0 && <span className="text-[12px] text-muted">{feitos} de {contam.length}</span>}
           <MarcaFalta campo={`campo:${c.id}`} />
