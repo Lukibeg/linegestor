@@ -42,8 +42,22 @@
  * mensalidade", de cada mensalidade; a "% da ativação", de cada parcela da ativação. A mensalidade, nas
  * contas, é a do serviço mais o aluguel dos aparelhos; a ativação, a do serviço mais os aparelhos vendidos.
  * O mês a mês (`MesDoContrato`) diz, em cada mês, o faturamento e os custos parte a parte.
+ *
+ * AS CONDIÇÕES ESPECIAIS DA NEGOCIAÇÃO (2.4.4; o Luan, 09/11: "eu consedi um desconto para ele de 200 rais até março do ano
+ * que vem, isso ai vc já deveria contabilizar no simulador"): a simulação ligada a uma negociação conta o que foi combinado
+ * nela (`CondicoesNoSimulador`). O 1º mês do contrato é o 1º mês de faturamento da negociação (o mês do Ganho; antes do
+ * Ganho, o de hoje, de exemplo, como no "Como fica a cobrança" da ficha). O desconto na mensalidade sai do faturamento de
+ * cada mês em que vale (e o imposto e a comissão recorrente andam com o que o cliente paga); a ativação combinada (o
+ * desconto, as vezes e o mês da 1ª parcela) troca o "A ativação em" do cenário. A sobra por mês, a margem e o sinal são os
+ * de depois dos descontos com prazo (com o sem prazo, que não acaba); o mês a mês, o "Sai antes", o "Se paga" e o que fica
+ * no contrato contam cada mês como ele é. O que vai para o card da negociação continua o valor cheio (o desconto fica nas
+ * condições dela).
  */
 import { z } from 'zod';
+import {
+  NOME_CONDICOES, mesMais, mesesDosDescontos, mesesEntre, primeiroMesDeFaturamento, textoDasCondicoes,
+  type CondicoesDaNegociacao,
+} from './negociacao.js';
 
 // =====================================================================
 //  OS LIMITES
@@ -440,8 +454,45 @@ export const linhasSemOLineChat = (c: Pick<CenarioDaSimulacao, 'linhas'>) => c.l
 
 export const AJUSTES_DO_SIMULADOR_PADRAO: AjustesDoSimulador = { imposto: 6, verde: 35, vermelho: 20, prazo: 12, custos: CUSTOS_DA_HELENA, modelos: [MODELO_DA_HELENA] };
 
-/** A negociação ligada à simulação, como a pessoa vê. */
-export type NegociacaoDaSimulacao = { id: string; codigo: string; titulo: string; empresa: string | null; resultado: 'ganho' | 'perdido' | null };
+/**
+ * A negociação ligada à simulação, como a pessoa vê. `condicoes` (2.4.4): as Condições especiais dela, como o Simulador
+ * conta (nulo: sem nada que mude a conta).
+ */
+export type NegociacaoDaSimulacao = {
+  id: string; codigo: string; titulo: string; empresa: string | null; resultado: 'ganho' | 'perdido' | null;
+  condicoes?: CondicoesNoSimulador | null;
+};
+
+/**
+ * As Condições especiais da negociação, como o Simulador conta (2.4.4): o que foi combinado e o 1º mês de faturamento
+ * (`desde`, AAAA-MM: o mês do Ganho; antes dele, o de hoje — `doGanho` falso).
+ */
+export type CondicoesNoSimulador = { condicoes: CondicoesDaNegociacao; desde: string; doGanho: boolean };
+
+/**
+ * As condições da negociação para o Simulador: só quando há o que mude a conta (um desconto na mensalidade ou a ativação
+ * combinada; a observação sozinha, não). O servidor, a prévia e a tela montam igual.
+ */
+export function condicoesNoSimulador(
+  n: { condicoes: CondicoesDaNegociacao | null | undefined; resultado: string | null | undefined; fechadoEm: string | null | undefined }, agora: Date = new Date(),
+): CondicoesNoSimulador | null {
+  if (!n.condicoes || (!n.condicoes.descontos.length && !n.condicoes.ativacao)) return null;
+  const p = primeiroMesDeFaturamento({ resultado: n.resultado ?? null, fechadoEm: n.fechadoEm ?? null }, agora);
+  return { condicoes: n.condicoes, desde: p.mes, doGanho: p.doGanho };
+}
+
+/**
+ * O desconto na mensalidade de cada mês, do 1º mês de faturamento em diante (`n` meses), em centavos: o da faixa em que o
+ * mês cai, nunca mais que o que o cliente paga por mês (`mensal`). Os descontos vêm em sequência (`mesesDosDescontos`).
+ */
+export function descontosDosMeses(c: CondicoesNoSimulador, mensal: number, n: number): number[] {
+  const faixas = mesesDosDescontos(c.condicoes.descontos, c.desde);
+  return Array.from({ length: Math.max(0, n) }, (_, i) => {
+    const mes = mesMais(c.desde, i);
+    const k = faixas.findIndex((f) => f.de <= mes && (f.ate === null || mes <= f.ate));
+    return k >= 0 ? Math.max(0, Math.min(mensal, c.condicoes.descontos[k]!.valor)) : 0;
+  });
+}
 
 /** A simulação, como a tela abre. */
 export type Simulacao = {
@@ -475,6 +526,8 @@ export type ResumoDoCenario = {
   nome: string;
   prazo: number;
   mensalTotal: number;
+  /** o que o cliente paga por mês depois dos descontos com prazo das Condições especiais (2.4.4; sem elas, o `mensalTotal`) */
+  mensalComDesconto: number;
   entradaTotal: number;
   sobraMensal: number;
   margem: number | null;
@@ -998,6 +1051,35 @@ export type MesDoContrato = {
   custos: number;
   lucro: number;
   acumulado: number;
+  /** com as Condições especiais (2.4.4): o mês do calendário (AAAA-MM) e o desconto na mensalidade dele (0: sem) */
+  calendario?: string;
+  desconto?: number;
+};
+
+/**
+ * As Condições especiais na conta do cenário (2.4.4): o que a tela mostra delas. Os meses e os descontos vão do 1º mês do
+ * contrato ao fim do prazo.
+ */
+export type ContaDasCondicoes = {
+  /** as condições numa linha ("Desconto de R$ 200,00/mês até mar/2027 · Ativação em 6 vezes, a partir de mar/2027") */
+  texto: string;
+  /** o 1º mês do contrato (AAAA-MM) e se ele é o do Ganho (falso: o de hoje, de exemplo) */
+  desde: string;
+  doGanho: boolean;
+  /** o mês do calendário de cada mês do contrato */
+  meses: string[];
+  /** o desconto na mensalidade de cada mês do contrato */
+  descontos: number[];
+  /** o desconto que não acaba (o sem prazo): a sobra, a margem e o sinal já são com ele */
+  descontoSemPrazo: number;
+  /** o que o cliente paga por mês depois dos descontos com prazo (a mensalidade menos o sem prazo) */
+  mensalComDesconto: number;
+  /** o desconto somado no contrato */
+  descontoNoContrato: number;
+  /** cada desconto: de que mês a que mês (no contrato), quanto e a sobra por mês enquanto ele vale */
+  faixas: Array<{ de: string; ate: string | null; valor: number; mesesNoContrato: number; sobra: number }>;
+  /** a ativação combinada: o desconto nela, em quantas vezes e o mês do contrato da 1ª parcela (1 = o 1º) — nula: a do cenário */
+  ativacao: { desconto: number; vezes: number; mes: number; aPartirDe: string | null } | null;
 };
 
 export type ContasDoCenario = {
@@ -1050,6 +1132,8 @@ export type ContasDoCenario = {
   linhas: LinhaNaConta[];
   /** os nomes das linhas que ainda não têm valor */
   faltam: string[];
+  /** as Condições especiais da negociação na conta (2.4.4); nulo sem elas */
+  condicoes: ContaDasCondicoes | null;
 };
 
 /**
@@ -1142,7 +1226,11 @@ function juntarOHelena<T extends { nome: string; custo: number; produto: string 
   return fora;
 }
 
-export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): ContasDoCenario {
+/**
+ * A conta do cenário. `condicoes` (2.4.4): as Condições especiais da negociação ligada — o desconto na mensalidade de cada
+ * mês e a ativação combinada (veja o começo do arquivo); sem elas, a conta de sempre.
+ */
+export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal, condicoes?: CondicoesNoSimulador | null): ContasDoCenario {
   const imposto = c.imposto / 100;
   let aluguel = 0; let vendaDeAparelhos = 0; let custoUnico = 0; let custoMensalFixo = 0; let pctMensalidade = 0; let pctAtivacao = 0;
   const faltam: string[] = [];
@@ -1197,17 +1285,36 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   }
   const mensalTotal = c.mensalidade + aluguel;
   const entradaTotal = c.ativacao + vendaDeAparelhos;
-  const impostoMensal = imposto * mensalTotal;
-  const comissaoMensal = pctMensalidade * mensalTotal;
+  const prazo = Math.max(1, Math.floor(c.prazo));
+
+  // as Condições especiais (2.4.4): o desconto de cada mês, o sem prazo (que não acaba) e a ativação combinada
+  const cond = condicoes && (condicoes.condicoes.descontos.length || condicoes.condicoes.ativacao) ? condicoes : null;
+  const descontos = cond ? descontosDosMeses(cond, mensalTotal, prazo) : [];
+  const ultimoDesconto = cond?.condicoes.descontos[cond.condicoes.descontos.length - 1];
+  const descontoSemPrazo = ultimoDesconto && ultimoDesconto.ate === null ? Math.min(mensalTotal, ultimoDesconto.valor) : 0;
+  const combinada = cond?.condicoes.ativacao ?? null;
+  const descontoDaAtivacao = combinada ? Math.min(entradaTotal, combinada.desconto ?? 0) : 0;
+  // o que o cliente paga por mês depois dos descontos com prazo (a sobra, a margem e o sinal são deste) e a ativação paga
+  const mensalPago = mensalTotal - descontoSemPrazo;
+  const entradaPaga = entradaTotal - descontoDaAtivacao;
+
+  const taxaMensal = imposto + pctMensalidade;
+  const impostoMensal = imposto * mensalPago;
+  const comissaoMensal = pctMensalidade * mensalPago;
   const custoMensal = custoMensalFixo + impostoMensal + comissaoMensal;
-  const sobraMensal = mensalTotal - custoMensal;
-  const vezes = Math.min(Math.max(1, c.parcelas), Math.max(1, c.prazo));
-  const parcelas = dividirEmParcelas(entradaTotal, vezes);
+  const sobraMensal = mensalPago - custoMensal;
+  // a ativação: a combinada nas condições (as vezes dela e o mês da 1ª parcela) ou a do cenário (do 1º mês, não mais que o prazo)
+  const vezes = combinada ? Math.max(1, combinada.vezes) : Math.min(Math.max(1, c.parcelas), Math.max(1, c.prazo));
+  const inicio = combinada?.aPartirDe && cond && combinada.aPartirDe > cond.desde ? mesesEntre(cond.desde, combinada.aPartirDe) : 0;
+  const parcelas = dividirEmParcelas(entradaPaga, vezes);
+  const parcelaDoMes = (i: number) => { const j = i - inicio; return j >= 0 && j < parcelas.length ? parcelas[j]! : 0; };
+  const descontoDoMes = (i: number) => descontos[i] ?? 0;
+  // a sobra de um mês: a de sempre, mais o que o desconto daquele mês tira (ou devolve) em relação ao sem prazo
+  const sobraDoMes = (i: number) => { const d = descontoDoMes(i) - descontoSemPrazo; return d ? sobraMensal - d * (1 - taxaMensal) : sobraMensal; };
   const retidoDaEntrada = imposto + pctAtivacao;
 
   // o que sai em cada mês pelos custos de uma vez (o 1º mês é o da assinatura): tudo no 1º, menos as parcelas dos
   // aparelhos comprados parcelado, que saem nos meses seguintes (a primeira leva o resto da divisão, como na ativação)
-  const prazo = Math.max(1, Math.floor(c.prazo));
   const saidas = Array.from({ length: prazo }, (_, i) => (i === 0 ? custoUnico : 0));
   for (const compra of compras) {
     saidas[0]! -= compra.total;
@@ -1218,8 +1325,9 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   const serieExata: number[] = [];
   let acumulado = 0;
   for (let i = 0; i < prazo; i++) {
-    acumulado += sobraMensal - saidas[i]!;
-    if (i < parcelas.length) acumulado += parcelas[i]! * (1 - retidoDaEntrada);
+    acumulado += sobraDoMes(i) - saidas[i]!;
+    const parcela = parcelaDoMes(i);
+    if (parcela) acumulado += parcela * (1 - retidoDaEntrada);
     serieExata.push(acumulado);
   }
   const serie = serieExata.map((v) => Math.round(v));
@@ -1231,8 +1339,8 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   if (ultimoNegativo === -1) {
     // nunca no vermelho: sem nada de uma vez e sem ativação, desde o 1º mês; a ativação cobrindo sozinha o que sai
     // na assinatura, já na ativação; senão, com a 1ª mensalidade, em 1 mês
-    sePagaEm = custoUnico === 0 && entradaTotal === 0 ? { tipo: 'sem-custo' }
-      : Math.round((parcelas[0] ?? 0) * (1 - retidoDaEntrada) - saidas[0]!) >= 0 ? { tipo: 'entrada' }
+    sePagaEm = custoUnico === 0 && entradaPaga === 0 ? { tipo: 'sem-custo' }
+      : Math.round(parcelaDoMes(0) * (1 - retidoDaEntrada) - saidas[0]!) >= 0 ? { tipo: 'entrada' }
         : { tipo: 'mes', mes: 1, depoisDoPrazo: false };
   } else if (ultimoNegativo < prazo - 1) sePagaEm = { tipo: 'mes', mes: ultimoNegativo + 2, depoisDoPrazo: false };
   else if (sobra > 0) sePagaEm = { tipo: 'mes', mes: prazo + Math.ceil(-serie[prazo - 1]! / sobra), depoisDoPrazo: true };
@@ -1244,11 +1352,15 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   // custos são o faturamento menos o lucro, repartidos nas partes
   const comprasDaLinha = deUmaVez.map((u) => (u.vezes > 1 ? dividirEmParcelas(Math.round(u.total), u.vezes) : null));
   const meses: MesDoContrato[] = serie.map((acumuladoDoMes, i) => {
-    const parcela = i < parcelas.length ? parcelas[i]! : 0;
-    const deQual = parcelas.length > 1 ? ` (parcela ${i + 1} de ${parcelas.length})` : '';
+    const parcela = parcelaDoMes(i);
+    const deQual = parcelas.length > 1 ? ` (parcela ${i - inicio + 1} de ${parcelas.length})` : '';
+    const desconto = descontoDoMes(i);
+    const pagoNoMes = mensalTotal - desconto;
     const entra: ParteDoMes[] = [];
     if (c.mensalidade) entra.push({ rotulo: 'Mensalidade', valor: c.mensalidade });
     if (aluguel) entra.push({ rotulo: 'Aluguel dos aparelhos', valor: aluguel });
+    // o desconto combinado (2.4.4): sai do faturamento do mês, com o sinal de menos
+    if (desconto) entra.push({ rotulo: `Desconto (${NOME_CONDICOES})`, valor: -desconto });
     if (parcela) {
       const doServico = vendaDeAparelhos ? Math.round((parcela * c.ativacao) / entradaTotal) : parcela;
       if (doServico) entra.push({ rotulo: `Ativação${deQual}`, valor: doServico });
@@ -1262,9 +1374,9 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
       else if (i === 0 && u.total) sai.push({ rotulo: u.nome, exato: u.total, produto: u.produto });
     });
     for (const m of mensaisNaTela) sai.push({ rotulo: m.nome, exato: m.custo, produto: m.produto });
-    if (imposto && mensalTotal + parcela) sai.push({ rotulo: 'Imposto', exato: imposto * (mensalTotal + parcela) });
+    if (imposto && pagoNoMes + parcela) sai.push({ rotulo: 'Imposto', exato: imposto * (pagoNoMes + parcela) });
     for (const p of dePercentual) {
-      const base = p.sobre === 'mensal' ? mensalTotal : parcela;
+      const base = p.sobre === 'mensal' ? pagoNoMes : parcela;
       if (p.pct && base) sai.push({ rotulo: p.nome, exato: p.pct * base });
     }
     const lucro = acumuladoDoMes - (i ? serie[i - 1]! : 0);
@@ -1274,40 +1386,63 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
     return {
       mes: i + 1, entra, faturamento, custos, lucro, acumulado: acumuladoDoMes,
       sai: sai.map((x, j) => ({ rotulo: x.rotulo, valor: valores[j]!, ...(x.produto ? { produto: x.produto } : {}) })),
+      ...(cond ? { calendario: mesMais(cond.desde, i), desconto } : {}),
     };
   });
 
-  const margem = mensalTotal > 0 ? sobraMensal / mensalTotal : null;
+  const margem = mensalPago > 0 ? sobraMensal / mensalPago : null;
   // o custo do mês, parte a parte (cada linha por mês, o imposto e cada comissão), somando o custo do mês ao centavo
   const partes: Array<{ rotulo: string; exato: number; produto?: string | null }> = [
     ...mensaisNaTela.map((m) => ({ rotulo: m.nome, exato: m.custo, produto: m.produto })),
     ...(impostoMensal ? [{ rotulo: 'Imposto', exato: impostoMensal }] : []),
-    ...dePercentual.filter((p) => p.sobre === 'mensal' && p.pct && mensalTotal).map((p) => ({ rotulo: p.nome, exato: p.pct * mensalTotal })),
+    ...dePercentual.filter((p) => p.sobre === 'mensal' && p.pct && mensalPago).map((p) => ({ rotulo: p.nome, exato: p.pct * mensalPago })),
   ];
   const valoresDasPartes = repartir(Math.round(custoMensal), partes.map((x) => x.exato));
   const partesDoCustoMensal: ParteDoMes[] = partes.map((x, j) => ({ rotulo: x.rotulo, valor: valoresDasPartes[j]!, ...(x.produto ? { produto: x.produto } : {}) }));
   const linhas = conta.map(({ sobre, pct, ...l }) => ({
     ...l,
-    custo: sobre === 'mensal' ? Math.round(pct * mensalTotal) : sobre === 'entrada' ? Math.round(pct * entradaTotal) : Math.round(l.custo),
+    custo: sobre === 'mensal' ? Math.round(pct * mensalPago) : sobre === 'entrada' ? Math.round(pct * entradaPaga) : Math.round(l.custo),
   }));
+
+  // o que a tela mostra das condições: os meses do calendário, cada desconto (os meses dele no contrato e a sobra enquanto vale)
+  let contaDasCondicoes: ContaDasCondicoes | null = null;
+  if (cond) {
+    const mesesDoCalendario = Array.from({ length: prazo }, (_, i) => mesMais(cond.desde, i));
+    const deCadaUm = mesesDosDescontos(cond.condicoes.descontos, cond.desde);
+    contaDasCondicoes = {
+      texto: textoDasCondicoes(cond.condicoes) ?? '', desde: cond.desde, doGanho: cond.doGanho, meses: mesesDoCalendario, descontos,
+      descontoSemPrazo, mensalComDesconto: mensalPago, descontoNoContrato: descontos.reduce((s, d) => s + d, 0),
+      faixas: cond.condicoes.descontos.map((d, k) => {
+        const f = deCadaUm[k]!;
+        const valor = Math.min(mensalTotal, d.valor);
+        return {
+          de: f.de, ate: f.ate, valor,
+          mesesNoContrato: mesesDoCalendario.filter((m) => f.de <= m && (f.ate === null || m <= f.ate)).length,
+          sobra: Math.round(sobraMensal - (valor - descontoSemPrazo) * (1 - taxaMensal)),
+        };
+      }),
+      ativacao: combinada ? { desconto: descontoDaAtivacao, vezes, mes: inicio + 1, aPartirDe: combinada.aPartirDe } : null,
+    };
+  }
   return {
     aluguel, vendaDeAparelhos, mensalTotal, entradaTotal, parcelas, custoUnico: Math.round(custoUnico),
     totalInvestido: linhas.filter((l) => l.quando === 'uma-vez').reduce((s, l) => s + l.custo, 0),
     saidas: saidas.map((v) => Math.round(v)), custoMensalFixo: Math.round(custoMensalFixo),
     impostoMensal: Math.round(impostoMensal), comissaoMensal: Math.round(comissaoMensal), custoMensal: Math.round(custoMensal), partesDoCustoMensal,
-    impostoDaEntrada: Math.round(imposto * entradaTotal), comissaoDaEntrada: Math.round(pctAtivacao * entradaTotal),
+    impostoDaEntrada: Math.round(imposto * entradaPaga), comissaoDaEntrada: Math.round(pctAtivacao * entradaPaga),
     sobraMensal: sobra, margem, sinal: margem == null ? null : sinalDaMargem(margem, faixas),
     serie, meses, investimento, sePagaEm, resultado: serie[serie.length - 1]!,
     linhas,
     faltam,
+    condicoes: contaDasCondicoes,
   };
 }
 
 /** O resumo do cenário: o que a lista, a negociação e os cenários lado a lado mostram. */
-export function resumoDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): ResumoDoCenario {
-  const k = contasDoCenario(c, faixas);
+export function resumoDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal, condicoes?: CondicoesNoSimulador | null): ResumoDoCenario {
+  const k = contasDoCenario(c, faixas, condicoes);
   return {
-    nome: c.nome, prazo: c.prazo, mensalTotal: k.mensalTotal, entradaTotal: k.entradaTotal, sobraMensal: k.sobraMensal,
+    nome: c.nome, prazo: c.prazo, mensalTotal: k.mensalTotal, mensalComDesconto: k.condicoes?.mensalComDesconto ?? k.mensalTotal, entradaTotal: k.entradaTotal, sobraMensal: k.sobraMensal,
     margem: k.margem, sinal: k.sinal, investimento: k.investimento, sePagaEm: k.sePagaEm, resultado: k.resultado, faltam: k.faltam.length,
   };
 }

@@ -341,3 +341,32 @@ continua a marcada com principal"* (sobre duas simulações na mesma negociaçã
   mês (o Mês a mês), as linhas do LineChat (a licença, os usuários, os canais, os agentes, os contatos e a
   transcrição) viram uma, **Helena**, com o total, no lugar da primeira. Os outros custos continuam um a um; o quadro
   do LineChat nos Custos mensais e o Excel continuam linha a linha.
+
+## Revisto no 2.4.4 (09/11/2026): o Simulador conta as Condições especiais da negociação
+
+O pedido (o documento do Luan de 09/11, com o print da simulação da Clínica SOS, ligada à CIG-77): *"esse cliente tinha
+uma condição especial, vc pode acessar pra ver se quiser, eu consedi um desconto para ele de 200 rais até março do ano que
+vem, isso ai vc já deveria contabilizar no simulador"*.
+
+- **A negociação ligada vem com as Condições especiais dela** (`NegociacaoDaSimulacao.condicoes`, montada por
+  `condicoesNoSimulador` no servidor, na prévia e na tela): o que foi combinado e o **1º mês de faturamento** — o mês do
+  Ganho; antes do Ganho, o mês de hoje, de exemplo (o mesmo do "Como fica a cobrança" da ficha, decisão 0058). Só entra o
+  que muda a conta (o desconto na mensalidade e a ativação combinada; a observação sozinha, não).
+- **A conta** (`contasDoCenario(c, faixas, condicoes)`): o 1º mês do contrato é o 1º mês de faturamento. O desconto na
+  mensalidade sai do faturamento de cada mês em que vale (`descontosDosMeses`; nunca mais que o que o cliente paga por mês),
+  e o imposto e a comissão recorrente andam com o que o cliente paga. A **ativação combinada** troca o "A ativação em" do
+  cenário: o desconto nela, as vezes e o mês da 1ª parcela (o imposto e a comissão da venda sobre o que se paga).
+- **A sobra por mês, a margem e o sinal** são os de depois dos descontos com prazo — com o desconto **sem prazo**, que não
+  acaba (o "O cliente paga por mês" mostra o valor com ele). O mês a mês, o "Sai antes", o "Se paga" e o que fica no contrato
+  contam cada mês como ele é. A margem das ganhas, no relatório do Comercial, usa o mesmo.
+- **O que vai para o card** (a principal) continua o valor cheio: o desconto fica nas condições da negociação.
+- **Na tela**: o cartão **Condições especiais · CIG-77** embaixo dos números (cada desconto com os meses dele no contrato e
+  a sobra enquanto vale; a ativação; o desconto no contrato; de onde vem o 1º mês); a linha "Com o desconto, até mar/2027:
+  R$ … por mês" embaixo da sobra; o "A ativação em" travado com "pelas Condições especiais" quando a ativação foi combinada;
+  no mês a mês, o mês do calendário de cada mês, a marca "desconto" e, no detalhe, o desconto em vermelho com o sinal de menos.
+- **No Excel**: o desconto sem prazo, o desconto na ativação e o mês da 1ª parcela são células amarelas (as linhas 12 a 14),
+  as vezes da ativação são as combinadas, e o mês a mês ganha a coluna do desconto de cada mês (G, amarela) e o mês (H).
+  Conferido no LibreOffice (as fórmulas refeitas, com os valores guardados apagados): os mesmos números da tela, em quatro
+  casos (o da Clínica SOS; o sem prazo com a ativação combinada, os aparelhos vendidos, alugados e comprados parcelado; só a
+  ativação combinada; e sem condições).
+- As condições mudam só na ficha da negociação; a simulação aberta lê de novo quando abre.

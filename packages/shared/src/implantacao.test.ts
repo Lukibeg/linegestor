@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
+import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type Obrigatorio } from './atendimento.js';
 import {
   etapaDoFimDaImplantacao,
   gruposDoPainel, gruposNaLateral, mesmoGrupo,
@@ -369,5 +369,41 @@ describe('o histórico da implantação', () => {
     expect(textoDoEvento('implantacao', { acao: 'abriu', codigo: 'IMP-3', painel: 'Implantação', clienteNovo: true, cliente: 'Padaria Sol', produtos: ['LineChat', 'LinePBX'] }))
       .toBe('abriu a implantação IMP-3 no painel Implantação (criou o cliente Padaria Sol; LineChat e LinePBX no cadastro)');
     expect(textoDoEvento('implantacao', { acao: 'veio', codigo: 'CIG-12', titulo: 'Padaria Sol' })).toBe('veio da negociação CIG-12 (Padaria Sol)');
+  });
+});
+
+describe('o que falta na parte e o anexo que conta (2.4.4)', () => {
+  // o Luan: "Ficou legal o contabilizador mas eu quero algo que sinalize tbm na opção que ta faltando" e "Creio um
+  // documento tem q contar como preenchido o campo"
+  it('cada parte diz os campos que faltam, na ordem em que aparecem (o vazio e as caixinhas com alguma por marcar)', () => {
+    const [cur, conf] = partesDoChamado(CAMPOS, ['chat', 'pbx'], { geral: 'ok', 'conf-chat': ['a', 'b'], 'conf-pbx': ['x'] });
+    expect(cur!.faltam).toEqual(['usuarios', 'ramais']);
+    // as caixinhas do LineChat estão todas marcadas (a desativada não conta); as do LinePBX, não; os módulos nunca faltam
+    expect(conf!.faltam).toEqual(['conf-pbx']);
+  });
+
+  it('o campo de texto com um arquivo anexado conta como feito, sem nada escrito', () => {
+    const valores = { geral: 'ok' };
+    expect(progressoDasPartes(CAMPOS, ['chat', 'pbx'], valores)[0]).toEqual({ parte: 'Curadoria', feitos: 1, total: 3 });
+    // o "Estrutura do chatbot" do print: dois PDFs e "Ainda não escrito."
+    const [cur] = partesDoChamado(CAMPOS, ['chat', 'pbx'], valores, [], ['usuarios']);
+    expect([cur!.feitos, cur!.total, cur!.faltam]).toEqual([2, 3, ['ramais']]);
+    expect(progressoDasPartes(CAMPOS, ['chat', 'pbx'], valores, [], new Set(['usuarios', 'ramais']))[0]).toEqual({ parte: 'Curadoria', feitos: 3, total: 3 });
+    expect(contaDoCampo(campo('t', { tipo: 'texto_longo' }), null, null, ['t'])).toEqual({ feitos: 1, total: 1 });
+    // nas caixinhas, o anexo vai na caixinha: não marca nada
+    expect(contaDoCampo(CAMPOS[3]!, [], null, ['conf-chat'])).toEqual({ feitos: 0, total: 2 });
+  });
+});
+
+describe('o anexo conta como preenchido no que a etapa pede (2.4.4)', () => {
+  it('o campo pedido com um arquivo anexado não falta', () => {
+    const dados = {
+      tipoChamado: 'chamado' as const, clienteId: null, contatoNome: null, contatoTelefone: null, relato: null, descricao: null, assuntoId: null, tipo: null,
+      gravidade: null, alcance: null, prioridade: null, produtos: [], operadoras: [], responsavelId: 'u1', solucao: null, causa: null, validacao: null,
+      checklist: [], tempoMinutos: 0, campos: {},
+    };
+    const etapa = { tipo: 'andamento' as const, obrigatorios: ['campo:chatbot' as Obrigatorio] };
+    expect(faltaParaEtapa(dados, etapa)).toEqual(['campo:chatbot']);
+    expect(faltaParaEtapa({ ...dados, camposComAnexo: ['chatbot'] }, etapa)).toEqual([]);
   });
 });

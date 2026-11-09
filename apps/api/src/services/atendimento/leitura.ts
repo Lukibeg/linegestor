@@ -50,8 +50,8 @@ const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 //  OS PEDAÇOS QUE A ESCRITA TAMBÉM USA
 // =====================================================================
 
-/** O chamado na forma que a regra dos obrigatórios (`faltaParaEtapa`) entende. */
-export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number): DadosObrigatorios {
+/** O chamado na forma que a regra dos obrigatórios (`faltaParaEtapa`) entende. `camposComAnexo` (2.4.4): o anexo conta como preenchido. */
+export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number, camposComAnexo: readonly string[] = []): DadosObrigatorios {
   return {
     tipoChamado: t.kind as TipoChamado,
     clienteId: t.clientId, contatoNome: t.contactName, contatoTelefone: t.contactPhone, contatoEmail: t.contactEmail,
@@ -64,6 +64,7 @@ export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number): DadosObriga
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
     tempoMinutos,
     campos: (t.customFields as ValoresDosCampos | null) ?? {},
+    camposComAnexo,
     valor: t.valueCents ?? null, ativacao: t.setupCents ?? null, empresa: t.prospect ?? null, motivoPerda: t.lostReason ?? null,
   };
 }
@@ -486,7 +487,8 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
 
   // o que falta para cada etapa e os filhos que travam
   const totalMinutos = tempo.reduce((s, i) => s + i.minutes, 0);
-  const dados = dadosDaLinha(t, totalMinutos);
+  // os campos com um arquivo anexado contam como preenchidos (2.4.4)
+  const dados = dadosDaLinha(t, totalMinutos, [...new Set(anexos.filter((a) => a.fieldId && !a.optionId && !a.noteId).map((a) => a.fieldId!))]);
   // de onde ele está (2.2: sair da entrada pede o responsável)
   const aqui = painel.etapas.find((e) => e.id === t.stageId);
   const faltam = Object.fromEntries(painel.etapas.map((e) => [e.id, faltaParaEtapa(dados, e, { de: aqui, painel })]));

@@ -9,7 +9,7 @@
  */
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
-  carriers, clients, newId, productModules, products, roles, ticketEvents, ticketFields, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
+  carriers, clients, newId, productModules, products, roles, ticketAttachments, ticketEvents, ticketFields, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
@@ -229,7 +229,23 @@ export type Parentes = {
   incidentes: Map<string, number>;
   anotacoes: Map<string, number>;
   codigos: Map<string, string>;
+  /** os campos de cada chamado com um arquivo anexado (2.4.4: contam como feitos na parte); sem o mapa, nenhum */
+  camposComAnexo?: Map<string, string[]>;
 };
+
+/**
+ * Os campos com anexo de cada chamado (2.4.4, o Luan: "um documento tem q contar como preenchido o campo"): os anexos do
+ * próprio campo (não os das caixinhas nem os das anotações), fora os tirados. `ids` nulo: todos os chamados.
+ */
+export async function camposComAnexoDe(db: Db, ids: string[] | null): Promise<Map<string, string[]>> {
+  if (ids && !ids.length) return new Map();
+  const linhas = await db.selectDistinct({ ticketId: ticketAttachments.ticketId, fieldId: ticketAttachments.fieldId }).from(ticketAttachments)
+    .where(and(isNotNull(ticketAttachments.fieldId), isNull(ticketAttachments.optionId), isNull(ticketAttachments.noteId), isNull(ticketAttachments.deletedAt),
+      ...(ids ? [inArray(ticketAttachments.ticketId, ids)] : [])));
+  const m = new Map<string, string[]>();
+  for (const l of linhas) m.set(l.ticketId, [...(m.get(l.ticketId) ?? []), l.fieldId!]);
+  return m;
+}
 
 /**
  * O chamado no quadro e na lista. Os campos do sistema que o painel desligou não aparecem (o valor fica
@@ -288,7 +304,8 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     // o lugar que a equipe escolheu arrastando (2.1: só vale onde a ordem é à mão)
     ordemNoQuadro: t.boardPosition ?? null,
     // as partes da ficha (2.3, a implantação), com a conta de cada uma: só dos campos do produto que o chamado tem
-    partes: progressoDasPartes(camposDoPainel(ctx, t.panelId, true), usa('produtos') ? t.productIds : [], t.customFields as ValoresDosCampos | null, painel?.ajustes.partes),
+    partes: progressoDasPartes(camposDoPainel(ctx, t.panelId, true), usa('produtos') ? t.productIds : [], t.customFields as ValoresDosCampos | null, painel?.ajustes.partes,
+      par.camposComAnexo?.get(t.id) ?? []),
   };
 }
 
@@ -299,11 +316,13 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
 export async function carregarCartoes(db: Db, ator: Ator, ctx: Contexto, opts: { incluirLixeira?: boolean } = {}): Promise<CartaoParaLista[]> {
   const visiveis = ctx.paineis.filter((p) => podeVerPainel(p, ator)).map((p) => p.id);
   if (!visiveis.length) return [];
-  const [linhas, notas] = await Promise.all([
+  const [linhas, notas, comAnexo] = await Promise.all([
     db.select().from(tickets).where(opts.incluirLixeira ? sql`true` : isNull(tickets.deletedAt)),
     db.select({ ticketId: ticketNotes.ticketId, n: sql<number>`count(*)::int` }).from(ticketNotes).where(isNull(ticketNotes.deletedAt)).groupBy(ticketNotes.ticketId),
+    camposComAnexoDe(db, null),
   ]);
   const par = parentesDe(linhas, ctx, new Map(notas.map((n) => [n.ticketId, Number(n.n)])));
+  par.camposComAnexo = comAnexo;
   return linhas
     .filter((t) => visiveis.includes(t.panelId))
     .map((t) => {
@@ -332,15 +351,17 @@ export async function cartoesDe(db: Db, ctx: Contexto, ids: string[]): Promise<M
   if (!ids.length) return new Map();
   const linhas = await db.select().from(tickets).where(inArray(tickets.id, ids));
   // os filhos e os incidentes destes (para as contagens), e os códigos do pai e do problema
-  const [filhosEIncidentes, notas] = await Promise.all([
+  const [filhosEIncidentes, notas, comAnexo] = await Promise.all([
     db.select().from(tickets).where(and(isNull(tickets.deletedAt), or(inArray(tickets.parentId, ids), inArray(tickets.problemId, ids)))),
     db.select({ ticketId: ticketNotes.ticketId, n: sql<number>`count(*)::int` }).from(ticketNotes).where(and(isNull(ticketNotes.deletedAt), inArray(ticketNotes.ticketId, ids))).groupBy(ticketNotes.ticketId),
+    camposComAnexoDe(db, ids),
   ]);
   const refs = [...new Set(linhas.flatMap((t) => [t.parentId, t.problemId]).filter((x): x is string => !!x))];
   const outros = refs.length ? await db.select({ id: tickets.id, code: tickets.code }).from(tickets).where(inArray(tickets.id, refs)) : [];
   // um chamado pedido pode ser também filho (ou incidente) de outro pedido: entra uma vez só na conta
   const semRepetir = [...new Map([...linhas, ...filhosEIncidentes].map((t) => [t.id, t])).values()];
   const par = parentesDe(semRepetir, ctx, new Map(notas.map((n) => [n.ticketId, Number(n.n)])));
+  par.camposComAnexo = comAnexo;
   for (const o of outros) par.codigos.set(o.id, o.code);
   return new Map(linhas.map((t) => [t.id, cartaoDaLinha(t, ctx, par)]));
 }

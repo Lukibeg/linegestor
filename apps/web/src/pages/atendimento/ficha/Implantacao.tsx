@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react';
 import { ChevronRight, ClipboardList, Rocket } from 'lucide-react';
 import { chaveDoCampo, ehCaixinhas, gruposNaLateral, paraBusca, partesDoChamado, type BlocoDaParte, type CampoPersonalizado, type ParteDoChamado } from '@gestor/shared';
 import { ChipSituacao, CodigoChamado, painelDe } from '../comum.js';
-import { Secao, useAberta } from './base.js';
+import { FaltaNaParte, Secao, useAberta } from './base.js';
 import { Caixinhas } from './Caixinhas.js';
 import { CampoNaFicha } from './Classificacao.js';
 import { BlocoDoCampo } from './Textos.js';
@@ -21,7 +21,10 @@ export function PartesDoChamado() {
   const { f, opcoes, etapa, faltando, painel } = useAberta();
   const produtos = useMemo(() => f.produtos.map((p) => p.id), [f.produtos]);
   const grupos = painel?.ajustes.partes;
-  const partes = useMemo(() => partesDoChamado(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, f.campos, grupos ?? []), [opcoes.campos, f.painelId, produtos, f.campos, grupos]);
+  // o campo com um arquivo anexado conta como feito (2.4.4: "um documento tem q contar como preenchido o campo")
+  const comAnexo = useMemo(() => (f.anexosDosCampos ?? []).filter((a) => !a.opcaoId).map((a) => a.campoId), [f.anexosDosCampos]);
+  const partes = useMemo(() => partesDoChamado(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, f.campos, grupos ?? [], comAnexo),
+    [opcoes.campos, f.painelId, produtos, f.campos, grupos, comAnexo]);
   if (!partes.length) return null;
   const daEtapa = etapa ? partes.find((p) => paraBusca(p.nome) === paraBusca(etapa.nome)) : undefined;
   // fora das etapas com o nome de uma parte (o Stand By, o Concluído, o Implantado), todas abertas; o que a próxima etapa pede, também
@@ -40,6 +43,8 @@ function Parte({ p, atual, abertaDeInicio }: { p: ParteDoChamado; atual: boolean
   const [aberta, setAberta] = useState(abertaDeInicio);
   const pct = p.total ? Math.round((p.feitos / p.total) * 100) : 0;
   const id = `parte-${paraBusca(p.nome).replace(/[^a-z0-9]+/g, '-')}`;
+  // os campos que faltam (2.4.4): a bolinha vermelha antes do nome de cada um
+  const faltam = useMemo(() => new Set(p.faltam.map(chaveDoCampo)), [p.faltam]);
   return (
     <section id={id} className={`card min-w-0 scroll-mt-20 ${atual ? 'ring-2 ring-accent-soft' : ''}`} aria-label={`A parte ${p.nome}`}>
       <button type="button" className="w-full flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 py-3 text-left rounded-[inherit] hover:bg-surface-2/60"
@@ -58,9 +63,11 @@ function Parte({ p, atual, abertaDeInicio }: { p: ParteDoChamado; atual: boolean
         )}
       </button>
       {aberta && (
-        <div id={`${id}-corpo`} className="px-4 pb-4 flex flex-col gap-4">
-          {p.blocos.map((b) => <Bloco key={b.produtoId ?? '-'} b={b} parte={p.nome} />)}
-        </div>
+        <FaltaNaParte.Provider value={faltam}>
+          <div id={`${id}-corpo`} className="px-4 pb-4 flex flex-col gap-4">
+            {p.blocos.map((b) => <Bloco key={b.produtoId ?? '-'} b={b} parte={p.nome} />)}
+          </div>
+        </FaltaNaParte.Provider>
       )}
     </section>
   );

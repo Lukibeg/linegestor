@@ -20,7 +20,7 @@ import { api } from '../../../api/index.js';
 import { Campo, Chip, EscolherComBusca, Modal, Spinner } from '../../../components/ui/index.js';
 import { Avatar, assuntosEmPastas, useIncluirOpcao, usePode } from '../comum.js';
 import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
-import { ErroPerto, MarcaFalta, Secao, useAberta, useAcao, usePosicaoFlutuante } from './base.js';
+import { BolinhaDoQueFalta, ErroPerto, MarcaFalta, Secao, useAberta, useAcao, usePosicaoFlutuante } from './base.js';
 import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
 import { Caixinhas } from './Caixinhas.js';
 
@@ -30,6 +30,7 @@ function Linha({ id, campo, rotulo, ocupado, erro, children, extra }: { id: stri
   return (
     <div id={id} className={`rounded-md scroll-mt-24 transition-shadow ${faltando.has(campo) ? 'border-l-[3px] border-signal pl-2' : ''}`}>
       <div className="flex flex-wrap items-center gap-1.5 mb-1">
+        <BolinhaDoQueFalta campo={campo} />
         <span className="label mb-0">{rotulo}</span>
         <MarcaFalta campo={campo} />
         {ocupado && <Spinner className="!w-3.5 !h-3.5" />}

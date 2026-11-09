@@ -29,8 +29,20 @@ import {
 
 /** Um bloco de uma parte: os campos de um produto (ou os de todo chamado, sem produto). */
 export type BlocoDaParte = { produtoId: string | null; campos: CampoPersonalizado[] };
-/** Uma parte da ficha, com os blocos e a conta do que já foi feito nela. */
-export type ParteDoChamado = { nome: string; blocos: BlocoDaParte[]; feitos: number; total: number };
+/**
+ * Uma parte da ficha, com os blocos e a conta do que já foi feito nela. `faltam`: os campos que ainda têm o que fazer (o
+ * vazio; as caixinhas com alguma por marcar), na ordem da parte — a bolinha vermelha da ficha (2.4.4).
+ */
+export type ParteDoChamado = { nome: string; blocos: BlocoDaParte[]; feitos: number; total: number; faltam: string[] };
+
+/**
+ * Os campos com anexo (2.4.4, o Luan: "um documento tem q contar como preenchido o campo"): o campo de texto com um arquivo
+ * anexado e sem nada escrito conta como feito na parte e como preenchido no que a etapa pede. Os anexos das caixinhas não
+ * entram (a caixinha conta pela marca).
+ */
+export type CamposComAnexo = ReadonlySet<string> | readonly string[];
+const temAnexo = (anexos: CamposComAnexo | null | undefined, id: string | undefined) =>
+  !!id && !!anexos && ('has' in anexos ? anexos.has(id) : anexos.includes(id));
 
 /** O nome da parte como se compara ("Configuração" e "configuracao" são a mesma). */
 const chaveDaParte = (p: string) => paraBusca(p.trim());
@@ -56,11 +68,11 @@ export function modulosDoChecklist(c: Pick<CampoPersonalizado, 'opcoes' | 'escol
  * Quanto um campo conta na parte: as caixinhas, cada opção (as marcadas e as que faltam, das ativas — a desativada que
  * ficou marcada conta como feita); os módulos do produto não contam (é a escolha do que o cliente vai usar, e não uma
  * tarefa), menos o checklist dos módulos (os escolhidos na Curadoria: cada um, feito quando marcado); o resto, um item,
- * feito quando preenchido.
+ * feito quando preenchido — ou quando tem um arquivo anexado (2.4.4: `anexos`, os campos com anexo).
  */
 export function contaDoCampo(
   c: Pick<CampoPersonalizado, 'tipo' | 'opcoes'> & Partial<Pick<CampoPersonalizado, 'id' | 'escolhidosEm'>>, v: ValorDoCampo | null | undefined,
-  valores?: ValoresDosCampos | null,
+  valores?: ValoresDosCampos | null, anexos?: CamposComAnexo | null,
 ): { feitos: number; total: number } {
   if (c.tipo === 'modulos' && c.escolhidosEm && c.id) {
     const marcadas = new Set(Array.isArray(v) ? v : []);
@@ -74,7 +86,7 @@ export function contaDoCampo(
     const opcoes = c.opcoes.filter((o) => o.ativa || marcadas.has(o.id));
     return { feitos: opcoes.filter((o) => marcadas.has(o.id)).length, total: opcoes.length };
   }
-  return { feitos: valorPreenchido(v) ? 1 : 0, total: 1 };
+  return { feitos: valorPreenchido(v) || temAnexo(anexos, c.id) ? 1 : 0, total: 1 };
 }
 
 /**
@@ -89,7 +101,7 @@ export function contaDoCampo(
  */
 export function partesDoChamado(
   campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined,
-  grupos: readonly GrupoDeCampos[] = [],
+  grupos: readonly GrupoDeCampos[] = [], anexos: CamposComAnexo = [],
 ): ParteDoChamado[] {
   const partes: ParteDoChamado[] = [];
   const porChave = new Map<string, ParteDoChamado>();
@@ -99,7 +111,7 @@ export function partesDoChamado(
   const parte = (nome: string) => {
     const k = chaveDaParte(nome);
     let p = porChave.get(k);
-    if (!p) { p = { nome: nome.trim(), blocos: [], feitos: 0, total: 0 }; porChave.set(k, p); partes.push(p); }
+    if (!p) { p = { nome: nome.trim(), blocos: [], feitos: 0, total: 0, faltam: [] }; porChave.set(k, p); partes.push(p); }
     return p;
   };
   for (const c of campos) {
@@ -110,9 +122,10 @@ export function partesDoChamado(
     let b = p.blocos.find((x) => x.produtoId === c.produtoId);
     if (!b) { b = { produtoId: c.produtoId, campos: [] }; p.blocos.push(b); }
     b.campos.push(c);
-    const conta = contaDoCampo(c, valores?.[c.id], valores);
+    const conta = contaDoCampo(c, valores?.[c.id], valores, anexos);
     p.feitos += conta.feitos;
     p.total += conta.total;
+    if (conta.feitos < conta.total) p.faltam.push(c.id);
   }
   for (const p of partes) {
     if (!porProduto.has(chaveDaParte(p.nome))) continue;
@@ -122,7 +135,10 @@ export function partesDoChamado(
   for (const p of partes) p.blocos.sort((a, b) => ordemDoProduto(a.produtoId) - ordemDoProduto(b.produtoId));
   // a ordem dos grupos do painel; as que não estão nos grupos, depois, na ordem dos campos
   const ordem = (p: ParteDoChamado) => { const i = grupos.findIndex((g) => chaveDaParte(g.nome) === chaveDaParte(p.nome)); return i < 0 ? grupos.length : i; };
-  return partes.map((p, i) => ({ p, i })).sort((a, b) => ordem(a.p) - ordem(b.p) || a.i - b.i).map((x) => x.p);
+  const fora = partes.map((p, i) => ({ p, i })).sort((a, b) => ordem(a.p) - ordem(b.p) || a.i - b.i).map((x) => x.p);
+  // o que falta, na ordem em que a parte mostra (os blocos já arrumados pelos produtos)
+  for (const p of fora) { const ids = new Set(p.faltam); p.faltam = p.blocos.flatMap((b) => b.campos.filter((c) => ids.has(c.id)).map((c) => c.id)); }
+  return fora;
 }
 
 /**
@@ -167,8 +183,9 @@ export const mesmoGrupo = (a: string | null | undefined, b: string | null | unde
 /** Só a conta de cada parte (o cartão do quadro e a lista). */
 export function progressoDasPartes(
   campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined, grupos: readonly GrupoDeCampos[] = [],
+  anexos: CamposComAnexo = [],
 ): ProgressoDaParte[] {
-  return partesDoChamado(campos, produtosDoChamado, valores, grupos).map((p) => ({ parte: p.nome, feitos: p.feitos, total: p.total }));
+  return partesDoChamado(campos, produtosDoChamado, valores, grupos, anexos).map((p) => ({ parte: p.nome, feitos: p.feitos, total: p.total }));
 }
 
 /**

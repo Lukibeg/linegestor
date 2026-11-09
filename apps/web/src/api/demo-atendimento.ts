@@ -380,7 +380,11 @@ export type AcessoDoCalendarioDemo = {
    * A negociação (o Simulador do Comercial, 2.0.2): o chamado fora da lixeira, pelo id ou pelo código, com a
    * empresa (o cliente ou a que ainda não é cliente) e o resultado da etapa (ganho, perdido).
    */
-  negociacao: (ref: string) => { id: string; codigo: string; titulo: string; painelId: string; empresa: string | null; resultado: 'ganho' | 'perdido' | null } | null;
+  negociacao: (ref: string) => {
+    id: string; codigo: string; titulo: string; painelId: string; empresa: string | null; resultado: 'ganho' | 'perdido' | null;
+    /** as Condições especiais (2.4.4: o Simulador conta) e o dia do Ganho (o 1º mês de faturamento) */
+    condicoes: CondicoesDaNegociacao | null; fechadoEm: string | null;
+  } | null;
   /**
    * O lembrete de um evento (2.0.2): o sininho de cada pessoa ativa, conforme os Ajustes dos avisos (o WhatsApp,
    * na prévia, não aparece em lugar nenhum). `lido`: o lembrete antigo dos exemplos já foi visto. Devolve quantos receberam.
@@ -644,7 +648,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       // o lugar que a equipe escolheu arrastando (2.1: só vale onde a ordem é à mão)
       ordemNoQuadro: t.ordemNoQuadro ?? null,
       // as partes da ficha (2.3, a implantação), com a conta de cada uma (como o servidor)
-      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos, p?.ajustes.partes ?? []),
+      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos, p?.ajustes.partes ?? [], camposComAnexo(t.id)),
     };
   }
 
@@ -809,8 +813,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       relato: t.relato, descricao: t.descricao, assuntoId: t.assuntoId, tipo: t.tipo, gravidade: t.gravidade, alcance: t.alcance, prioridade: t.prioridade,
       produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
       solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id), campos: t.campos,
+      camposComAnexo: camposComAnexo(t.id),
       valor: t.valor, ativacao: t.ativacao, empresa: t.empresa, motivoPerda: t.motivoPerda,
     };
+  }
+  /** Os campos do chamado com um arquivo anexado (2.4.4, como o servidor: contam como preenchidos; os das caixinhas não). */
+  function camposComAnexo(chamadoId: string): string[] {
+    return [...new Set(A.anexos.filter((a) => a.chamadoId === chamadoId && a.campoId && !a.opcaoId && !a.notaId && !a.deletedAt).map((a) => a.campoId!))];
   }
   /** Os campos do painel que vieram no pedido, conferidos (as mesmas mensagens do servidor). */
   function lerCampos(painel: Painel, pedidos: Record<string, unknown>, atuais: ValoresDosCampos = {}) {
@@ -5322,7 +5331,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         const r = etapaPorId(t.etapaId)?.resultado ?? null;
         return {
           id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, empresa: nomeCliente(t.clienteId) ?? t.empresa,
-          resultado: r === 'ganho' || r === 'perdido' ? r : null,
+          resultado: r === 'ganho' || r === 'perdido' ? r : null, condicoes: t.condicoes ?? null, fechadoEm: t.fechadoEm,
         };
       },
       levarDaSimulacao: (id, calcular) => {

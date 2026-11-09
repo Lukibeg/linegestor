@@ -161,6 +161,13 @@ A mesma venda em versões diferentes (comodato ou venda dos aparelhos, 12 ou 24 
   para a mexida por último, e o card fica com os valores que tem. A negociação ganha ou perdida não muda mais.
 - **A margem no relatório**: o relatório do Comercial (Comercial › Relatórios) tem **A margem das
   ganhas**: das ganhas do período que têm simulação, a margem do total e por produto.
+- **As Condições especiais da negociação entram na conta (2.4.4)**: o que foi combinado na ficha da negociação (o
+  desconto na mensalidade, com prazo ou sem, e a ativação combinada) já vem na simulação ligada a ela. O 1º mês do
+  contrato é o mês do Ganho (antes do Ganho, o mês de hoje). O mês a mês diz o mês do calendário, marca os meses com
+  desconto e mostra o desconto no detalhe; o cartão **Condições especiais**, embaixo dos números, diz a sobra nos meses
+  com desconto e o desconto no contrato. A **Sobra por mês**, a margem e o sinal são os de depois que os descontos com
+  prazo acabam (o desconto sem prazo já entra). Com a ativação combinada, o **A ativação em** fica travado: as vezes e o
+  mês da 1ª parcela vêm das condições. Para mudar, mude na ficha da negociação. O card continua com o valor cheio.
 
 ## O Excel
 
