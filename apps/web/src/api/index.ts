@@ -145,20 +145,24 @@ export type Api = {
     /** só quem tem admin.manage; vale para a equipe toda e vai para a auditoria */
     salvarArrumacaoRelatorios(a: { ordem: string[]; ocultos: string[]; favoritos: string[] }): Promise<T.ArrumacaoRelatoriosTela>;
   };
-  /** O envio automático do PDF dos Chamados pelo WhatsApp (1.7) */
+  /** O envio automático do PDF dos Chamados pelo WhatsApp (1.7; desde o 2.4.5, um envio por painel) */
   envio: {
     ajustes(): Promise<T.EnvioAjustesTela>;
     /** só a administração; o token (quando vem) vai para o cofre */
-    salvarAjustes(a: { ativo: boolean; url: string; remetente: string; horario: string; dias: number[]; destinatarios: Array<{ id: string; nome: string; numero: string; ativo: boolean }>; token?: string }): Promise<T.EnvioAjustesTela>;
-    marcados(): Promise<T.MarcadosEnvioTela>;
-    /** só a administração: o que vai no PDF, para a equipe toda */
-    salvarMarcados(m: { relatorios: string[]; graficos: string[] }): Promise<T.MarcadosEnvioTela>;
-    /** a página do PDF: com a chave do robô, ou com a sessão */
-    pacote(chave?: string): Promise<T.PacoteEnvio>;
-    enviar(destinatarioId?: string): Promise<T.RegistroEnvio>;
-    testar(destinatarioId?: string): Promise<T.RegistroEnvio>;
-    /** baixar o PDF de agora (null na prévia: não há servidor para montar) */
-    pdfUrl(): string | null;
+    salvarAjustes(a: {
+      url: string; remetente: string; concluirConversa: boolean; token?: string;
+      envios: Array<{ id: string; origem: string; ativo: boolean; horario: string; dias: number[]; destinatarios: Array<{ id: string; nome: string; numero: string; ativo: boolean }> }>;
+    }): Promise<T.EnvioAjustesTela>;
+    /** o que vai no PDF de uma origem (um painel, ou `legado`) */
+    marcados(origem?: string): Promise<T.MarcadosEnvioTela>;
+    /** só a administração: o que vai no PDF de uma origem, para a equipe toda */
+    salvarMarcados(m: { relatorios: string[]; graficos: string[] }, origem?: string): Promise<T.MarcadosEnvioTela>;
+    /** a página do PDF: com a chave do robô (que abre um envio), ou com a sessão (o envio, ou a origem) */
+    pacote(q: { chave?: string; envio?: string; origem?: string }): Promise<T.PacoteEnvio>;
+    enviar(envio: string, destinatarioId?: string): Promise<T.RegistroEnvio>;
+    testar(envio: string, destinatarioId?: string): Promise<T.RegistroEnvio>;
+    /** baixar o PDF de agora de um envio (null na prévia: não há servidor para montar) */
+    pdfUrl(envio: string): string | null;
     historicoPdfUrl(id: string): string | null;
   };
   data: {

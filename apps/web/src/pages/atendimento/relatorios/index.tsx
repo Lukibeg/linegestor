@@ -31,6 +31,7 @@ import {
 import { api } from '../../../api/index.js';
 import { Abas, Carregando, Chip, EscolherComBusca, mensagemErro, useToast, Vazio } from '../../../components/ui/index.js';
 import { data } from '../../../lib/format.js';
+import { OrigemDoEnvio } from '../../../lib/envio.js';
 import { usePode } from '../comum.js';
 import { CabecalhoDoPainel } from '../painel.js';
 import { PAINEL_DO_SUPORTE } from '../Suporte.js';
@@ -323,7 +324,7 @@ function OsRelatorios({ painel, opcoes }: { painel: Painel; opcoes: OpcoesAtendi
             aba === 'favoritos'
               ? <Vazio titulo="Nenhum favorito ainda" texto={pode.cuidar ? 'Clique em Organizar e marque a estrela nos relatórios que a equipe mais usa: eles aparecem aqui, na ordem que você escolher.' : 'Quem cuida dos chamados escolhe os favoritos em Organizar.'} />
               : <Vazio titulo="Nenhum relatório à vista nesta aba" texto={pode.cuidar ? 'Mostre de volta em Organizar.' : 'Quem cuida dos chamados mostra de volta em Organizar.'} />
-          ) : <Grade ids={naAba} render={(id) => relatorio(id, r)} />}
+          ) : <OrigemDoEnvio origem={painel.id}><Grade ids={naAba} render={(id) => relatorio(id, r)} /></OrigemDoEnvio>}
           {escondidosDaAba.length > 0 && naAba.length > 0 && (
             <p className="text-[12.5px] text-muted mt-4 flex flex-wrap items-center gap-x-2 gap-y-1">
               <EyeOff size={13} className="shrink-0" aria-hidden />

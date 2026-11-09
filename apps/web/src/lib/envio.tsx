@@ -3,11 +3,15 @@
  * pedido do Luan em 04/10: "mais singelo") que marca um gráfico dos Chamados ou um relatório para ir no PDF
  * que sai todo dia pelo WhatsApp. Só aparece para quem administra (a marcação vale para a equipe
  * toda e vai para a auditoria), e some na própria página do PDF e na impressão.
+ *
+ * Desde o 2.4.5 (decisão 0061), o botão marca para o envio **de um painel** (`origem`): nos gráficos da Visão geral
+ * e nos 25 relatórios de cada painel; sem a origem, o Legado do Helena, como antes. Os relatórios de um painel podem
+ * pôr a origem para todos os de dentro (`OrigemDoEnvio`).
  */
 import { createContext, useContext, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Send } from 'lucide-react';
-import { RELATORIOS_DO_ENVIO } from '@gestor/shared';
+import { ORIGEM_LEGADO, RELATORIOS_DO_ENVIO, RELATORIOS_DO_ENVIO_DO_PAINEL } from '@gestor/shared';
 import { api } from '../api/index.js';
 import { mensagemErro, useToast } from '../components/ui/index.js';
 import { useAuth } from './auth.js';
@@ -18,22 +22,34 @@ export function SemBotaoDeEnvio({ children }: { children: ReactNode }) {
   return <Mostrar.Provider value={false}>{children}</Mostrar.Provider>;
 }
 
-export function BotaoEnvio({ tipo, id, titulo }: { tipo: 'relatorio' | 'grafico'; id: string; titulo: string }) {
+/** A origem do envio para os botões de dentro (os relatórios de um painel, 2.4.5). */
+const Origem = createContext<string | null>(null);
+export function OrigemDoEnvio({ origem, children }: { origem: string; children: ReactNode }) {
+  return <Origem.Provider value={origem}>{children}</Origem.Provider>;
+}
+/** A origem que os relatórios de dentro de `OrigemDoEnvio` marcam (null: nenhuma, o Legado). */
+export const useOrigemDoEnvio = () => useContext(Origem);
+
+export function BotaoEnvio({ tipo, id, titulo, origem: daProp }: { tipo: 'relatorio' | 'grafico'; id: string; titulo: string; origem?: string }) {
   const mostrar = useContext(Mostrar);
+  const doContexto = useContext(Origem);
+  const origem = daProp ?? doContexto ?? ORIGEM_LEGADO;
   const { can } = useAuth();
-  const pode = mostrar && can('admin.manage') && (tipo === 'grafico' || RELATORIOS_DO_ENVIO.includes(id));
+  const relatorios = origem === ORIGEM_LEGADO ? RELATORIOS_DO_ENVIO : RELATORIOS_DO_ENVIO_DO_PAINEL;
+  const pode = mostrar && can('admin.manage') && (tipo === 'grafico' || relatorios.includes(id));
   const qc = useQueryClient();
   const toast = useToast();
-  const q = useQuery({ queryKey: ['envio', 'marcados'], queryFn: () => api.envio.marcados(), enabled: pode, staleTime: 60_000 });
+  const q = useQuery({ queryKey: ['envio', 'marcados', origem], queryFn: () => api.envio.marcados(origem), enabled: pode, staleTime: 60_000 });
   const salvar = useMutation({
-    mutationFn: (m: { relatorios: string[]; graficos: string[] }) => api.envio.salvarMarcados(m),
+    mutationFn: (m: { relatorios: string[]; graficos: string[] }) => api.envio.salvarMarcados(m, origem),
     onSuccess: (m) => {
-      qc.setQueryData(['envio', 'marcados'], m);
+      qc.setQueryData(['envio', 'marcados', origem], m);
       void qc.invalidateQueries({ queryKey: ['envio', 'ajustes'] });
       const agora = (tipo === 'relatorio' ? m.relatorios : m.graficos).includes(id);
+      const deQual = origem === ORIGEM_LEGADO ? 'do Legado do Helena' : 'deste painel';
       toast.push('ok', agora
-        ? `"${titulo}" vai no PDF do envio diário. Os números e o horário ficam em Administração › Envio automático.`
-        : `"${titulo}" saiu do envio diário.`);
+        ? `"${titulo}" vai no PDF do envio diário ${deQual}. Os números e o horário ficam em Administração › Envio automático.`
+        : `"${titulo}" saiu do envio diário ${deQual}.`);
     },
     onError: (e) => toast.push('erro', mensagemErro(e)),
   });

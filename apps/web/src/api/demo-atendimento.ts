@@ -49,7 +49,7 @@ import {
   NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato, type OutroContato,
   AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNoQuadro, compararNoQuadroDeGestao, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar, painelComOrdemAMao, PosicaoNoQuadroSchema, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
-  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel, visaoDoPainel,
+  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, arrumacaoCompleta, filtroDosRelatoriosDoEnvio, relatoriosDoPainel, visaoDoPainel,
   type FiltroDaVisao, type VisaoDoPainel,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type RelatoriosDoPainel,
   chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor, painelContaPrazo, AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA, nomeDoPainelDeGestaoNovo, tipoParaOPainelDoHelena,
@@ -338,7 +338,23 @@ type Instancia = {
   chamadosDoContato: (clienteId: string, whatsapp: string) => number;
   calendario: AcessoDoCalendarioDemo;
   helena: AcessoDoHelenaDemo;
+  envio: AcessoDoEnvioDemo;
 };
+
+/**
+ * O que o envio automático da prévia (demo.ts, 2.4.5) usa dos painéis: os de chamados (as origens) e o que o PDF
+ * de um painel leva, como o `paraOEnvio` do servidor — a Visão geral de hoje e, com relatórios marcados, os 25
+ * com o período = hoje; e a arrumação da equipe.
+ */
+export type AcessoDoEnvioDemo = {
+  paineis: () => Array<{ id: string; nome: string; sigla: string; ativo: boolean }>;
+  paraOEnvio: (painelId: string, comRelatorios: boolean) => { visao: VisaoDoPainel; relatorios: RelatoriosDoPainel | null; arrumacao: ArrumacaoDosRelatorios };
+};
+/** O envio automático da prévia lê os painéis e as contas daqui. */
+export function acessoDoEnvioDemo(): AcessoDoEnvioDemo {
+  if (!instancia) throw naoAchado('Painel');
+  return instancia.envio;
+}
 
 /**
  * O que a prévia do Trazer do Helena (demo-helena.ts, 2.0.3) usa dos chamados: os painéis de Vendas que podem
@@ -5311,6 +5327,22 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     diagnostico: () => {
       semear();
       return { erros: [...A.erros], chamados: A.chamados.length, historico: A.chamados.filter((t) => A.historico.has(t.id)).map((t) => t.codigo) };
+    },
+    envio: {
+      paineis: () => { preparar(); return paineis().filter((p) => p.tipo !== 'vendas').map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, ativo: p.ativo })); },
+      paraOEnvio: (painelId, comRelatorios) => {
+        preparar();
+        const achado = paineis().find((p) => p.id === painelId);
+        if (!achado) throw naoAchado('Painel');
+        if (!achado.ativo) throw bad(`O painel ${achado.nome} está desativado: reative o painel ou tire o envio dele.`);
+        const painel = painelDosRelatorios({ tipo: 'integracao', id: 'envio-automatico', nome: 'Envio automático' }, painelId);
+        const arrumacao = arrumacaoGuardada(painel.id);
+        const { chamados, contexto } = baseDosRelatoriosDemo(painel);
+        const agora = agoraReal();
+        const visao = visaoDoPainel(chamados, contexto, FiltroDaVisaoSchema.parse({ painel: painel.id, parte: 'hoje' }), agora);
+        const relatorios = comRelatorios ? relatoriosDoPainel(chamados, contexto, FiltroDosRelatoriosSchema.parse(filtroDosRelatoriosDoEnvio(painel.id, visao.hoje)), agora) : null;
+        return { visao: { ...visao, lista: { ...visao.lista, itens: [] } }, relatorios, arrumacao };
+      },
     },
     calendario: {
       preparar, eu, atorDaPessoa, paineis, podeVerPainel,

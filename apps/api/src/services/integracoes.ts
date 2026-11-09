@@ -155,9 +155,10 @@ const PADROES: Record<Assunto, unknown> = {
   // a arrumação da página de Relatórios (1.7): vazia = a ordem de fábrica, nada escondido, sem favoritos
   'chamados-relatorios-arrumacao': { ordem: [], ocultos: [], favoritos: [] },
   // o envio automático (1.7): desligado; o token da FlwChat fica no cofre (ver `envio.ts`)
+  // o envio automático: a ligação com a FlwChat; a lista de envios (2.4.5) fica fora do padrão de propósito — o
+  // guardado até o 2.4.4, sem a lista, é lido como ela (services/envio.ts, `lerAjustes`)
   'envio-automatico': {
-    ativo: false, url: 'https://api.flw.chat/chat/v1/message/send', remetente: '', horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
-    destinatarios: [], configuradoEm: null, configuradoPor: null, ultimoAgendado: null, historico: [],
+    url: 'https://api.flw.chat/chat/v1/message/send', remetente: '', concluirConversa: true, configuradoEm: null, configuradoPor: null, historico: [],
   },
   // o que vai no PDF do envio automático (1.7): marcado nos próprios gráficos e relatórios
   'envio-automatico-marcados': { relatorios: [], graficos: [], atualizadoEm: null, atualizadoPor: null },

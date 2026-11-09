@@ -94,28 +94,43 @@ export type RegistroEnvio = {
   ok: boolean; mensagem: string; pdf: { id: string; nome: string; bytes: number } | null; itens: string[];
   /** `conversa`: concluída depois de mandar, ou aberta (a FlwChat não deixou); sem ela, a opção estava desligada (2.0.1) */
   destinatarios: Array<{ nome: string; numero: string; ok: boolean; mensagem: string; conversa?: 'concluida' | 'aberta' }>;
+  /** de qual envio e de onde saiu (2.4.5; os de antes, o envio que havia, do Legado) */
+  envioId?: string | null; origem?: string | null; origemNome?: string | null;
 };
-/** Administração › Envio automático: os ajustes (sem o token, que fica no cofre), o que está marcado e o histórico. */
-export type EnvioAjustesTela = {
-  ativo: boolean; url: string; remetente: string; horario: string; dias: number[];
-  /** concluir a conversa logo depois de mandar (2.0.1; vem ligado) */
-  concluirConversa: boolean;
+/** Um envio da lista (2.4.5): de um painel (ou do Legado), com o horário, os dias, os números e o que vai no PDF. */
+export type EnvioTela = {
+  id: string; origem: string; origemNome: string; origemSigla: string | null;
+  /** o que impede de mandar (o painel desativado, ou que saiu); null = nada */
+  origemProblema: string | null;
+  ativo: boolean; horario: string; dias: number[];
   destinatarios: import('@gestor/shared').Destinatario[];
-  temToken: boolean;
-  configuradoEm: string | null; configuradoPor: string | null;
   /** "hoje às 18:00", "amanhã às 18:00"… (null = desligado) */
   proximo: string | null;
   /** como foi o envio agendado de hoje, no horário de agora (1.7.1); null = ainda não houve */
   hoje: import('@gestor/shared').EnvioDeHoje | null;
+  marcados: { graficos: Array<{ id: string; titulo: string }>; relatorios: Array<{ id: string; titulo: string }>; atualizadoEm: string | null; atualizadoPor: string | null; problema: string | null };
+};
+/** Administração › Envio automático: a ligação com a FlwChat (sem o token, que fica no cofre), os envios e o histórico. */
+export type EnvioAjustesTela = {
+  url: string; remetente: string;
+  /** concluir a conversa logo depois de mandar (2.0.1; vem ligado) */
+  concluirConversa: boolean;
+  temToken: boolean;
+  configuradoEm: string | null; configuradoPor: string | null;
+  envios: EnvioTela[];
+  /** de onde um envio pode sair: os painéis de chamados e o Legado do Helena */
+  origens: Array<{ id: string; nome: string; sigla: string | null; ativo: boolean }>;
   historico: RegistroEnvio[];
-  marcados: { graficos: Array<{ id: string; titulo: string }>; relatorios: Array<{ id: string; titulo: string }>; atualizadoEm: string | null; atualizadoPor: string | null };
   /** de onde a FlwChat baixa o PDF */
   enderecoPublico: string;
   linkValeDias: number;
 };
-export type MarcadosEnvioTela = { relatorios: string[]; graficos: string[]; atualizadoEm: string | null; atualizadoPor: string | null };
-/** O que a página do PDF desenha: os números e os gráficos de hoje, e os relatórios marcados (período = hoje). */
-export type PacoteEnvio = {
+export type MarcadosEnvioTela = { origem?: string; relatorios: string[]; graficos: string[]; atualizadoEm: string | null; atualizadoPor: string | null };
+/** O que a página do PDF de um envio desenha: de um painel (2.4.5) ou do Legado. */
+export type PacoteEnvio = PacoteDoLegado | import('@gestor/shared').PacoteDoPainel;
+/** O PDF do Legado: os números e os gráficos da aba Hoje dos tickets do LineChat, e os relatórios marcados (período = hoje). */
+export type PacoteDoLegado = {
+  tipo: 'legado';
   geradoEm: string; dia: string; hhmm: string; painelNome: string; primeiroDia: string;
   resumo: import('@gestor/shared').ResumoChamados;
   graficos: import('@gestor/shared').ItemPainel[];

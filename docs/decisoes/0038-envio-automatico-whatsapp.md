@@ -84,6 +84,14 @@ tudo junto como 1.7**: os Relatórios (0037) e o envio automático saem no mesmo
   - A opção `hiddenSession` do envio (a usada nos avisos da equipe, que esconde a conversa) não entrou:
     ela esconde a conversa, mas não a conclui, e o pedido foi concluir.
 
+- **Revisto no 2.4.5 (04/11/2026), pela 0061** — o envio lia os tickets do LineChat (hoje o Legado do Helena) e os
+  chamados novos estão nos painéis do Gestor. O Luan: *"o envio automático tá saindo do antigo… ele tem que ficar
+  modular… para eu poder enviar de qualquer painel"*. Agora a tela é uma **lista de envios, um por painel** (ou do
+  Legado), cada um com o horário, os dias, os números e o que vai no PDF — marcado com o aviãozinho na Visão geral e nos
+  25 relatórios do painel; o PDF do painel é a Visão geral de hoje e os relatórios do dia. A ligação com a FlwChat
+  continua uma só. O envio que existia passou para o painel Suporte, com o que estava marcado no Legado onde tem par.
+  Os detalhes estão na 0061.
+
 **Consequências.**
 
 - Rotas novas em `/api/envio`: `GET|PUT /ajustes`, `GET|PUT /marcados`, `GET /pacote`, `GET /pdf`,

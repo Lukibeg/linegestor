@@ -141,9 +141,10 @@ Tipo, Produto) e o **grupo de cada tipo de chamado** do "De quem é a falha?" (t
 
 ## Envio diário pelo WhatsApp (1.7)
 
-Quem administra vê um **aviãozinho** no canto de cada gráfico e relatório (o "Envio diário"): azul, ele vai no PDF que
-sai todo dia pelo WhatsApp. O horário, os dias e os números ficam em **Administração › Envio
-automático** — ver o guia [Envio automático](envio-automatico.md).
+Quem administra vê um **aviãozinho** no canto de cada gráfico e relatório (o "Envio diário"): azul, ele vai no PDF do
+**envio do Legado do Helena**, que sai todo dia pelo WhatsApp. Desde o 2.4.5, cada painel do Gestor tem o envio dele (o que
+existia passou para o painel Suporte), e o do Legado só sai se tiver um envio do Legado na lista. O horário, os dias e os
+números ficam em **Administração › Envio automático** — ver o guia [Envio automático](envio-automatico.md).
 
 ## O que a cópia guarda
 
