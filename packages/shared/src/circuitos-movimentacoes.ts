@@ -9,9 +9,10 @@
 import { z } from 'zod';
 import { didFormatado, didLimpo, paraBusca, reais } from './formatos.js';
 import { Booleano, PaginacaoSchema } from './schemas.js';
+import { diaComAno } from './atendimento.js';
 
 export const TIPOS_DE_MOVIMENTACAO_DO_CIRCUITO = [
-  'circuito_criado', 'circuito_editado', 'circuito_lixeira', 'circuito_restaurado',
+  'circuito_criado', 'circuito_editado', 'circuito_lixeira', 'circuito_restaurado', 'circuito_cancelado', 'circuito_reativado',
   'dids_criados', 'did_editado', 'dids_editados', 'dids_lixeira', 'did_restaurado',
   'importacao',
 ] as const;
@@ -22,6 +23,8 @@ export const NOME_DO_TIPO_DE_MOVIMENTACAO: Record<TipoDeMovimentacaoDoCircuito, 
   circuito_editado: 'Circuito alterado',
   circuito_lixeira: 'Circuito para a lixeira',
   circuito_restaurado: 'Circuito restaurado',
+  circuito_cancelado: 'Link cancelado',
+  circuito_reativado: 'Link reativado',
   dids_criados: 'DIDs novos',
   did_editado: 'DID alterado',
   dids_editados: 'DIDs alterados',
@@ -80,6 +83,8 @@ export type CircuitoNaMovimentacao = {
   name: string; code: string; carrierId: string | null; keyNumber: string | null; channels: number; monthlyValueCents: number | null;
   ownerClientId: string | null; thirdParty: boolean; authType: string; signalingIp: string | null; authIp: string | null;
   authUsername: string | null; notes: string | null;
+  /** o link cancelado (2.4.6): desde quando e por quê (só nas movimentações do cancelamento e da reativação) */
+  cancelledOn?: string | null; cancelReason?: string | null;
 };
 /** O DID como a movimentação guarda. */
 export type DidNaMovimentacao = { circuitId: string | null; clientId: string | null; inUse: boolean; note: string | null };
@@ -136,6 +141,8 @@ const CAMPOS_DO_CIRCUITO: Campo[] = [
   { chave: 'authIp', nome: 'IP do PBX', escrever: texto },
   { chave: 'authUsername', nome: 'Login do tronco', escrever: texto },
   { chave: 'notes', nome: 'Anotações', escrever: texto },
+  { chave: 'cancelledOn', nome: 'Cancelado em', escrever: (v) => (texto(v) ? diaComAno(String(v)) : 'ativo') },
+  { chave: 'cancelReason', nome: 'Motivo do cancelamento', escrever: texto },
 ];
 const CAMPOS_DO_DID: Campo[] = [
   { chave: 'circuitId', nome: 'Circuito', escrever: (v, n) => (v ? n.circuitos[String(v)] ?? 'circuito excluído' : null) },
@@ -288,6 +295,29 @@ export function movimentacaoDaLixeiraDoCircuito(c: { id: string; name: string },
     tipo, circuitos: [c.id], numeros: [], detalhes: null,
     resumo: tipo === 'circuito_lixeira' ? `Mandou o circuito ${c.name} para a lixeira` : `Restaurou o circuito ${c.name}`,
   };
+}
+
+// ---------------------------------------------------------------- o link cancelado (2.4.6)
+
+/**
+ * Cancelar um link (2.4.6, o Luan: "as vezes fazemos cancelamento de links, quero que tenha uma opção de marcar como cancelado,
+ * onde ele é meio que excluído porém fica um registro que ele foi na verdade cancelado"): o dia em que vale e o motivo (opcional).
+ */
+export const CancelarCircuitoSchema = z.object({
+  dia: Dia,
+  motivo: z.string().trim().max(500, 'O motivo vai até 500 letras.').default(''),
+});
+export type CancelarCircuito = z.infer<typeof CancelarCircuitoSchema>;
+
+/** A movimentação do cancelamento e da reativação (com o dia e o motivo, no antes e no depois). */
+export function movimentacaoDoCancelamento(
+  c: { id: string; name: string }, tipo: 'circuito_cancelado' | 'circuito_reativado', f: { dia: string; motivo: string | null },
+): NovaMovimentacao {
+  const cancelado = { cancelledOn: f.dia, cancelReason: f.motivo || null };
+  const ativo = { cancelledOn: null, cancelReason: null };
+  return tipo === 'circuito_cancelado'
+    ? { tipo, circuitos: [c.id], numeros: [], detalhes: { antes: ativo, depois: cancelado }, resumo: `Cancelou o link ${c.name} (desde ${diaComAno(f.dia)}${f.motivo ? `: ${f.motivo}` : ''})` }
+    : { tipo, circuitos: [c.id], numeros: [], detalhes: { antes: cancelado, depois: ativo }, resumo: `Reativou o link ${c.name} (estava cancelado desde ${diaComAno(f.dia)})` };
 }
 
 export function movimentacaoDosDidsCriados(f: { numeros: readonly string[]; circuitId: string; clientId?: string | null; note?: string | null }, n: NomesDaMovimentacao): NovaMovimentacao | null {

@@ -25,7 +25,7 @@ function baseSelect(db: Db) {
     .select({
       id: dids.id, number: dids.number, circuitId: dids.circuitId, circuitName: circuits.name, circuitCode: circuits.code, carrierName: carriers.name,
       clientId: dids.clientId, clientName: clients.tradeName, ownerClientId: dids.ownerClientId, ownerName: owner.tradeName, note: dids.note,
-      inUse: dids.inUse, thirdParty: circuits.thirdParty,
+      inUse: dids.inUse, thirdParty: circuits.thirdParty, circuitCancelledOn: circuits.cancelledOn,
       createdAt: dids.createdAt, updatedAt: dids.updatedAt,
     })
     .from(dids)
@@ -37,7 +37,7 @@ function baseSelect(db: Db) {
 
 function shape(r: any) {
   // "em uso" só faz sentido com cliente: número livre nunca está em uso
-  return { ...r, numberFormatted: didFormatado(r.number), free: !r.clientId, inUse: !!r.clientId && !!r.inUse, thirdParty: !!r.thirdParty };
+  return { ...r, numberFormatted: didFormatado(r.number), free: !r.clientId, inUse: !!r.clientId && !!r.inUse, thirdParty: !!r.thirdParty, cancelled: !!r.circuitCancelledOn };
 }
 
 
@@ -69,6 +69,10 @@ function filtros(q: Partial<DidListar>): SQL[] {
   if (!q.includeThirdParty) {
     conds.push(sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.thirdParty} = true))`);
   }
+  // o número de um link cancelado (2.4.6) só aparece com "Mostrar cancelados" (e dentro da ficha do próprio link)
+  if (!q.includeCancelled) {
+    conds.push(sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.cancelledOn} is not null))`);
+  }
   return conds;
 }
 
@@ -99,6 +103,9 @@ export async function get(db: Db, id: string) {
 
 /** Cria uma faixa sequencial. Se algum número já existir, não cria nenhum e diz quais são. */
 export async function createRange(db: Db, data: DidCriarFaixa) {
+  // o link cancelado (2.4.6) não recebe números novos: é história
+  const [circuito] = await db.select({ name: circuits.name, cancelledOn: circuits.cancelledOn }).from(circuits).where(eq(circuits.id, data.circuitId)).limit(1);
+  if (circuito?.cancelledOn) throw new BadRequest(`O link ${circuito.name} foi cancelado: reative-o antes de criar números nele.`);
   const numbers = gerarFaixaDids(data.baseNumber, data.quantity);
   const existing = await db.select({ number: dids.number }).from(dids).where(inArray(dids.number, numbers));
   if (existing.length) {

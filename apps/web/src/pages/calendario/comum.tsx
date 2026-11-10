@@ -6,7 +6,7 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Bell, Check, Plus, TreePalm, X } from 'lucide-react';
+import { Ban, Bell, Check, Plus, Repeat, TreePalm, X } from 'lucide-react';
 import {
   MAX_ANTES_DO_LEMBRETE, MAX_LEMBRETES, MINUTOS_DA_UNIDADE, NOME_SITUACAO_DO_EVENTO, quemEstaFora, textoDoAntes, textoDoHorario, textoDoPeriodo, tipoDoEvento,
   UNIDADES_DO_LEMBRETE,
@@ -115,6 +115,7 @@ export function LinhaDoEvento({ e, opcoes, nomes, onAbrir, comPeriodo = false, c
           <span className="tnum font-semibold text-ink-2">{quando}</span>
           <span>{tipo.nome}</span>
           <MarcaDaSituacao s={e.situacao} />
+          {e.repeticao && <span className="inline-flex items-center gap-0.5" title="Este evento se repete"><Repeat size={11} aria-hidden /> se repete</span>}
           {comigo && <span className="chip bg-accent-soft text-accent-ink px-1.5 py-0 leading-4 text-[11px]">com você</span>}
         </span>
         <span className={`block font-medium text-[13.5px] leading-snug break-words ${cancelado ? 'line-through text-muted' : 'text-ink'}`}>{e.titulo}</span>

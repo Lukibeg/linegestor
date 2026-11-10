@@ -5,7 +5,7 @@
  * ficam lado a lado) e a linha da hora de agora no dia de hoje. Dois cliques numa hora vazia abrem um evento novo naquela hora.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Repeat } from 'lucide-react';
 import {
   arrumarNoDia, cobreODia, diaCurto, diaPorExtenso, minutosAgoraEmBrasilia, naFaixaDoDiaInteiro, ordemDoDia, textoDoHorario, textoDoPeriodo,
   tipoDoEvento, type CalendarioOpcoes, type EventoDoCalendario, type EventoNaHora,
@@ -148,6 +148,7 @@ function BarraDoDiaInteiro({ e, dia, op, onAbrir }: { e: EventoDoCalendario; dia
       {comHora && dia === e.inicio && <><span className="tnum font-semibold">{e.horaInicio}</span>{' '}</>}
       {comHora && dia === e.fim && dia !== e.inicio && e.horaFim && <><span className="tnum font-semibold">até {e.horaFim}</span>{' '}</>}
       {semOTipo(e.titulo, tipo.nome)}
+      {e.repeticao && <Repeat size={10} className="inline -mt-0.5 ml-1 opacity-70" aria-label="se repete" />}
     </button>
   );
 }
@@ -166,6 +167,7 @@ function BlocoDaHora({ x, op, onAbrir }: { x: EventoNaHora; op: CalendarioOpcoes
         {e.situacao === 'feito' && <span aria-label="feito">✓ </span>}
         {curto && <span className="tnum font-semibold">{e.horaInicio} </span>}
         {semOTipo(e.titulo, tipo.nome)}
+        {e.repeticao && <Repeat size={10} className="inline -mt-0.5 ml-1 opacity-70" aria-label="se repete" />}
       </span>
       {!curto && <span className="block tnum opacity-90 truncate">{textoDoHorario(e)}</span>}
       {altura >= 72 && (e.clienteNome || e.local) && <span className="block truncate opacity-90">{e.clienteNome ?? e.local}</span>}

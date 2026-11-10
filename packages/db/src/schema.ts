@@ -398,6 +398,18 @@ export const circuits = pgTable(
     /** Senha de autenticação do tronco — no cofre */
     authPasswordSecretId: text('auth_password_secret_id').references(() => secrets.id),
     notes: text('notes'),
+    /**
+     * O link CANCELADO (2.4.6, o Luan: "as vezes fazemos cancelamento de links… meio que excluído, porém fica um registro de que
+     * ele foi na verdade cancelado"): o dia em que o cancelamento vale (AAAA-MM-DD; nulo = ativo). Como o link de terceiro, ele e
+     * os números dele saem das listas, dos cartões e do painel até alguém ligar "Mostrar cancelados"; a ficha diz quando, quem e
+     * por quê. Diferente da lixeira: não é engano, é história.
+     */
+    cancelledOn: text('cancelled_on'),
+    /** Por que foi cancelado (opcional) */
+    cancelReason: text('cancel_reason'),
+    /** Quem registrou o cancelamento e quando */
+    cancelledById: text('cancelled_by_id').references(() => users.id),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
@@ -2099,6 +2111,31 @@ export const ticketApiKeys = pgTable(
 // chamados) e quem vê é quem vê o painel — a mesma regra dos chamados. Os tipos (Visita, Folga…), com
 // nome e cor, ficam em `settings.calendario`; as regras, em `packages/shared/src/calendario.ts`.
 
+/**
+ * Uma SÉRIE do calendário (2.4.6): o evento que se repete (todo dia, todo dia útil, toda semana, todo mês). Cada data é um
+ * evento de verdade em `calendar_events` (com o `series_id`); aqui fica a regra e o modelo das datas que ainda vão nascer.
+ * Sem data para acabar, o relógio estende as datas até 12 meses à frente.
+ */
+export const calendarSeries = pgTable('calendar_series', {
+  id: id(),
+  /** diaria | dias_uteis | semanal | mensal */
+  frequency: text('frequency').notNull(),
+  /** O dia de onde as datas saem (AAAA-MM-DD): o primeiro evento, ou o que mudou "este e os próximos" */
+  anchorOn: text('anchor_on').notNull(),
+  /** O último dia em que pode cair (nulo = sem data para acabar) */
+  untilOn: text('until_on'),
+  /** Até que dia as datas já foram geradas (o relógio continua daqui) */
+  generatedUntil: text('generated_until').notNull(),
+  /**
+   * O modelo das datas novas: os campos do evento (o título, o tipo, os painéis, as pessoas, as horas, os lembretes…) e quantos
+   * dias ele dura. Muda quando alguém muda "este e os próximos".
+   */
+  template: jsonb('template').notNull(),
+  createdById: text('created_by_id').references(() => users.id),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
 /** Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual cliente e quando. */
 export const calendarEvents = pgTable(
   'calendar_events',
@@ -2135,6 +2172,8 @@ export const calendarEvents = pgTable(
     remindWho: text('remind_who').notNull().default('pessoas'),
     /** Os lembretes que já saíram (ou foram pulados): {"<minutos>@<começo>": quando}; mudar o dia ou a hora muda o começo, e o lembrete volta a valer */
     remindersSent: jsonb('reminders_sent').notNull().default({}),
+    /** A série (2.4.6): o evento que se repete; nulo = evento avulso */
+    seriesId: text('series_id').references(() => calendarSeries.id),
     createdById: text('created_by_id').references(() => users.id),
     updatedById: text('updated_by_id').references(() => users.id),
     createdAt: createdAt(),
@@ -2144,6 +2183,7 @@ export const calendarEvents = pgTable(
   (t) => [
     index('calendar_events_periodo_idx').on(t.startsOn, t.endsOn),
     index('calendar_events_ticket_idx').on(t.ticketId),
+    index('calendar_events_series_idx').on(t.seriesId, t.startsOn),
     check('calendar_events_periodo_ck', sql`${t.endsOn} >= ${t.startsOn}`),
   ],
 );

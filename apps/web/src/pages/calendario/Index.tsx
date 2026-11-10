@@ -13,7 +13,7 @@
  * 2.0.2) abre o calendário no dia, com a janela do evento.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Columns3, LayoutGrid, List, Plus, Shapes, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Columns3, LayoutGrid, List, Plus, Repeat, Shapes, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
 import {
   DIAS_DA_SEMANA, diaCurto, diaPorExtenso, diasDaGradeDoMes, diasDaSemanaDoDia, diaValido, eventosDoDia, filtrarEventos, hojeNoCalendario, mesDoDia, numeroDaSemana,
   ordemDoDia, somarDias, somarMeses, textoDaSemana, textoDoHorario, textoDoMes, textoDoPeriodo, tipoDoEvento,
@@ -339,6 +339,7 @@ function Barra({ e, dia, op, onAbrir }: { e: EventoDoCalendario; dia: string; op
       {e.situacao === 'feito' && <span aria-label="feito">✓ </span>}
       {!e.diaInteiro && e.horaInicio && !veio && <><span className="tnum font-semibold">{e.horaInicio}</span>{' '}</>}
       {texto}
+      {e.repeticao && <Repeat size={10} className="inline -mt-0.5 ml-1 opacity-70" aria-label="se repete" />}
     </button>
   );
 }

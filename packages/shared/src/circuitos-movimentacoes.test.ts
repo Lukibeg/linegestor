@@ -59,7 +59,7 @@ describe('as movimentações dos circuitos (2.4.1)', () => {
   it('os nomes que faltam, o filtro, a busca e o período', () => {
     expect(idsDosNomesDaMovimentacao({ antes: { carrierId: 'o1', ownerClientId: 'vn' }, dids: [{ numero: '1', antes: didNaMovimentacao({ circuitId: 'k1', clientId: 'c1' }), depois: didNaMovimentacao({ circuitId: 'k2' }) }] }))
       .toEqual({ clientes: ['vn', 'c1'], circuitos: ['k1', 'k2'], operadoras: ['o1'] });
-    expect(tiposDoFiltro('circuitos')).toEqual(['circuito_criado', 'circuito_editado', 'circuito_lixeira', 'circuito_restaurado']);
+    expect(tiposDoFiltro('circuitos')).toEqual(['circuito_criado', 'circuito_editado', 'circuito_lixeira', 'circuito_restaurado', 'circuito_cancelado', 'circuito_reativado']);
     expect(tiposDoFiltro('dids')).toEqual(['dids_criados', 'did_editado', 'dids_editados', 'dids_lixeira', 'did_restaurado']);
     expect(tiposDoFiltro('importacao')).toEqual(['importacao']);
     const m = { resumo: 'Liberou o DID (71) 3034-8350 (era de Clínica Aurora)', numeros: ['7130348350'], circuitos: [{ nome: 'Algar SIP 01' }] };

@@ -41,6 +41,9 @@ async function guardar(db: Exec, quem: string | null, m: NovaMovimentacao | null
   });
 }
 
+/** Guardar uma movimentação pronta (o cancelamento e a reativação do link, 2.4.6: a frase sai do @gestor/shared). */
+export const guardarMovimentacao = guardar;
+
 // ---------------------------------------------------------------- os circuitos
 
 export async function aoCriarCircuito(db: Exec, quem: string | null, row: LinhaDoCircuito) {

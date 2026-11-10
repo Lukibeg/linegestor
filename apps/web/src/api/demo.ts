@@ -37,7 +37,7 @@ import { acessoDoEnvioDemo, chamadosDoContatoDemo, criarAtendimentoDemo, lixeira
 import type { AssinaturaNoCadastro } from '@gestor/shared';
 import {
   MovimentacoesDosCircuitosSchema, linhaDaMovimentacao, movimentacaoBate, movimentacaoDaLixeiraDoCircuito, movimentacaoDaLixeiraDosDids,
-  movimentacaoDoCircuitoCriado, movimentacaoDoCircuitoEditado, movimentacaoDosDidsCriados, movimentacaoDosDidsEditados, periodoDasMovimentacoes, soDeTerceiros,
+  CancelarCircuitoSchema, movimentacaoDoCancelamento, movimentacaoDoCircuitoCriado, movimentacaoDoCircuitoEditado, movimentacaoDosDidsCriados, movimentacaoDosDidsEditados, periodoDasMovimentacoes, soDeTerceiros,
   tiposDoFiltro, type DetalhesDaMovimentacao, type NomesDaMovimentacao, type NovaMovimentacao, type PaginaDeMovimentacoes,
 } from '@gestor/shared';
 import { criarCalendarioDemo } from './demo-calendario.js';
@@ -80,7 +80,9 @@ type Sub = { id: string; clientId: string; productCode: string; activatedAt: str
 /** Um módulo ligado numa assinatura (ex.: FOP2 dentro do LinePBX do cliente X). */
 type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> };
 type ModRow = ProductModule & { productId: string; deletedAt?: string | null };
-type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; authType: 'ip' | 'login'; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; thirdParty: boolean; deletedAt: string | null };
+type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; authType: 'ip' | 'login'; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; thirdParty: boolean; deletedAt: string | null;
+  /** o link cancelado (2.4.6): desde quando, por quê, quem registrou e quando */
+  cancelledOn?: string | null; cancelReason?: string | null; cancelledById?: string | null; cancelledAt?: string | null };
 type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; inUse: boolean; note: string | null; deletedAt: string | null };
 /** Uma movimentação dos circuitos e dos DIDs (2.4.1), como o servidor guarda em circuit_movements. */
 type CircMovRow = { id: string; userId: string | null; kind: string; circuitIds: string[]; didNumbers: string[]; summary: string; details: DetalhesDaMovimentacao | null; createdAt: string };
@@ -526,6 +528,8 @@ function seed() {
     ['Link - Distribuidora Norte', '73169', 'VC1', 5, '7131720000', 12, 25000, [['Distribuidora Norte', 0, 12]], false, null],
     ['Link - Aurora', '94234', 'VC1', 2, '7130396100', 4, 9900, [['Clínica Aurora', 0, 4]], false, null],
     ['Feixe Reserva', '88001', 'VC1', 0, '7135550000', 10, 5000, [], false, null],
+    // o link CANCELADO (2.4.6): o Prado & Lima foi para a nuvem e o link saiu; fica guardado, fora das listas
+    ['Link - Prado & Lima', '73552', 'VC1', 2, '7131860000', 4, 8900, [['Escritório Prado & Lima', 0, 4]], false, null],
     ['Vivo - Hospital Vale Verde', '55210', 'Vivo', 10, '7134440000', 20, 0, [['Hospital Vale Verde', 0, 20]], true, 'Hospital Vale Verde'],
   ] as const;
   for (const [name, code, car, ch, base, qty, value, assign, terceiro, titular] of circ) {
@@ -786,6 +790,13 @@ function seed() {
     guardarMovimentacaoDemo(movimentacaoDaLixeiraDosDids([reserva], 'did_restaurado'), daysAgo(8, 10), 'u1');
     const daAurora = S.dids.find((d) => d.clientId === byName['Clínica Aurora'] && d.inUse);
     if (daAurora) guardarMovimentacaoDemo(movimentacaoDosDidsEditados([{ antes: { ...daAurora, inUse: false }, depois: daAurora }], nomes), daysAgo(3, 11), 'u3');
+    // o link cancelado (2.4.6), há 10 dias, depois da virada do Prado & Lima para a nuvem
+    const cancelado = S.circuits.find((c) => c.name === 'Link - Prado & Lima');
+    if (cancelado) {
+      const dia = new Date(Date.now() - 10 * 86_400_000 - 3 * 3_600_000).toISOString().slice(0, 10);
+      Object.assign(cancelado, { cancelledOn: dia, cancelReason: 'O cliente foi para a nuvem (LinePBX) e portou os números.', cancelledById: 'u1', cancelledAt: daysAgo(10, 15) });
+      guardarMovimentacaoDemo(movimentacaoDoCancelamento(cancelado, 'circuito_cancelado', { dia, motivo: cancelado.cancelReason! }), daysAgo(10, 15), 'u1');
+    }
   }
 
   S.audit = [
@@ -1236,9 +1247,10 @@ const fullClient = (idc: string): ClientFull => {
 };
 const shapeCircuit = (c: CircuitRow): Circuit => {
   const ds = S.dids.filter((d) => d.circuitId === c.id && !d.deletedAt); const assigned = ds.filter((d) => d.clientId).length;
-  return { id: c.id, name: c.name, code: c.code, keyNumber: c.keyNumber, thirdParty: c.thirdParty, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, authType: c.authType, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned } };
+  return { id: c.id, name: c.name, code: c.code, keyNumber: c.keyNumber, thirdParty: c.thirdParty, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, authType: c.authType, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned },
+    cancelamento: c.cancelledOn ? { dia: c.cancelledOn, motivo: c.cancelReason ?? null, por: S.users.find((u) => u.id === c.cancelledById)?.name ?? null, em: c.cancelledAt ?? null } : null };
 };
-const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, inUse: !!d.clientId && d.inUse, note: d.note, thirdParty: ehTerceiro(d.circuitId) }; };
+const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, inUse: !!d.clientId && d.inUse, note: d.note, thirdParty: ehTerceiro(d.circuitId), cancelled: ehCancelado(d.circuitId) }; };
 const shapeModel = (m: ModelRow): DeviceModel => {
   const ds = S.devices.filter((d) => d.modelId === m.id && !d.deletedAt);
   const inStock = ds.filter((d) => !d.clientId).length;
@@ -1325,18 +1337,21 @@ const filtrarCircuitos = (q: Record<string, unknown>) => {
   const t = String(q.q ?? '').toLowerCase();
   return S.circuits.filter((c) => !c.deletedAt
     && (ligado(q.includeThirdParty) || !c.thirdParty)
+    // o link cancelado (2.4.6) só entra com "Mostrar cancelados"
+    && (ligado(q.includeCancelled) || !c.cancelledOn)
     && (!q.carrierId || c.carrierId === q.carrierId)
     && (!q.ownerClientId || c.ownerClientId === q.ownerClientId)
     && (!t || c.name.toLowerCase().includes(t) || c.code.includes(t) || (c.keyNumber ?? '').includes(t)));
 };
 const ehTerceiro = (circuitId: string | null) => !!S.circuits.find((c) => c.id === circuitId)?.thirdParty;
+const ehCancelado = (circuitId: string | null) => !!S.circuits.find((c) => c.id === circuitId)?.cancelledOn;
 /** A busca da Numeração e da ficha do circuito (1.6): o número OU um pedaço da observação, sem acento — como o servidor. */
 const buscaDoDid = (d: DidRow, q: unknown) => {
   if (!q) return true;
   const digitos = String(q).replace(/\D/g, '');
   return (!!digitos && d.number.includes(digitos)) || paraBusca(d.note).includes(paraBusca(String(q)));
 };
-const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.deletedAt).filter((d) => (ligado(q.includeThirdParty) || !ehTerceiro(d.circuitId))).filter((d) => buscaDoDid(d, q.q) && (!q.circuitId || d.circuitId === q.circuitId) && (!q.clientId || (q.clientId === 'free' ? !d.clientId : d.clientId === q.clientId)) && (!q.ownerClientId || d.ownerClientId === q.ownerClientId)
+const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.deletedAt).filter((d) => (ligado(q.includeThirdParty) || !ehTerceiro(d.circuitId)) && (ligado(q.includeCancelled) || !ehCancelado(d.circuitId))).filter((d) => buscaDoDid(d, q.q) && (!q.circuitId || d.circuitId === q.circuitId) && (!q.clientId || (q.clientId === 'free' ? !d.clientId : d.clientId === q.clientId)) && (!q.ownerClientId || d.ownerClientId === q.ownerClientId)
   // em uso / não usado só faz sentido com cliente: número livre não entra em nenhum dos dois
   && (q.inUse === undefined || q.inUse === '' || (!!d.clientId && d.inUse === (q.inUse === 'true' || q.inUse === true))));
 
@@ -2331,7 +2346,7 @@ export const demoApi: Api = {
       await wait(); requirePerm('records.read');
       const active = S.clients.filter((c) => !c.deletedAt && !c.archived && !c.isInternal);
       const ds = S.dids.filter((d) => !d.deletedAt && !ehTerceiro(d.circuitId)); // o painel é o controle da VoiceNet
-      const circuits = S.circuits.filter((c) => !c.deletedAt && !c.thirdParty).map(shapeCircuit).map((c) => ({ id: c.id, name: c.name, carrierName: c.carrierName, channels: c.channels, total: c.dids.total, assigned: c.dids.assigned, free: c.dids.free })).sort((a, b) => b.total - a.total);
+      const circuits = S.circuits.filter((c) => !c.deletedAt && !c.thirdParty && !c.cancelledOn).map(shapeCircuit).map((c) => ({ id: c.id, name: c.name, carrierName: c.carrierName, channels: c.channels, total: c.dids.total, assigned: c.dids.assigned, free: c.dids.free })).sort((a, b) => b.total - a.total);
       const dev = S.devices.filter((d) => !d.deletedAt);
       const alerts: any[] = [];
       const lpNo = active.filter((c) => activeSubs(c.id).some((s) => s.productCode === 'linepbx' && !(s.settings.domain || s.settings.serverIp))).length; if (lpNo) alerts.push({ kind: 'linepbx_sem_endereco', severity: 'warning', message: 'Clientes com LinePBX sem endereço do servidor', count: lpNo, link: '/clientes?produtos=linepbx' });
@@ -2453,7 +2468,7 @@ export const demoApi: Api = {
       m.deactivatedAt = now(); audit('unsubscribe', 'subscription_module', `Desligou o módulo ${mod.name} (${prodMeta(productCode).name}) no cliente ${idc}`, m.id); return fullClient(idc);
     },
     async endSubscription(idc, code) { await wait(); requirePerm('records.write'); const s = S.subs.find((x) => x.clientId === idc && x.productCode === code && !x.deactivatedAt); if (!s) throw notFound('Assinatura ativa'); s.deactivatedAt = now(); audit('unsubscribe', 'subscription', `Encerrou o produto ${code} no cliente ${idc}`, s.id); return fullClient(idc); },
-    async dids(idc) { await wait(); return paginate(S.dids.filter((d) => d.clientId === idc && !d.deletedAt).map(shapeDid), { pageSize: 100000 }); },
+    async dids(idc) { await wait(); return paginate(S.dids.filter((d) => d.clientId === idc && !d.deletedAt && !ehCancelado(d.circuitId)).map(shapeDid), { pageSize: 100000 }); },
     async devices(idc) { await wait(); return { devices: paginate(S.devices.filter((d) => d.clientId === idc && !d.deletedAt && d.currentModality !== 'venda').map((d) => shapeDevice(d)), { pageSize: 100000 }) }; },
     async units(idc) { await wait(60); requirePerm('records.read'); return unidadesDe(idc).map(shapeUnit); },
     async createUnit(idc, d) {
@@ -2598,11 +2613,11 @@ export const demoApi: Api = {
       const assigned = ds.filter((d) => d.clientId).length;
       return { circuits: cs.length, channels: cs.reduce((a, c) => a + c.channels, 0), monthlyValueCents: cs.reduce((a, c) => a + (c.monthlyValueCents ?? 0), 0), dids: { total: ds.length, assigned, free: ds.length - assigned } };
     },
-    async options() { await wait(50); return S.circuits.filter((c) => !c.deletedAt).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })); },
+    async options() { await wait(50); return S.circuits.filter((c) => !c.deletedAt && !c.cancelledOn).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })); },
     async owners(includeThirdParty) {
       await wait(50);
       // só quem é titular de algum circuito da lista
-      const ids = new Set(S.circuits.filter((c) => !c.deletedAt && c.ownerClientId && (includeThirdParty || !c.thirdParty)).map((c) => c.ownerClientId!));
+      const ids = new Set(S.circuits.filter((c) => !c.deletedAt && !c.cancelledOn && c.ownerClientId && (includeThirdParty || !c.thirdParty)).map((c) => c.ownerClientId!));
       return S.clients.filter((c) => ids.has(c.id)).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode }));
     },
     async get(idc) { await wait(); requirePerm('records.read'); const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito'); return shapeCircuit(c); },
@@ -2610,6 +2625,29 @@ export const demoApi: Api = {
     async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); const antes = { ...c }; for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'authType', 'signalingIp', 'authIp', 'authUsername', 'notes', 'thirdParty'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; /* o que não é do tipo escolhido é limpo, como no servidor */ if (c.authType === 'ip') c.authUsername = null; else c.authIp = null; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); guardarMovimentacaoDemo(movimentacaoDoCircuitoEditado(antes, c, !!d.authPassword, nomesDasMovimentacoesDemo())); return shapeCircuit(c); },
     async remove(idc) { await wait(); requirePerm('records.delete'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); const n = S.dids.filter((d) => d.circuitId === idc && !d.deletedAt).length; if (n) throw bad(`Este circuito ainda tem ${n} DIDs. Mova-os para outro circuito antes de excluir.`); c.deletedAt = now(); audit('delete', 'circuit', `Mandou o circuito ${c.name} para a lixeira`, c.id); guardarMovimentacaoDemo(movimentacaoDaLixeiraDoCircuito(c, 'circuito_lixeira')); return { ok: true }; },
     async createRange(idc, d) { return demoApi.dids.createRange({ ...d, circuitId: idc }); },
+    // o link cancelado (2.4.6), como o servidor: o dia, o motivo e quem; a movimentação e a auditoria
+    async cancelar(idc, d) {
+      await wait(); requirePerm('records.write');
+      const f = CancelarCircuitoSchema.safeParse(d);
+      if (!f.success) throw new ApiError(400, 'Dados inválidos', f.error.issues.map((i) => ({ field: i.path.join('.') || '(geral)', message: i.message })));
+      const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito');
+      if (c.cancelledOn) throw bad(`O link ${c.name} já está cancelado (desde ${c.cancelledOn.split('-').reverse().join('/')}).`);
+      Object.assign(c, { cancelledOn: f.data.dia, cancelReason: f.data.motivo || null, cancelledById: S.me?.id ?? null, cancelledAt: now() });
+      const m = movimentacaoDoCancelamento(c, 'circuito_cancelado', f.data);
+      audit('update', 'circuit', m.resumo, c.id, { after: { cancelledOn: c.cancelledOn, cancelReason: c.cancelReason } });
+      guardarMovimentacaoDemo(m);
+      return shapeCircuit(c);
+    },
+    async reativar(idc) {
+      await wait(); requirePerm('records.write');
+      const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito');
+      if (!c.cancelledOn) throw bad(`O link ${c.name} não está cancelado.`);
+      const m = movimentacaoDoCancelamento(c, 'circuito_reativado', { dia: c.cancelledOn, motivo: c.cancelReason ?? null });
+      audit('update', 'circuit', m.resumo, c.id, { before: { cancelledOn: c.cancelledOn, cancelReason: c.cancelReason } });
+      Object.assign(c, { cancelledOn: null, cancelReason: null, cancelledById: null, cancelledAt: null });
+      guardarMovimentacaoDemo(m);
+      return shapeCircuit(c);
+    },
     async movimentacoes(q) { await wait(); requirePerm('records.read'); return movimentacoesDosCircuitosDemo(q); },
   },
   dids: {
@@ -2623,7 +2661,7 @@ export const demoApi: Api = {
       return { ...p, free: items.filter((d) => d.free).length };
     },
     async ids(q) { await wait(50); return { ids: filterDids(q).slice(0, 5000).map((d) => d.id) }; },
-    async createRange(d) { await wait(); requirePerm('dids.assign'); if (!d.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); const nums = gerarFaixaDids(didLimpo(String(d.baseNumber)), Number(d.quantity)); const ex = nums.filter((n) => S.dids.some((x) => x.number === n)); if (ex.length) throw bad(`${ex.length} número(s) já existem: ${ex.slice(0, 5).map(didFormatado).join(', ')}`); nums.forEach((n) => S.dids.push({ id: id(), number: n, circuitId: d.circuitId as string, clientId: (d.clientId as string) ?? null, inUse: false, ownerClientId: (d.ownerClientId as string) ?? S.clients.find((c) => c.internalCode === 'voicenet')!.id, note: (d.note as string) ?? null, deletedAt: null })); audit('bulk_create', 'did', `Criou ${nums.length} DIDs (${nums[0]}–${nums[nums.length - 1]})`); guardarMovimentacaoDemo(movimentacaoDosDidsCriados({ numeros: nums, circuitId: d.circuitId as string, clientId: (d.clientId as string) ?? null, note: (d.note as string) ?? null }, nomesDasMovimentacoesDemo())); return { created: nums.length, first: nums[0]!, last: nums[nums.length - 1]! }; },
+    async createRange(d) { await wait(); requirePerm('dids.assign'); if (!d.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); const doLink = S.circuits.find((c) => c.id === d.circuitId); if (doLink?.cancelledOn) throw bad(`O link ${doLink.name} foi cancelado: reative-o antes de criar números nele.`); const nums = gerarFaixaDids(didLimpo(String(d.baseNumber)), Number(d.quantity)); const ex = nums.filter((n) => S.dids.some((x) => x.number === n)); if (ex.length) throw bad(`${ex.length} número(s) já existem: ${ex.slice(0, 5).map(didFormatado).join(', ')}`); nums.forEach((n) => S.dids.push({ id: id(), number: n, circuitId: d.circuitId as string, clientId: (d.clientId as string) ?? null, inUse: false, ownerClientId: (d.ownerClientId as string) ?? S.clients.find((c) => c.internalCode === 'voicenet')!.id, note: (d.note as string) ?? null, deletedAt: null })); audit('bulk_create', 'did', `Criou ${nums.length} DIDs (${nums[0]}–${nums[nums.length - 1]})`); guardarMovimentacaoDemo(movimentacaoDosDidsCriados({ numeros: nums, circuitId: d.circuitId as string, clientId: (d.clientId as string) ?? null, note: (d.note as string) ?? null }, nomesDasMovimentacoesDemo())); return { created: nums.length, first: nums[0]!, last: nums[nums.length - 1]! }; },
     async update(idd, d) { await wait(); requirePerm('dids.assign'); const x = S.dids.find((r) => r.id === idd); if (!x) throw notFound('DID'); if (d.circuitId === null) throw bad('Todo DID pertence a um circuito'); if (d.inUse !== undefined && (d.clientId === null || (d.clientId === undefined && !x.clientId))) throw bad('Só um número com cliente pode ser marcado como em uso'); const antes = { ...x }; for (const k of ['circuitId', 'clientId', 'ownerClientId', 'inUse', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; /* a marca acompanha o cliente: liberou, cai; atribuiu, entra em uso */ /* alocar não é usar: trocou de cliente (ou liberou) sem dizer a marca, ela cai */ if (d.clientId !== undefined && d.inUse === undefined) x.inUse = false; if (d.clientId === null) x.inUse = false; audit('update', 'did', `Editou o DID ${x.number}`, x.id); guardarMovimentacaoDemo(movimentacaoDosDidsEditados([{ antes, depois: x }], nomesDasMovimentacoesDemo())); return shapeDid(x); },
     async bulk(ids, set) { await wait(200); requirePerm('dids.assign'); if (!Object.keys(set).length) throw bad('Escolha pelo menos um campo para alterar'); if ('circuitId' in set && !set.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); let n = 0; const pares: Array<{ antes: DidRow; depois: DidRow }> = []; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { /* marcar uso sem mexer no cliente só vale para quem tem cliente */ if ('inUse' in set && !('clientId' in set) && !x.clientId) continue; n++; pares.push({ antes: { ...x }, depois: x }); for (const k of ['circuitId', 'clientId', 'inUse', 'note'] as const) if (k in set) (x as any)[k] = set[k]; if ('clientId' in set && !('inUse' in set)) x.inUse = false; if (set.clientId === null) x.inUse = false; } const parts: string[] = []; if (set.circuitId) parts.push(`circuito → ${S.circuits.find((c) => c.id === set.circuitId)?.name}`); if ('clientId' in set) parts.push(set.clientId ? `cliente → ${S.clients.find((c) => c.id === set.clientId)?.tradeName}` : 'liberados (sem cliente)'); if ('inUse' in set) parts.push(set.inUse ? 'marcados como em uso' : 'marcados como não usados'); if ('note' in set) parts.push(set.note ? `observação → "${set.note}"` : 'observação limpa'); audit('bulk_update', 'did', `Alterou ${n} DID(s): ${parts.join(', ')}`); guardarMovimentacaoDemo(movimentacaoDosDidsEditados(pares, nomesDasMovimentacoesDemo(), `Alterou ${n} DID(s): ${parts.join(', ')}`)); return { affected: n }; },
     async bulkDelete(ids) { await wait(); requirePerm('records.delete'); let n = 0; const sairam: DidRow[] = []; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { x.deletedAt = now(); n++; sairam.push(x); } audit('bulk_delete', 'did', `Mandou ${n} DID(s) para a lixeira`); guardarMovimentacaoDemo(movimentacaoDaLixeiraDosDids(sairam, 'dids_lixeira')); return { affected: n }; },

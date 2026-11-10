@@ -132,6 +132,8 @@ export const realApi: Api = {
     update: (id, d) => http('PATCH', `/circuits/${id}`, d),
     remove: (id) => http('DELETE', `/circuits/${id}`),
     createRange: (id, d) => http('POST', `/circuits/${id}/dids/range`, d),
+    cancelar: (id, d) => http('POST', `/circuits/${id}/cancelar`, d),
+    reativar: (id) => http('POST', `/circuits/${id}/reativar`, {}),
     movimentacoes: (q) => http('GET', `/circuits/movimentacoes${qs(q)}`),
   },
   dids: {
@@ -398,7 +400,7 @@ export const realApi: Api = {
     criar: (d) => http('POST', '/calendario/eventos', d),
     alterar: (id, d) => http('PUT', `/calendario/eventos/${encodeURIComponent(id)}`, d),
     situacao: (id, situacao) => http('POST', `/calendario/eventos/${encodeURIComponent(id)}/situacao`, { situacao }),
-    remover: (id) => http('DELETE', `/calendario/eventos/${encodeURIComponent(id)}`),
+    remover: (id, escopo) => http('DELETE', `/calendario/eventos/${encodeURIComponent(id)}${escopo === 'proximos' ? '?escopo=proximos' : ''}`),
     salvarTipos: (tipos) => http('PUT', '/calendario/tipos', { tipos }),
   },
   simulador: {

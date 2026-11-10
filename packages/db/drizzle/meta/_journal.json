@@ -239,6 +239,13 @@
       "when": 1793731986149,
       "tag": "0033_movimentacoes_dos_circuitos",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794334979560,
+      "tag": "0034_repeticao_e_links_cancelados",
+      "breakpoints": true
     }
   ]
 }

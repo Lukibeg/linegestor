@@ -5,13 +5,14 @@ import {
   quemRecebeOLembrete, textoDoAntes, textoDoHorario, textoDoLembrete, textoDoMes, textoDoPeriodo, textoDosLembretes, TIPOS_DE_EVENTO_PADRAO,
   tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, tituloSugerido, EventosDoPeriodoSchema, quandoDoEvento, quemRecebeAInclusao, textoDaInclusao,
   arrumarNoDia, diasDaSemanaDoDia, minutosAgoraEmBrasilia, minutosDaHora, naFaixaDoDiaInteiro, numeroDaSemana, textoDaSemana,
+  datasDaRepeticao, limiteDaRepeticao, lixeiraDoCalendario, problemaDaRepeticao, textoDaRepeticao,
   type EventoDoCalendario,
 } from './calendario.js';
 
 const evento = (e: Partial<EventoDoCalendario>): EventoDoCalendario => ({
   id: 'e1', titulo: 'Visita — Clínica Aurora', tipoId: 'visita', paineis: ['p-sup'], pessoas: [], clienteId: null, clienteNome: null, chamadoId: null, chamadoCodigo: null,
   inicio: '2026-10-20', fim: '2026-10-20', diaInteiro: true, horaInicio: null, horaFim: null, local: '', observacao: '', situacao: 'agendado',
-  lembretes: [], lembrarQuem: 'pessoas', criadoPor: null, criadoEm: '2026-10-16T12:00:00.000Z', alteradoPor: null, alteradoEm: '2026-10-16T12:00:00.000Z', ...e,
+  lembretes: [], lembrarQuem: 'pessoas', repeticao: null, criadoPor: null, criadoEm: '2026-10-16T12:00:00.000Z', alteradoPor: null, alteradoEm: '2026-10-16T12:00:00.000Z', ...e,
 });
 
 describe('o evento (a janela)', () => {
@@ -318,3 +319,46 @@ describe('a semana (2.4.1, "como no outlook")', () => {
   });
 });
 
+
+describe('repetir (2.4.6)', () => {
+  it('as datas: todo dia, todo dia útil, toda semana, todo mês (o 31 cai no último dia), a partir de um dia', () => {
+    expect(datasDaRepeticao('2026-11-10', 'diaria', '2026-11-13')).toEqual(['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13']);
+    expect(datasDaRepeticao('2026-11-13', 'dias_uteis', '2026-11-17')).toEqual(['2026-11-13', '2026-11-16', '2026-11-17']);
+    expect(datasDaRepeticao('2026-11-10', 'semanal', '2026-12-01')).toEqual(['2026-11-10', '2026-11-17', '2026-11-24', '2026-12-01']);
+    expect(datasDaRepeticao('2026-12-31', 'mensal', '2027-03-31')).toEqual(['2026-12-31', '2027-01-31', '2027-02-28', '2027-03-31']);
+    expect(datasDaRepeticao('2026-11-10', 'semanal', '2026-12-01', '2026-11-17')).toEqual(['2026-11-24', '2026-12-01']);
+  });
+  it('até onde vai: a data para acabar, ou 12 meses à frente (de hoje, ou do primeiro dia no futuro)', () => {
+    expect(limiteDaRepeticao({ ate: null }, '2026-11-10', '2026-11-10')).toBe('2027-11-10');
+    expect(limiteDaRepeticao({ ate: null }, '2027-01-05', '2026-11-10')).toBe('2028-01-05');
+    expect(limiteDaRepeticao({ ate: '2026-12-31' }, '2026-11-10', '2026-11-10')).toBe('2026-12-31');
+  });
+  it('a frase: "Toda terça, até 31/03/2027", "Todo sábado", "Todo mês, no dia 31 (…)"', () => {
+    expect(textoDaRepeticao({ frequencia: 'semanal', ate: '2027-03-31' }, '2026-11-10')).toBe('Toda terça, até 31/03/2027');
+    expect(textoDaRepeticao({ frequencia: 'semanal', ate: null }, '2026-11-14')).toBe('Todo sábado, sem data para acabar');
+    expect(textoDaRepeticao({ frequencia: 'mensal', ate: null }, '2026-12-31')).toBe('Todo mês, no dia 31 (no mês que não tem, no último dia), sem data para acabar');
+    expect(textoDaRepeticao({ frequencia: 'dias_uteis', ate: null }, '2026-11-10')).toBe('Todo dia útil (segunda a sexta), sem data para acabar');
+  });
+  it('as regras: a duração cabe no intervalo; a data para acabar vem depois e vai até 2 anos', () => {
+    expect(problemaDaRepeticao({ frequencia: 'diaria', ate: null }, '2026-11-10', '2026-11-11')).toBe('O evento que se repete todo dia dura um dia só.');
+    expect(problemaDaRepeticao({ frequencia: 'semanal', ate: null }, '2026-11-10', '2026-11-16')).toBeNull();
+    expect(problemaDaRepeticao({ frequencia: 'semanal', ate: null }, '2026-11-10', '2026-11-17')).toBe('O evento que se repete toda semana dura até 7 dias.');
+    expect(problemaDaRepeticao({ frequencia: 'mensal', ate: '2026-11-09' }, '2026-11-10', '2026-11-10')).toBe('A repetição acaba depois do primeiro dia do evento.');
+    expect(problemaDaRepeticao({ frequencia: 'mensal', ate: '2029-01-01' }, '2026-11-10', '2026-11-10')).toContain('até 2 anos');
+    expect(EventoGravarSchema.safeParse({ titulo: 'x', tipoId: 'reuniao', paineis: ['p'], inicio: '2026-11-10', fim: '2026-11-11', repetir: { frequencia: 'diaria' } }).success).toBe(false);
+  });
+  it('a lixeira: as datas que foram juntas são uma linha só', () => {
+    const quando = '2026-11-10T15:00:00.000Z';
+    const linhas = [
+      { id: 'b', titulo: 'Reunião', inicio: '2026-11-24', fim: '2026-11-24', serieId: 's1', deletedAt: quando },
+      { id: 'a', titulo: 'Reunião', inicio: '2026-11-17', fim: '2026-11-17', serieId: 's1', deletedAt: quando },
+      { id: 'c', titulo: 'Reunião', inicio: '2026-12-01', fim: '2026-12-01', serieId: 's1', deletedAt: '2026-11-11T10:00:00.000Z' },
+      { id: 'd', titulo: 'Visita', inicio: '2026-11-12', fim: '2026-11-12', serieId: null, deletedAt: quando },
+    ];
+    expect(lixeiraDoCalendario(linhas)).toEqual([
+      { id: 'a', label: '17 a 24/11 · Reunião (2 datas da repetição)', deletedAt: quando },
+      { id: 'c', label: '01/12 · Reunião', deletedAt: '2026-11-11T10:00:00.000Z' },
+      { id: 'd', label: '12/11 · Visita', deletedAt: quando },
+    ]);
+  });
+});

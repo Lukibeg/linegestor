@@ -120,7 +120,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   // a ficha mostra TODOS os números do cliente (a tela pagina, mas sempre deixa ver tudo)
   app.get('/:id/dids', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'DIDs do cliente (todos)', params: Id, querystring: z.object({ page: z.coerce.number().default(1), pageSize: z.coerce.number().max(SEM_LIMITE).default(SEM_LIMITE) }) } },
     // na ficha do cliente a pergunta é "o que este cliente tem": o tronco dele com outra operadora entra
-    async (req) => didsSvc.list(app.db, { ...req.query, clientId: req.params.id, includeThirdParty: true, sort: 'number', dir: 'asc' }));
+    // o número de um link cancelado (2.4.6) sai da ficha do cliente: ele já não tem esse número; a ficha do link guarda a história
+    async (req) => didsSvc.list(app.db, { ...req.query, clientId: req.params.id, includeThirdParty: true, includeCancelled: false, sort: 'number', dir: 'asc' }));
 
   app.get('/:id/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Aparelhos com o cliente (todos)', params: Id } },
     async (req) => ({ devices: await inv.listDevices(app.db, { clientId: req.params.id, page: 1, pageSize: SEM_LIMITE }) }));

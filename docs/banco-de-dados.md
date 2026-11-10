@@ -86,6 +86,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [ticket_notifications](#ticket_notifications) — Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o cliente respondeu…
 - [ticket_webhooks](#ticket_webhooks) — Um AVISO PARA FORA (webhook): o Gestor manda o que aconteceu com os chamados para outro sistema (o n8n).
 - [ticket_api_keys](#ticket_api_keys) — Uma CHAVE DE API para o robô do LineChat e o n8n abrirem e mexerem nos chamados.
+- [calendar_series](#calendar_series) — Uma SÉRIE do calendário (2.4.6): o evento que se repete (todo dia, todo dia útil, toda semana, todo mês).
 - [calendar_events](#calendar_events) — Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual cliente e quando.
 - [sales_simulations](#sales_simulations) — Uma SIMULAÇÃO do Comercial: o nome, os cenários e a negociação ligada.
 
@@ -354,6 +355,10 @@ Um circuito (feixe) contratado junto a uma operadora. Agrupa DIDs e tem um limit
 | `auth_username` | texto | Login do tronco (só na autenticação por login e senha) | — |
 | `auth_password_secret_id` | texto | Senha de autenticação do tronco — no cofre | liga com **secrets** |
 | `notes` | texto | — | — |
+| `cancelled_on` | texto | O link CANCELADO (2.4.6, o Luan: "as vezes fazemos cancelamento de links… meio que excluído, porém fica um registro de que ele foi na verdade cancelado"): o dia em que o cancelamento vale (AAAA-MM-DD; nulo = ativo). Como o link de terceiro, ele e os números dele saem das listas, dos cartões e do painel até alguém ligar "Mostrar cancelados"; a ficha diz quando, quem e por quê. Diferente da lixeira: não é engano, é história. | — |
+| `cancel_reason` | texto | Por que foi cancelado (opcional) | — |
+| `cancelled_by_id` | texto | Quem registrou o cancelamento e quando | liga com **users** |
+| `cancelled_at` | data e hora | — | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
@@ -1427,6 +1432,22 @@ Uma CHAVE DE API para o robô do LineChat e o n8n abrirem e mexerem nos chamados
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `revoked_at` | data e hora | — | — |
 
+## calendar_series
+
+Uma SÉRIE do calendário (2.4.6): o evento que se repete (todo dia, todo dia útil, toda semana, todo mês). Cada data é um evento de verdade em `calendar_events` (com o `series_id`); aqui fica a regra e o modelo das datas que ainda vão nascer. Sem data para acabar, o relógio estende as datas até 12 meses à frente.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `frequency` | texto | diaria | dias_uteis | semanal | mensal | obrigatório |
+| `anchor_on` | texto | O dia de onde as datas saem (AAAA-MM-DD): o primeiro evento, ou o que mudou "este e os próximos" | obrigatório |
+| `until_on` | texto | O último dia em que pode cair (nulo = sem data para acabar) | — |
+| `generated_until` | texto | Até que dia as datas já foram geradas (o relógio continua daqui) | obrigatório |
+| `template` | JSON | O modelo das datas novas: os campos do evento (o título, o tipo, os painéis, as pessoas, as horas, os lembretes…) e quantos dias ele dura. Muda quando alguém muda "este e os próximos". | obrigatório |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+
 ## calendar_events
 
 Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual cliente e quando.
@@ -1451,6 +1472,7 @@ Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual clien
 | `reminders` | número inteiro | Os lembretes (2.0.2): quantos minutos antes do começo cada um sai (0 = na hora; o dia inteiro começa às 8h) | obrigatório · padrão: [] · lista |
 | `remind_who` | texto | Quem recebe o lembrete: pessoas (as do evento; sem pessoas, quem criou) | paineis (todos que veem o evento) | obrigatório · padrão: 'pessoas' |
 | `reminders_sent` | JSON | Os lembretes que já saíram (ou foram pulados): {"<minutos>@<começo>": quando}; mudar o dia ou a hora muda o começo, e o lembrete volta a valer | obrigatório · padrão: {} |
+| `series_id` | texto | A série (2.4.6): o evento que se repete; nulo = evento avulso | liga com **calendarSeries** |
 | `created_by_id` | texto | — | liga com **users** |
 | `updated_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |

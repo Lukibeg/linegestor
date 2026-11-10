@@ -10,7 +10,7 @@
  */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { EventoGravarSchema, EventosDoPeriodoSchema, NOME_QUEM_RECEBE_O_LEMBRETE, SituacaoDoEventoSchema, TiposDoCalendarioSchema } from '@gestor/shared';
+import { EventoGravarSchema, EventosDoPeriodoSchema, NOME_QUEM_RECEBE_O_LEMBRETE, RemoverEventoSchema, SituacaoDoEventoSchema, TiposDoCalendarioSchema } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as svc from '../services/calendario.js';
 
@@ -46,7 +46,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return reply.status(201).send(r.evento);
     });
 
-  app.put('/eventos/:id', { ...trabalhar, schema: { tags, summary: 'Mudar um evento (os painéis que a pessoa não vê ficam como estavam)', params: Id, body: EventoGravarSchema } },
+  app.put('/eventos/:id', { ...trabalhar, schema: { tags, summary: 'Mudar um evento (os painéis que a pessoa não vê ficam como estavam); no que se repete, o escopo diz se é só este ou este e os próximos', params: Id, body: EventoGravarSchema } },
     async (req) => {
       const r = await svc.alterar(app.db, ator(req), req.params.id, req.body);
       await app.audit(req, { action: 'update', entityType: 'calendar_event', entityId: r.evento.id, summary: r.resumo, before: r.antes, after: r.depois });
@@ -60,9 +60,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return r.evento;
     });
 
-  app.delete('/eventos/:id', { ...trabalhar, schema: { tags, summary: 'Mandar o evento para a lixeira (volta pela Administração › Lixeira)', params: Id } },
+  app.delete('/eventos/:id', { ...trabalhar, schema: { tags, summary: 'Mandar o evento para a lixeira (volta pela Administração › Lixeira); no que se repete, só este ou este e os próximos (?escopo=proximos)', params: Id, querystring: RemoverEventoSchema } },
     async (req) => {
-      const r = await svc.mandarParaLixeira(app.db, ator(req), req.params.id);
+      const r = await svc.mandarParaLixeira(app.db, ator(req), req.params.id, req.query.escopo);
       await app.audit(req, { action: 'delete', entityType: 'calendar_event', entityId: r.id, summary: r.resumo });
       return { ok: true };
     });

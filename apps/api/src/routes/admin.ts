@@ -89,7 +89,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       else if (type === 'knowledgeArticle') { const a = await baseSvc.restaurar(app.db, id); label = `o artigo BC-${a.number} "${a.title}"`; }
       else if (type === 'portalArticle') { const t = await portalSvc.restaurarTutorial(app.db, id); label = `o tutorial ${t.number} "${t.title}" do portal`; }
       else if (type === 'ticket') { const t = await svc.restoreTicket(app.db, id, req.user!); label = `o chamado ${t.code} "${t.title}"`; }
-      else if (type === 'calendarEvent') { const e = await calendarioSvc.restaurar(app.db, id); label = `o evento do calendário "${e.title}" (${textoDoPeriodo({ inicio: e.startsOn, fim: e.endsOn })})`; }
+      else if (type === 'calendarEvent') { const e = await calendarioSvc.restaurar(app.db, id); label = `o evento do calendário "${e.title}" (${textoDoPeriodo({ inicio: e.startsOn, fim: e.endsOn })}${e.juntos > 1 ? ` e as outras ${e.juntos - 1} datas da repetição` : ''})`; }
       else if (type === 'salesSimulation') { const s = await simuladorSvc.restaurar(app.db, id); label = `a simulação "${s.name}" do Comercial`; }
       else throw new BadRequest('Tipo desconhecido');
       // o evento do calendário e a simulação ficam na auditoria com o mesmo nome das outras ações deles (calendar_event, sales_simulation)

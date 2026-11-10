@@ -3,8 +3,8 @@
  * quantos estão livres, e quantos canais suporta.
  */
 import { and, asc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
-import { carriers, circuits, clients, dids, newId, type Db } from '@gestor/db';
-import type { CircuitoGravar, CircuitoListar } from '@gestor/shared';
+import { carriers, circuits, clients, dids, newId, users, type Db } from '@gestor/db';
+import type { CancelarCircuito, CircuitoGravar, CircuitoListar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 
@@ -29,6 +29,10 @@ function shape(r: any) {
     authPassword: { hasSecret: !!r.authPasswordSecretId, secretId: r.authPasswordSecretId ?? null },
     notes: r.notes, createdAt: r.createdAt, updatedAt: r.updatedAt, deletedAt: r.deletedAt,
     dids: { total, assigned, free: total - assigned },
+    // o link cancelado (2.4.6): desde quando, por quê, quem registrou e quando
+    cancelamento: r.cancelledOn
+      ? { dia: r.cancelledOn as string, motivo: (r.cancelReason as string | null) ?? null, por: (r.cancelledByName as string | null) ?? null, em: (r.cancelledAt as Date | null) ?? null }
+      : null,
   };
 }
 
@@ -65,6 +69,8 @@ function filtros(q: Partial<CircuitoListar>): SQL[] {
   const conds: SQL[] = [isNull(circuits.deletedAt)];
   // o que não é da VoiceNet só entra quando alguém liga o interruptor
   if (!q.includeThirdParty) conds.push(eq(circuits.thirdParty, false));
+  // o link cancelado (2.4.6) também: é história, não controle de agora
+  if (!q.includeCancelled) conds.push(isNull(circuits.cancelledOn));
   if (q.carrierId) conds.push(eq(circuits.carrierId, q.carrierId));
   if (q.ownerClientId) conds.push(eq(circuits.ownerClientId, q.ownerClientId));
   if (q.q) conds.push(or(ilike(circuits.name, `%${q.q}%`), ilike(circuits.code, `%${q.q}%`), ilike(circuits.keyNumber, `%${q.q}%`), ilike(carriers.name, `%${q.q}%`))!);
@@ -98,11 +104,13 @@ export async function list(db: Db, q: CircuitoListar) {
       id: circuits.id, name: circuits.name, code: circuits.code, keyNumber: circuits.keyNumber, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
       ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, authType: circuits.authType, signalingIp: circuits.signalingIp,
       authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes, thirdParty: circuits.thirdParty,
+      cancelledOn: circuits.cancelledOn, cancelReason: circuits.cancelReason, cancelledAt: circuits.cancelledAt, cancelledByName: users.name,
       createdAt: circuits.createdAt, updatedAt: circuits.updatedAt, deletedAt: circuits.deletedAt, total: occ.total, assigned: occ.assigned,
     })
     .from(circuits)
     .leftJoin(carriers, eq(carriers.id, circuits.carrierId))
     .leftJoin(clients, eq(clients.id, circuits.ownerClientId))
+    .leftJoin(users, eq(users.id, circuits.cancelledById))
     .leftJoin(occ, eq(occ.circuitId, circuits.id))
     .where(where);
   const rows = await base.orderBy(ordenacaoCircuitos(q, occ)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
@@ -117,9 +125,11 @@ export async function get(db: Db, id: string) {
       id: circuits.id, name: circuits.name, code: circuits.code, keyNumber: circuits.keyNumber, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
       ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, authType: circuits.authType, signalingIp: circuits.signalingIp,
       authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes, thirdParty: circuits.thirdParty,
+      cancelledOn: circuits.cancelledOn, cancelReason: circuits.cancelReason, cancelledAt: circuits.cancelledAt, cancelledByName: users.name,
       createdAt: circuits.createdAt, updatedAt: circuits.updatedAt, deletedAt: circuits.deletedAt, total: occ.total, assigned: occ.assigned,
     })
-    .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).leftJoin(clients, eq(clients.id, circuits.ownerClientId)).leftJoin(occ, eq(occ.circuitId, circuits.id))
+    .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).leftJoin(clients, eq(clients.id, circuits.ownerClientId))
+    .leftJoin(users, eq(users.id, circuits.cancelledById)).leftJoin(occ, eq(occ.circuitId, circuits.id))
     .where(eq(circuits.id, id)).limit(1);
   if (!row) throw new NotFound('Circuito');
   return shape(row);
@@ -161,6 +171,28 @@ export async function softDelete(db: Db, id: string) {
   if (!row) throw new NotFound('Circuito');
   return row;
 }
+/**
+ * Cancelar o link (2.4.6): ele fica guardado, com o dia, o motivo e quem registrou, e sai das listas, dos cartões e do painel (os
+ * números dele também) até alguém ligar "Mostrar cancelados". Os números continuam nele, como estavam: são a história do link.
+ */
+export async function cancelar(db: Db, id: string, f: CancelarCircuito, userId: string) {
+  const [antes] = await db.select().from(circuits).where(and(eq(circuits.id, id), isNull(circuits.deletedAt)));
+  if (!antes) throw new NotFound('Circuito');
+  if (antes.cancelledOn) throw new BadRequest(`O link ${antes.name} já está cancelado (desde ${antes.cancelledOn.split('-').reverse().join('/')}).`);
+  const [row] = await db.update(circuits).set({ cancelledOn: f.dia, cancelReason: f.motivo || null, cancelledById: userId, cancelledAt: new Date(), updatedAt: new Date() })
+    .where(eq(circuits.id, id)).returning();
+  return row!;
+}
+
+/** Reativar o link cancelado (foi engano, ou o cliente voltou): ele volta às listas; a movimentação guarda o cancelamento. */
+export async function reativar(db: Db, id: string) {
+  const [antes] = await db.select().from(circuits).where(and(eq(circuits.id, id), isNull(circuits.deletedAt)));
+  if (!antes) throw new NotFound('Circuito');
+  if (!antes.cancelledOn) throw new BadRequest(`O link ${antes.name} não está cancelado.`);
+  await db.update(circuits).set({ cancelledOn: null, cancelReason: null, cancelledById: null, cancelledAt: null, updatedAt: new Date() }).where(eq(circuits.id, id));
+  return antes;
+}
+
 export async function restore(db: Db, id: string) {
   const [row] = await db.update(circuits).set({ deletedAt: null }).where(eq(circuits.id, id)).returning();
   if (!row) throw new NotFound('Circuito');
@@ -174,6 +206,7 @@ export async function restore(db: Db, id: string) {
 export async function owners(db: Db, includeThirdParty = false) {
   const conds: SQL[] = [isNull(circuits.deletedAt), sql`${circuits.ownerClientId} is not null`];
   if (!includeThirdParty) conds.push(eq(circuits.thirdParty, false));
+  conds.push(isNull(circuits.cancelledOn));
   const rows = await db
     .selectDistinct({ id: clients.id, name: clients.tradeName, isInternal: clients.isInternal, internalCode: clients.internalCode })
     .from(circuits).innerJoin(clients, eq(clients.id, circuits.ownerClientId))
@@ -182,5 +215,6 @@ export async function owners(db: Db, includeThirdParty = false) {
 }
 
 export async function options(db: Db) {
-  return db.select({ id: circuits.id, name: circuits.name, code: circuits.code, carrierName: carriers.name }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(isNull(circuits.deletedAt)).orderBy(asc(circuits.name));
+  // o link cancelado (2.4.6) não recebe números novos: fica fora da escolha
+  return db.select({ id: circuits.id, name: circuits.name, code: circuits.code, carrierName: carriers.name }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(and(isNull(circuits.deletedAt), isNull(circuits.cancelledOn))).orderBy(asc(circuits.name));
 }

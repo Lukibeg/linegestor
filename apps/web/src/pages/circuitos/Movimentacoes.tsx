@@ -19,7 +19,7 @@ import { data } from '../../lib/format.js';
 import { ThN, TdN, contarDe } from '../../lib/contagem.js';
 
 const TOM: Record<TipoDeMovimentacaoDoCircuito, TomChip> = {
-  circuito_criado: 'accent', circuito_editado: 'accent', circuito_lixeira: 'bad', circuito_restaurado: 'muted',
+  circuito_criado: 'accent', circuito_editado: 'accent', circuito_lixeira: 'bad', circuito_restaurado: 'muted', circuito_cancelado: 'bad', circuito_reativado: 'ok',
   dids_criados: 'ok', did_editado: 'signal', dids_editados: 'signal', dids_lixeira: 'bad', did_restaurado: 'muted',
   importacao: 'roxo',
 };
