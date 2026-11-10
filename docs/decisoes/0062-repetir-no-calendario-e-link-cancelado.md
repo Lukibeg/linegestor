@@ -1,4 +1,4 @@
-# 0062 — Repetir o evento no calendário, cancelar o link, os cancelados escondidos e a Classificação no menu de cima
+# 0062 — Repetir o evento no calendário, cancelar o link, os cancelados escondidos, a Classificação no menu de cima e o Painel do Dev
 
 **Data:** 10/11/2026 · **Patch:** 2.4.6 · **Situação:** aceita · **Revê:** a 0049 (o calendário: "repetir o evento" estava em "fica para depois", e o cancelado aparecia riscado por padrão) a 0020 (os links de terceiros: o cancelado segue a mesma regra de exibição) e a 0047 (os chamados: o botão Etiquetas da barra e a caixa das etiquetas embaixo, do 2.0.3)
 
@@ -10,7 +10,7 @@ porém fica um registro que ele foi na verdade cancelado"*. Depois de ver a pré
 algo e os cancelados eu n quero q apareça, a n ser que eu marque alguma flag"*. E, com dois prints da ficha do chamado (o
 cartão Classificação da lateral, com a Prioridade e as Etiquetas, e o botão Etiquetas da barra): *"essa parte de
 classificação pode ficar apenas no menu de cima e a prioridade dentro, então vai deixar de ser etiquetas e vai ser
-classificação"*.
+classificação"*. Por último: *"faça um botão dentro do inglinegestao para o painel do dev, dentro do menu suporte mesmo"*.
 
 ## 1. Repetir o evento
 
@@ -107,3 +107,15 @@ O Luan, depois de ver a prévia: *"os cancelados eu n quero q apareça, a n ser 
    prioridade faltar para a próxima etapa.
 6. **O Abrir chamado não mudou**: a prioridade e as etiquetas continuam no formulário. Sem migração e sem mudança no
    servidor.
+
+## 5. O Painel do Dev no menu Suporte
+
+1. **Suporte › Painel do Dev** (`/suporte/desenvolvimento`), logo abaixo do Painel da Implantação, abre o quadro do painel
+   **Desenvolvimento** — o que veio com o sistema (`painel-desenvolvimento`, a sigla DEV), mesmo que o nome dele mude —, como
+   o Painel do Suporte (2.0.2) e o da Implantação (0057, item 12). O mouse parado em cima já lê o quadro (como o do Suporte).
+2. **Nas telas dele** (o quadro, a lista, os relatórios e a ficha de um chamado DEV), o item fica marcado e o grupo
+   Suporte abre sozinho; o Painéis deixa de ficar marcado ali.
+3. **O nome é o do pedido**, "Painel do Dev": "Painel do Desenvolvimento" ficava cortado no menu (o espaço é o do "Painel
+   da Implantação"). A tela que abre continua dizendo o nome do painel (Desenvolvimento).
+4. **Sem o painel** (desativado, ou a pessoa não está entre quem vê), a tela diz isso e leva para os Painéis, em vez de
+   abrir um quadro vazio. O item aparece para todos que veem os chamados, como os outros atalhos do Suporte.

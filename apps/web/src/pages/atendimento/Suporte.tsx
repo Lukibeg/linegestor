@@ -9,6 +9,9 @@
  *
  * O Painel da Implantação (2.3, o Luan: "eu quero q o painel de implantação tenha um botão dentro do menu suporte como o
  * painel do suporte"): o mesmo atalho, para o quadro do painel da implantação.
+ *
+ * O Painel do Dev (2.4.6, o Luan: "faça um botão dentro do inglinegestao para o painel do dev, dentro do menu suporte
+ * mesmo"): o mesmo atalho, para o quadro do painel Desenvolvimento.
  */
 import { Link, Navigate } from 'react-router-dom';
 import type { Painel } from '@gestor/shared';
@@ -18,6 +21,8 @@ import { enderecoDoRelatorio } from './painel.js';
 
 /** O painel do Suporte: o que o sistema cria na instalação (o seed e a prévia: `painel-<chave>`). */
 export const PAINEL_DO_SUPORTE = 'painel-suporte';
+/** O painel do Desenvolvimento (a sigla DEV): o outro que o sistema cria na instalação (a migração 0015, o seed e a prévia). */
+export const PAINEL_DO_DESENVOLVIMENTO = 'painel-desenvolvimento';
 
 export function IrParaOSuporte({ parte = 'quadro' }: { parte?: 'quadro' | 'relatorios' }) {
   const opcoes = useOpcoes();
@@ -49,6 +54,29 @@ export function IrParaAImplantacao() {
     return (
       <Vazio titulo="Nenhum painel da implantação para você"
         texto="Ou ele ainda não existe (quem cuida dos chamados cria em Painéis › Ajustes › Painéis e etapas › Novo painel › Implantação), ou você não está entre quem vê o painel."
+        acao={<Link className="btn-secondary btn-sm" to="/atendimento">Ir para os Painéis</Link>} />
+    );
+  }
+  return <Navigate replace to={`/atendimento/quadro?painel=${encodeURIComponent(painel.id)}`} />;
+}
+
+/**
+ * O painel do Desenvolvimento: o que veio com o sistema, mesmo que o nome dele mude (como o do Suporte). Só o ativo que a
+ * pessoa vê (os das opções).
+ */
+export function painelDoDesenvolvimento(paineis: readonly Painel[]): Painel | null {
+  return paineis.find((p) => p.id === PAINEL_DO_DESENVOLVIMENTO && p.ativo) ?? null;
+}
+
+export function IrParaODesenvolvimento() {
+  const opcoes = useOpcoes();
+  if (opcoes.isLoading) return <Carregando />;
+  if (opcoes.isError) return <div className="text-bad text-sm">{mensagemErro(opcoes.error)}</div>;
+  const painel = painelDoDesenvolvimento(opcoes.data?.paineis ?? []);
+  if (!painel) {
+    return (
+      <Vazio titulo="O painel do Desenvolvimento não está aberto para você"
+        texto="Ou ele está desativado (quem cuida dos chamados liga de novo em Painéis › Ajustes › Painéis e etapas), ou você não está entre quem vê o painel."
         acao={<Link className="btn-secondary btn-sm" to="/atendimento">Ir para os Painéis</Link>} />
     );
   }

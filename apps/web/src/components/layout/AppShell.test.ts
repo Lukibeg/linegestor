@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EtapaPainel, Painel } from '@gestor/shared';
 import { NAV, eDoSuporte, parteDoPainel, parteDoSuporte } from './AppShell.js';
-import { painelDaImplantacao } from '../../pages/atendimento/Suporte.js';
+import { PAINEL_DO_DESENVOLVIMENTO, painelDaImplantacao, painelDoDesenvolvimento } from '../../pages/atendimento/Suporte.js';
 
 describe('o grupo Técnico (2.0.2)', () => {
   it('os Circuitos e DIDs e o Inventário moram nele, logo acima do Suporte ("quero q o técnico fique acima de suporte"), e não mais no alto', () => {
@@ -23,7 +23,8 @@ describe('os Relatórios e o Legado do Helena (2.1)', () => {
   it('o Suporte tem os Relatórios novos (os do painel) e, à parte, o Legado do Helena (os do LineChat)', () => {
     const suporte = NAV.find((x) => 'grupo' in x && x.grupo === 'suporte');
     expect(suporte && 'itens' in suporte ? suporte.itens.map((i) => [i.label, i.to]) : null).toEqual([
-      ['Painel do Suporte', '/suporte'], ['Painel da Implantação', '/suporte/implantacao'], ['Meu dia', '/atendimento/meu-dia'], ['Projetos', '/projetos'], ['Relatórios', '/suporte/relatorios'], ['Legado do Helena', '/chamados'],
+      ['Painel do Suporte', '/suporte'], ['Painel da Implantação', '/suporte/implantacao'], ['Painel do Dev', '/suporte/desenvolvimento'],
+      ['Meu dia', '/atendimento/meu-dia'], ['Projetos', '/projetos'], ['Relatórios', '/suporte/relatorios'], ['Legado do Helena', '/chamados'],
     ]);
   });
   it('a vista Relatórios do painel Suporte marca os Relatórios; o quadro, a lista e a ficha, o Painel do Suporte', () => {
@@ -75,5 +76,27 @@ describe('o Painel da Implantação no menu Suporte (2.3)', () => {
     expect(parteDoPainel('/atendimento/SUP-3', '', imp)).toBeNull();
     expect(parteDoPainel('/atendimento/quadro', '?painel=painel-suporte', imp)).toBeNull();
     expect(parteDoPainel('/atendimento/quadro', '?painel=painel-implantacao', null)).toBeNull();
+  });
+});
+
+describe('o Painel do Dev no menu Suporte (2.4.6): o atalho para o painel Desenvolvimento', () => {
+  const painel = (id: string, ativo = true) => ({ id, sigla: id === PAINEL_DO_DESENVOLVIMENTO ? 'DEV' : 'X', tipo: 'gestao', ativo, etapas: [] }) as unknown as Painel;
+  it('é o painel que veio com o sistema (mesmo com outro nome), se está ativo e a pessoa vê', () => {
+    expect(PAINEL_DO_DESENVOLVIMENTO).toBe('painel-desenvolvimento');
+    expect(painelDoDesenvolvimento([painel('painel-suporte'), painel(PAINEL_DO_DESENVOLVIMENTO)])?.id).toBe(PAINEL_DO_DESENVOLVIMENTO);
+    expect(painelDoDesenvolvimento([painel('painel-suporte'), painel(PAINEL_DO_DESENVOLVIMENTO, false)])).toBeNull();
+    // quem não vê o painel não o recebe nas opções
+    expect(painelDoDesenvolvimento([painel('painel-suporte')])).toBeNull();
+  });
+  it('as telas dele marcam o item (o quadro, a lista, os relatórios e a ficha DEV-3); as do Suporte, não', () => {
+    const dev = { id: PAINEL_DO_DESENVOLVIMENTO, sigla: 'DEV' };
+    expect(parteDoPainel('/atendimento/quadro', '?painel=painel-desenvolvimento', dev)).toBe('painel');
+    expect(parteDoPainel('/atendimento/lista', '?painel=DEV', dev)).toBe('painel');
+    expect(parteDoPainel('/atendimento/relatorio', '?painel=painel-desenvolvimento', dev)).toBe('relatorios');
+    expect(parteDoPainel('/atendimento/DEV-3', '', dev)).toBe('painel');
+    expect(parteDoPainel('/atendimento/SUP-3', '', dev)).toBeNull();
+    expect(parteDoPainel('/atendimento/quadro', '?painel=painel-suporte', dev)).toBeNull();
+    // antes de as opções chegarem (sem a sigla), o endereço com o id já marca
+    expect(parteDoPainel('/atendimento/quadro', '?painel=painel-desenvolvimento', { id: PAINEL_DO_DESENVOLVIMENTO, sigla: null })).toBe('painel');
   });
 });
