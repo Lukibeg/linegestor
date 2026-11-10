@@ -4,7 +4,7 @@
  */
 import { and, asc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { carriers, circuits, clients, dids, newId, users, type Db } from '@gestor/db';
-import type { CancelarCircuito, CircuitoGravar, CircuitoListar } from '@gestor/shared';
+import { oLink, type CancelarCircuito, type CircuitoGravar, type CircuitoListar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 
@@ -178,7 +178,7 @@ export async function softDelete(db: Db, id: string) {
 export async function cancelar(db: Db, id: string, f: CancelarCircuito, userId: string) {
   const [antes] = await db.select().from(circuits).where(and(eq(circuits.id, id), isNull(circuits.deletedAt)));
   if (!antes) throw new NotFound('Circuito');
-  if (antes.cancelledOn) throw new BadRequest(`O link ${antes.name} já está cancelado (desde ${antes.cancelledOn.split('-').reverse().join('/')}).`);
+  if (antes.cancelledOn) throw new BadRequest(`${oLink(antes.name, true)} já está cancelado (desde ${antes.cancelledOn.split('-').reverse().join('/')}).`);
   const [row] = await db.update(circuits).set({ cancelledOn: f.dia, cancelReason: f.motivo || null, cancelledById: userId, cancelledAt: new Date(), updatedAt: new Date() })
     .where(eq(circuits.id, id)).returning();
   return row!;
@@ -188,7 +188,7 @@ export async function cancelar(db: Db, id: string, f: CancelarCircuito, userId: 
 export async function reativar(db: Db, id: string) {
   const [antes] = await db.select().from(circuits).where(and(eq(circuits.id, id), isNull(circuits.deletedAt)));
   if (!antes) throw new NotFound('Circuito');
-  if (!antes.cancelledOn) throw new BadRequest(`O link ${antes.name} não está cancelado.`);
+  if (!antes.cancelledOn) throw new BadRequest(`${oLink(antes.name, true)} não está cancelado.`);
   await db.update(circuits).set({ cancelledOn: null, cancelReason: null, cancelledById: null, cancelledAt: null, updatedAt: new Date() }).where(eq(circuits.id, id));
   return antes;
 }
@@ -203,10 +203,11 @@ export async function restore(db: Db, id: string) {
  * Quem aparece no filtro "Titular": só quem é titular de pelo menos um circuito que está na
  * lista. Sem o interruptor dos links de terceiros, o titular de um link de terceiro não entra.
  */
-export async function owners(db: Db, includeThirdParty = false) {
+export async function owners(db: Db, includeThirdParty = false, includeCancelled = false) {
   const conds: SQL[] = [isNull(circuits.deletedAt), sql`${circuits.ownerClientId} is not null`];
   if (!includeThirdParty) conds.push(eq(circuits.thirdParty, false));
-  conds.push(isNull(circuits.cancelledOn));
+  // o titular de um link cancelado (2.4.6) só entra com "Mostrar cancelados"
+  if (!includeCancelled) conds.push(isNull(circuits.cancelledOn));
   const rows = await db
     .selectDistinct({ id: clients.id, name: clients.tradeName, isInternal: clients.isInternal, internalCode: clients.internalCode })
     .from(circuits).innerJoin(clients, eq(clients.id, circuits.ownerClientId))
@@ -214,7 +215,14 @@ export async function owners(db: Db, includeThirdParty = false) {
   return rows.sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.name.localeCompare(b.name, 'pt-BR'));
 }
 
-export async function options(db: Db) {
-  // o link cancelado (2.4.6) não recebe números novos: fica fora da escolha
-  return db.select({ id: circuits.id, name: circuits.name, code: circuits.code, carrierName: carriers.name }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(and(isNull(circuits.deletedAt), isNull(circuits.cancelledOn))).orderBy(asc(circuits.name));
+/**
+ * A lista curta para os seletores. O link cancelado (2.4.6) não recebe números: fica fora da escolha, a não ser nos filtros, com
+ * "Mostrar cancelados" ligado (`incluirCancelados`), e aí vem marcado.
+ */
+export async function options(db: Db, incluirCancelados = false) {
+  const conds: SQL[] = [isNull(circuits.deletedAt)];
+  if (!incluirCancelados) conds.push(isNull(circuits.cancelledOn));
+  const rows = await db.select({ id: circuits.id, name: circuits.name, code: circuits.code, carrierName: carriers.name, cancelledOn: circuits.cancelledOn })
+    .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(and(...conds)).orderBy(asc(circuits.name));
+  return rows.map(({ cancelledOn, ...c }) => ({ ...c, cancelled: !!cancelledOn }));
 }

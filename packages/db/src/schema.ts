@@ -2131,6 +2131,11 @@ export const calendarSeries = pgTable('calendar_series', {
    * dias ele dura. Muda quando alguém muda "este e os próximos".
    */
   template: jsonb('template').notNull(),
+  /**
+   * O corte do "excluir este e os próximos": o fim de antes ({ deletedAt, untilOn, generatedUntil }). Restaurar da lixeira as datas
+   * que foram juntas devolve a repetição como estava (se ninguém mudou a regra no meio).
+   */
+  undo: jsonb('undo'),
   createdById: text('created_by_id').references(() => users.id),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -2174,6 +2179,11 @@ export const calendarEvents = pgTable(
     remindersSent: jsonb('reminders_sent').notNull().default({}),
     /** A série (2.4.6): o evento que se repete; nulo = evento avulso */
     seriesId: text('series_id').references(() => calendarSeries.id),
+    /**
+     * A data que saiu porque a regra da repetição mudou (2.4.6: "este e os próximos" com outra frequência, outro dia, outro fim, ou
+     * sem repetir). Fica no banco, com o `deleted_at`, mas fora da lixeira: não foi alguém que excluiu, e a regra nova já tem as datas.
+     */
+    droppedBySeries: boolean('dropped_by_series').notNull().default(false),
     createdById: text('created_by_id').references(() => users.id),
     updatedById: text('updated_by_id').references(() => users.id),
     createdAt: createdAt(),

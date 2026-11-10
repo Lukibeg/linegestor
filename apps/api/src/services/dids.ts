@@ -7,10 +7,17 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { carriers, circuits, clients, dids, newId, type Db } from '@gestor/db';
-import { didFormatado, gerarFaixaDids, paraBusca, type DidCriarFaixa, type DidEditarEmMassa, type DidListar } from '@gestor/shared';
+import { didFormatado, gerarFaixaDids, oLink, paraBusca, type DidCriarFaixa, type DidEditarEmMassa, type DidListar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 
 const owner = alias(clients, 'owner');
+
+/**
+ * O número que NÃO é de um link cancelado (2.4.6). O link cancelado e os números dele saem das contas e das listas de todo
+ * lugar — o cliente, o chamado, os relatórios, o painel —, a não ser que alguém ligue "Mostrar cancelados"; a ficha do próprio
+ * link guarda a história. O `is null` é necessário: `not in` com nulo some com o número sem circuito.
+ */
+export const foraDeLinkCancelado = sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.cancelledOn} is not null))`;
 
 /**
  * Para a busca na observação sem acento: o `translate` do PostgreSQL troca letra por letra.
@@ -70,9 +77,7 @@ function filtros(q: Partial<DidListar>): SQL[] {
     conds.push(sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.thirdParty} = true))`);
   }
   // o número de um link cancelado (2.4.6) só aparece com "Mostrar cancelados" (e dentro da ficha do próprio link)
-  if (!q.includeCancelled) {
-    conds.push(sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.cancelledOn} is not null))`);
-  }
+  if (!q.includeCancelled) conds.push(foraDeLinkCancelado);
   return conds;
 }
 
@@ -102,10 +107,18 @@ export async function get(db: Db, id: string) {
 }
 
 /** Cria uma faixa sequencial. Se algum número já existir, não cria nenhum e diz quais são. */
+/**
+ * O link cancelado (2.4.6) não recebe números: nem a faixa nova, nem o número que vem de outro circuito (pela linha, pela
+ * edição em massa ou pela planilha). Tirar um número dele para outro circuito pode (o número portado de volta, por exemplo).
+ */
+async function recusarLinkCancelado(db: Db, circuitId: string | null | undefined) {
+  if (!circuitId) return;
+  const [c] = await db.select({ name: circuits.name, cancelledOn: circuits.cancelledOn }).from(circuits).where(eq(circuits.id, circuitId)).limit(1);
+  if (c?.cancelledOn) throw new BadRequest(`${oLink(c.name, true)} foi cancelado: reative-o antes de pôr números nele.`);
+}
+
 export async function createRange(db: Db, data: DidCriarFaixa) {
-  // o link cancelado (2.4.6) não recebe números novos: é história
-  const [circuito] = await db.select({ name: circuits.name, cancelledOn: circuits.cancelledOn }).from(circuits).where(eq(circuits.id, data.circuitId)).limit(1);
-  if (circuito?.cancelledOn) throw new BadRequest(`O link ${circuito.name} foi cancelado: reative-o antes de criar números nele.`);
+  await recusarLinkCancelado(db, data.circuitId);
   const numbers = gerarFaixaDids(data.baseNumber, data.quantity);
   const existing = await db.select({ number: dids.number }).from(dids).where(inArray(dids.number, numbers));
   if (existing.length) {
@@ -130,12 +143,14 @@ export async function update(db: Db, id: string, data: { circuitId?: string; cli
   const [before] = await db.select().from(dids).where(eq(dids.id, id));
   if (!before) throw new NotFound('DID');
   if (data.inUse !== undefined && (data.clientId === null || (data.clientId === undefined && !before.clientId))) throw new BadRequest('Só um número com cliente pode ser marcado como em uso');
+  if (data.circuitId && data.circuitId !== before.circuitId) await recusarLinkCancelado(db, data.circuitId);
   const [after] = await db.update(dids).set({ ...usoConformeCliente({ ...data }), updatedAt: new Date() }).where(eq(dids.id, id)).returning();
   return { before, after: after! };
 }
 
 /** Edição em massa por lista de ids. Devolve quantos foram afetados de fato. */
 export async function bulkUpdate(db: Db, data: DidEditarEmMassa) {
+  await recusarLinkCancelado(db, data.set.circuitId);
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (data.set.circuitId) set.circuitId = data.set.circuitId;
   if ('clientId' in data.set) set.clientId = data.set.clientId;

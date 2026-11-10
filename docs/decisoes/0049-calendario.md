@@ -190,3 +190,13 @@ no outlook aqui"*; e, vendo a prévia, *"ficou bom, eu quero q a visualização 
 - no celular, uma rolagem só nos dois sentidos: os dias e o dia inteiro ficam no alto, e as horas, à esquerda.
 
 Os filtros (os painéis, os tipos, o Só os meus, a busca e os cancelados) valem igual. Sem migração e sem mudança no servidor.
+
+## Revisto no 2.4.6 (10/11/2026): repetir e os cancelados escondidos
+
+- **Repetir o evento** (estava em "fica para depois"): todo dia, todo dia útil, toda semana ou todo mês, até uma data ou sem
+  data para acabar; cada data é um evento de verdade; mudar e excluir "só este" ou "este e os próximos". Os detalhes estão na
+  **0062**.
+- **O cancelado não aparece mais por padrão** (o Luan: *"os cancelados eu n quero q apareça, a n ser que eu marque alguma
+  flag"*). A caixa **Mostrar os cancelados** começa desmarcada e mora no endereço como `?cancelados=1` (antes, o padrão era
+  mostrar, e `?cancelados=0` escondia — esse endereço continua escondendo). Marcada, o cancelado aparece riscado, como antes.
+  Na ficha do chamado, "Na agenda" faz o mesmo, com **Mostrar os cancelados (N)**.

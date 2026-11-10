@@ -1444,6 +1444,7 @@ Uma SÉRIE do calendário (2.4.6): o evento que se repete (todo dia, todo dia ú
 | `until_on` | texto | O último dia em que pode cair (nulo = sem data para acabar) | — |
 | `generated_until` | texto | Até que dia as datas já foram geradas (o relógio continua daqui) | obrigatório |
 | `template` | JSON | O modelo das datas novas: os campos do evento (o título, o tipo, os painéis, as pessoas, as horas, os lembretes…) e quantos dias ele dura. Muda quando alguém muda "este e os próximos". | obrigatório |
+| `undo` | JSON | O corte do "excluir este e os próximos": o fim de antes ({ deletedAt, untilOn, generatedUntil }). Restaurar da lixeira as datas que foram juntas devolve a repetição como estava (se ninguém mudou a regra no meio). | — |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
@@ -1473,6 +1474,7 @@ Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual clien
 | `remind_who` | texto | Quem recebe o lembrete: pessoas (as do evento; sem pessoas, quem criou) | paineis (todos que veem o evento) | obrigatório · padrão: 'pessoas' |
 | `reminders_sent` | JSON | Os lembretes que já saíram (ou foram pulados): {"<minutos>@<começo>": quando}; mudar o dia ou a hora muda o começo, e o lembrete volta a valer | obrigatório · padrão: {} |
 | `series_id` | texto | A série (2.4.6): o evento que se repete; nulo = evento avulso | liga com **calendarSeries** |
+| `dropped_by_series` | sim/não | A data que saiu porque a regra da repetição mudou (2.4.6: "este e os próximos" com outra frequência, outro dia, outro fim, ou sem repetir). Fica no banco, com o `deleted_at`, mas fora da lixeira: não foi alguém que excluiu, e a regra nova já tem as datas. | obrigatório · padrão: false |
 | `created_by_id` | texto | — | liga com **users** |
 | `updated_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |

@@ -12,6 +12,9 @@
  *
  * Desde o 2.0.3 cada painel tem as suas etiquetas (o pedido do Luan: "as etiquetas tem q ser por painel, cada
  * painel vai ter suas etiquetas"): o catálogo que chega é o do painel do chamado.
+ *
+ * Desde o 2.4.6 o painel de escolher aceita um `cabecalho` (o botão Classificação da barra da ficha põe a prioridade em cima
+ * das etiquetas: "a prioridade dentro, então vai deixar de ser etiquetas e vai ser classificação").
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,7 +30,7 @@ const MAXIMO = 20;
 
 type Modo = { tipo: 'lista' } | { tipo: 'criar'; nome: string } | { tipo: 'editar'; nome: string; local: boolean };
 
-export function SeletorDeEtiquetas({ id, painelId, valor, catalogo, coresNovas = {}, onMudar, onCriar, onEditarLocal, onEditada, podeMudar, podeEditar, ocupado = false, rotulo = 'Etiquetas', gatilho }: {
+export function SeletorDeEtiquetas({ id, painelId, valor, catalogo, coresNovas = {}, onMudar, onCriar, onEditarLocal, onEditada, podeMudar, podeEditar, ocupado = false, rotulo = 'Etiquetas', gatilho, cabecalho }: {
   id: string;
   /** o painel do chamado: cada painel tem as suas etiquetas (2.0.3) — o editar muda a deste painel */
   painelId: string;
@@ -54,6 +57,8 @@ export function SeletorDeEtiquetas({ id, painelId, valor, catalogo, coresNovas =
    * mover"): o mesmo painel de escolher abre embaixo dele.
    */
   gatilho?: { classe: string; conteudo: ReactNode; titulo?: string };
+  /** o que vem em cima da lista, no mesmo painel (o botão Classificação, 2.4.6: a prioridade); a lista ganha o rótulo */
+  cabecalho?: ReactNode;
 }) {
   const [aberto, setAberto] = useState(false);
   const [modo, setModo] = useState<Modo>({ tipo: 'lista' });
@@ -152,12 +157,20 @@ export function SeletorDeEtiquetas({ id, painelId, valor, catalogo, coresNovas =
       )}
 
       {aberto && (
-        <div ref={painel} role="dialog" aria-label={rotulo} id={`${id}-lista`}
+        <div ref={painel} role="dialog" aria-label={cabecalho ? 'Classificação' : rotulo} id={`${id}-lista`}
+          // o Esc fecha o painel (e não a janela do chamado), também com o foco na prioridade
+          onKeyDown={(e) => { if (e.key === 'Escape' && modo.tipo === 'lista') { e.preventDefault(); e.stopPropagation(); fechar(); } }}
           className="fixed z-40 card p-2 shadow-lg flex flex-col"
           style={{ left: pos?.left ?? -9999, top: pos?.top, bottom: pos?.bottom, maxHeight: Math.min(pos?.maxHeight ?? 380, 440), maxWidth: 'calc(100vw - 16px)', visibility: pos ? 'visible' : 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}>
           <div className="w-[340px] max-w-full flex flex-col min-h-0">
             {modo.tipo === 'lista' ? (
               <>
+                {cabecalho && (
+                  <>
+                    <div className="px-1 pt-0.5 pb-2.5 mb-2 border-b border-line">{cabecalho}</div>
+                    <div className="label px-1 mb-1">{rotulo}</div>
+                  </>
+                )}
                 <label className="relative block mb-1.5">
                   <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden />
                   <input ref={entrada} className="input py-1.5 pl-8 text-[13.5px]" autoComplete="off" maxLength={40} value={busca} id={`${id}-busca`}

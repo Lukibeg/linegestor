@@ -6,11 +6,14 @@
  *
  * Desde o 2.0.3 o Agendar também fica na barra de ações, ao lado do Mover (o pedido do Luan: "pra agendar tbm
  * pode até manter o agendar abaixo que já existe"): os dois usam o `useAgendar`.
+ *
+ * Desde o 2.4.6: o evento que se repete ocupa uma linha só (a próxima data, com "mais N datas"), e o cancelado fica escondido até
+ * a pessoa pedir ("os cancelados eu não quero que apareçam, a não ser que eu marque alguma flag").
  */
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarDays, CalendarPlus } from 'lucide-react';
-import type { CalendarioOpcoes, EventoDoCalendario } from '@gestor/shared';
+import { umaDataPorSerie, type CalendarioOpcoes, type EventoDoCalendario } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { CHAVE_DO_CALENDARIO, LinhaDoEvento, useNomesDasPessoas, useOpcoesDoCalendario } from '../../calendario/comum.js';
 import { JanelaDoEvento, type AberturaDoEvento } from '../../calendario/Janela.js';
@@ -53,23 +56,34 @@ export function NaAgenda() {
   const { op, podeAgendar, agendar, abrirEvento, janela } = useAgendar();
   const eventos = useQuery({ queryKey: [...CHAVE_DO_CALENDARIO, 'do-chamado', f.id], queryFn: () => api.calendario.doChamado(f.id), staleTime: 30_000 });
   const nomes = useNomesDasPessoas(op);
-  const lista = eventos.data ?? [];
+  const [comCancelados, setComCancelados] = useState(false);
+  const todos = eventos.data ?? [];
+  const cancelados = todos.filter((e) => e.situacao === 'cancelado').length;
+  // o que se repete numa linha só; o cancelado, só pedindo (2.4.6)
+  const lista = useMemo(() => umaDataPorSerie(todos.filter((e) => comCancelados || e.situacao !== 'cancelado'), op?.hoje ?? ''), [todos, comCancelados, op?.hoje]);
   // sem nenhum evento, a parte sai da ficha (2.2): o Agendar fica na barra de cima, e o evento marcado traz a parte de volta
-  if (!op || !lista.length) return null;
+  if (!op || !todos.length) return null;
 
   return (
     <Secao id="campo-agenda" titulo="Na agenda" icone={<CalendarDays size={16} />} dica={lista.length ? `${lista.length} ${lista.length === 1 ? 'evento' : 'eventos'}` : undefined}
       acoes={podeAgendar ? <button type="button" className="btn-secondary btn-sm" onClick={agendar} id="ficha-agendar"><CalendarPlus size={14} /> Agendar</button> : undefined}>
       {lista.length ? (
         <ul className="flex flex-col gap-0.5 -mx-2 -my-1">
-          {lista.map((e) => <li key={e.id}><LinhaDoEvento e={e} opcoes={op} nomes={nomes} comVoce={eu?.id ?? null} comPeriodo onAbrir={() => abrirEvento(e)} /></li>)}
+          {lista.map(({ evento: e, outras }) => <li key={e.id}><LinhaDoEvento e={e} opcoes={op} nomes={nomes} comVoce={eu?.id ?? null} comPeriodo outrasDatas={outras} onAbrir={() => abrirEvento(e)} /></li>)}
         </ul>
+      ) : cancelados ? (
+        <p className="text-[13px] text-muted">{cancelados === 1 ? 'O evento deste chamado foi cancelado.' : `Os ${cancelados} eventos deste chamado foram cancelados.`}</p>
       ) : (
         <p className="text-[13px] text-muted">
           {vendas
             ? 'Nenhuma reunião ou visita marcada para esta negociação. O Agendar põe no calendário da equipe, já ligado a ela.'
             : 'Nenhuma visita ou virada marcada para este chamado. O Agendar põe no calendário da equipe, já ligado a ele.'}
         </p>
+      )}
+      {cancelados > 0 && (
+        <button type="button" className="link text-[12.5px] mt-1.5" onClick={() => setComCancelados((v) => !v)} id="agenda-cancelados">
+          {comCancelados ? 'Esconder os cancelados' : `Mostrar os cancelados (${cancelados})`}
+        </button>
       )}
       {janela}
     </Secao>

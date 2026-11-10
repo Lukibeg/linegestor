@@ -89,8 +89,9 @@ navegador também fecha a janela.
   etiqueta**: escolha a **cor** e crie — ela nasce no painel. O **lápis** de cada uma (de quem cuida dos
   chamados) edita **o nome e a cor**, que valem nos chamados do painel que têm a etiqueta. A que chega
   pelo robô ou pela IA nasce cinza. Escrita de outro jeito ("cliente VIP" e "Cliente vip"), é a mesma
-  etiqueta. Na ficha, a caixa é a mesma, e o botão **Etiquetas**, ao lado do Mover, abre a mesma lista. O
-  chamado que passa para outro painel leva as etiquetas (as que faltam lá entram com a mesma cor).
+  etiqueta. Na ficha, a mesma lista fica no botão **Classificação**, ao lado do Mover, embaixo da prioridade
+  (2.4.6; na negociação e no painel sem prioridade, o botão se chama **Etiquetas**). O chamado que passa para
+  outro painel leva as etiquetas (as que faltam lá entram com a mesma cor).
 - O formulário mostra **só os campos que o painel usa**: os do sistema que estão ligados nele e, em
   **"Do painel …"**, os campos que a equipe criou para ele. O que é obrigatório para abrir vem com `*`;
   faltando, a tela diz o quê. (O robô, os agendados e as integrações abrem mesmo sem eles: quem
@@ -132,19 +133,20 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 - Do lado: a **empresa** e o **contato** (o e-mail, desde o 2.3, com o link para escrever; em **Editar**, o nome, o
   WhatsApp e o e-mail, e os contatos do cliente: um clique troca; o contato escrito à mão ganha **Salvar nos contatos**) com a **conversa no LineChat** — o link e a sessão;
   desde o 2.1, **Ligar a conversa do LineChat** (o chamado sem conversa, como o ativo) e **Trocar**
-  (colar o link de outra conversa, ou **Tirar a conversa**); vai para o histórico —, a **classificação** (os campos que o painel usa — assunto,
-  tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
-  etiquetas), os **prazos**, o **Na agenda** (a visita ou a virada
+  (colar o link de outra conversa, ou **Tirar a conversa**); vai para o histórico —, os **Detalhes** (os campos que o painel usa — assunto,
+  tipo, gravidade, alcance, produtos, operadoras — e os campos do próprio painel; até o 2.4.6, o cartão se chamava
+  Classificação e tinha também a prioridade e as etiquetas, que foram para o botão Classificação da barra), os **prazos**, o **Na agenda** (a visita ou a virada
   ligada ao chamado, e o **Agendar**, que põe uma no [calendário](calendario.md) já com o chamado, o
   cliente e o painel — 2.0.1), o caso **na operadora** e o **tempo gasto**. O campo de texto longo do
   painel (ex.: "Como reproduzir") fica junto do relato.
 - A barra de cima: **Assumir**, o **Responsável** (quem está com o chamado; troca ali mesmo) e, colado nele, os
   **Observadores** (quem recebe os avisos; incluir, tirar com o X e o **Eu observo também** — 2.2), **Mover**,
-  **Etiquetas**, **Agendar**, **Checklist** (quando ainda não tem), **Ligações** (ligar a outro chamado, criar um
+  **Classificação** (2.4.6: a **prioridade**, com a sugerida, em cima, e as **etiquetas** embaixo; o aviso "falta:
+  Prioridade" abre esse menu; na negociação e no painel sem prioridade, **Etiquetas**), **Agendar**, **Checklist** (quando ainda não tem), **Ligações** (ligar a outro chamado, criar um
   filho, definir o pai), **Escalonar** (pede o motivo), **Esperar** o cliente ou a operadora (pede o motivo),
   a **NIA** (abaixo), **Preencher com IA** e **Mais** (ligar a um problema, trocar de painel,
   reabrir, lixeira). O **Copiar o link** fica ao lado do código, no alto (2.2). Quem só lê o chamado (sem a barra)
-  vê o responsável e os observadores num cartão, ao lado.
+  vê o responsável e os observadores num cartão, ao lado, e a prioridade e as etiquetas no cartão Classificação.
 - **Para sair do Novo, o chamado precisa de um responsável** (2.2): sem ninguém, o Mover diz "falta:
   Responsável", e a janela do quadro pergunta quem fica com ele. O Assumir faz tudo de uma vez.
 - **A ficha mostra só o que tem** (2.2): o checklist, os filhos e ligações e a agenda vazios não aparecem; voltam

@@ -89,7 +89,8 @@ quando começar a faturar.
 
 Desde o 2.4, os campos ficam em **grupos** (o cartão **Os grupos de campos**: Novo grupo, Editar — o nome e se fica no meio
 da ficha ou na lateral —, as setas da ordem, o botão que ativa ou desativa todos os campos do grupo e a lixeira, que exclui o
-grupo com os campos). A lista dos campos vem separada: os da Classificação e, em cada grupo, um bloco por produto. O campo se
+grupo com os campos). A lista dos campos vem separada: os dos Detalhes (a lateral; a Classificação até o 2.4.6) e, em cada grupo, um bloco por
+produto. O campo se
 **exclui** de verdade (Editar › Excluir o campo); o que os chamados preencheram volta pelo **Restaurar**, em Excluídos.
 
 Todo campo de qualquer painel tem duas opções:

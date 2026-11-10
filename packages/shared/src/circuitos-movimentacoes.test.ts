@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MovimentacoesDosCircuitosSchema, circuitoNaMovimentacao, detalheDaMovimentacao, didNaMovimentacao, idsDosNomesDaMovimentacao,
-  movimentacaoBate, periodoDasMovimentacoes, resumoDoDidAlterado, tiposDoFiltro, type NomesDaMovimentacao,
+  movimentacaoBate, movimentacaoDoCancelamento, oLink, periodoDasMovimentacoes, resumoDoDidAlterado, tiposDoFiltro, type NomesDaMovimentacao,
 } from './circuitos-movimentacoes.js';
 
 const nomes: NomesDaMovimentacao = {
@@ -72,5 +72,18 @@ describe('as movimentações dos circuitos (2.4.1)', () => {
     expect(p.antesDe!.toISOString()).toBe('2026-11-04T03:00:00.000Z');
     expect(MovimentacoesDosCircuitosSchema.parse({ tipo: '', de: '', q: ' ' })).toMatchObject({ tipo: undefined, de: undefined, q: undefined, page: 1, pageSize: 50 });
     expect(MovimentacoesDosCircuitosSchema.safeParse({ tipo: 'outra' }).success).toBe(false);
+  });
+});
+
+describe('o link cancelado (2.4.6)', () => {
+  it('a frase não repete a palavra: "o Link - Aurora", "o link 071 Principal"', () => {
+    expect(oLink('Link - Aurora')).toBe('o Link - Aurora');
+    expect(oLink('link Prado')).toBe('o link Prado');
+    expect(oLink('071 Principal', true)).toBe('O link 071 Principal');
+    expect(oLink('Linkado')).toBe('o link Linkado');
+    expect(movimentacaoDoCancelamento({ id: 'k1', name: 'Link - Aurora' }, 'circuito_cancelado', { dia: '2026-11-10', motivo: 'Foi para a nuvem' }).resumo)
+      .toBe('Cancelou o Link - Aurora (desde 10/11/2026: Foi para a nuvem)');
+    expect(movimentacaoDoCancelamento({ id: 'k1', name: '071 Principal' }, 'circuito_reativado', { dia: '2026-11-10', motivo: null }).resumo)
+      .toBe('Reativou o link 071 Principal (estava cancelado desde 10/11/2026)');
   });
 });

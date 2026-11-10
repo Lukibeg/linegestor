@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Ban, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
-import { diaComAno, hojeNoCalendario } from '@gestor/shared';
+import { diaComAno, hojeNoCalendario, oLink } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
@@ -24,6 +24,9 @@ import { Voltar } from '../../lib/voltar.js';
 import { Numeracao } from '../dids/Lista.js';
 import { MovimentacoesDosCircuitos } from './Movimentacoes.js';
 import { ArtigosLigados } from '../base/partes.js';
+
+/** "O " ou "O link " antes do nome em negrito (o nome que já começa com "Link" não repete a palavra). */
+const prefixo = (nome: string) => oLink(nome, true).slice(0, -nome.length);
 
 // criado uma vez só: um formatador com fuso custa caro para criar
 const fmtQuando = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -42,7 +45,7 @@ function CancelarLink({ circuito: c, onClose, onFeito }: { circuito: { id: strin
     setOcupado(true); setErro('');
     try {
       await api.circuits.cancelar(c.id, { dia, motivo });
-      toast.push('ok', `O link ${c.name} foi cancelado: saiu das listas e ficou guardado.`);
+      toast.push('ok', `${oLink(c.name, true)} foi cancelado: saiu das listas e ficou guardado.`);
       onFeito();
     } catch (e) {
       setErro(mensagemErro(e));
@@ -59,7 +62,7 @@ function CancelarLink({ circuito: c, onClose, onFeito }: { circuito: { id: strin
       </>
     )}>
       <div className="flex flex-col gap-3 text-[14px]">
-        <p>O link <b>{c.name}</b> sai das listas, dos cartões e do painel{c.dids.total ? <>, com os <b>{c.dids.total} números</b> dele</> : null}. Ele não vai para a lixeira: fica guardado, com o dia e o motivo, e aparece ligando <b>Mostrar cancelados</b>. Dá para reativar depois.</p>
+        <p>{prefixo(c.name)}<b>{c.name}</b> sai das listas, dos cartões e do painel{c.dids.total ? <>, com os <b>{c.dids.total} números</b> dele</> : null}. Ele não vai para a lixeira: fica guardado, com o dia e o motivo, e aparece ligando <b>Mostrar cancelados</b>. Dá para reativar depois.</p>
         <div className="grid grid-cols-1 sm:grid-cols-[170px_1fr] gap-3">
           <Campo label="Cancelado em"><input type="date" className="input" value={dia} onChange={(e) => { setDia(e.target.value); setErro(''); }} id="cancelar-dia" /></Campo>
           <Campo label="Motivo" dica="opcional"><input className="input" maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="O cliente foi para a nuvem, portou os números…" id="cancelar-motivo" /></Campo>
@@ -147,8 +150,8 @@ export function CircuitoDetalhe() {
       <FaixaForm open={faixa} onClose={() => setFaixa(false)} circuitId={c.id} onDone={() => { setFaixa(false); void qc.invalidateQueries({ queryKey: ['circuit', id] }); void qc.invalidateQueries({ queryKey: ['dids'] }); }} />
       {cancelar && <CancelarLink circuito={c} onClose={() => setCancelar(false)} onFeito={() => { setCancelar(false); void qc.invalidateQueries(); }} />}
       <Confirmar open={reativar} onClose={() => setReativar(false)} loading={busy} titulo="Reativar o link" botao="Reativar"
-        onConfirm={async () => { setBusy(true); try { await api.circuits.reativar(c.id); toast.push('ok', `O link ${c.name} voltou às listas.`); setReativar(false); void qc.invalidateQueries(); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } }}
-        texto={<>O link <b>{c.name}</b> volta às listas, aos cartões e ao painel, com os números dele. O cancelamento continua registrado nas movimentações.</>} />
+        onConfirm={async () => { setBusy(true); try { await api.circuits.reativar(c.id); toast.push('ok', `${oLink(c.name, true)} voltou às listas.`); setReativar(false); void qc.invalidateQueries(); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } }}
+        texto={<>{prefixo(c.name)}<b>{c.name}</b> volta às listas, aos cartões e ao painel, com os números dele. O cancelamento continua registrado nas movimentações.</>} />
       <Confirmar open={excluir} onClose={() => setExcluir(false)} onConfirm={doDelete} loading={busy} perigoso titulo="Mandar circuito para a lixeira" botao="Mandar para a lixeira" texto={c.dids.total > 0 ? <>Este circuito ainda tem <b>{c.dids.total} DIDs</b>. O sistema vai recusar: mova-os antes.</> : <>O circuito <b>{c.name}</b> sai das listas, sem apagar nada. Dá para restaurar na lixeira.</>} />
     </Pagina>
   );
@@ -164,7 +167,7 @@ export function FaixaForm({ open, onClose, circuitId, onDone }: { open: boolean;
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const toast = useToast();
   const clients = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options(), enabled: open });
-  const circuits = useQuery({ queryKey: ['circuit-options'], queryFn: api.circuits.options, enabled: open && !circuitId });
+  const circuits = useQuery({ queryKey: ['circuit-options', false], queryFn: () => api.circuits.options(), enabled: open && !circuitId });
   const digits = f.baseNumber.replace(/\D/g, '');
   const preview = digits.length >= 10 && f.quantity > 0 ? `${didFormatado(digits)} … ${didFormatado((BigInt(digits) + BigInt(f.quantity - 1)).toString().padStart(digits.length, '0'))}` : null;
   const save = async () => {

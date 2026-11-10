@@ -11,7 +11,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { calendarSeries } from '@gestor/db';
+import { calendarSeries, clients, newId } from '@gestor/db';
 import { datasDaRepeticao, diaDaSemana, somarDias, type EventoDoCalendario } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import { estenderRepeticoes } from '../src/services/calendario.js';
@@ -185,6 +185,77 @@ describe('repetir: mudar e excluir', () => {
   });
 });
 
+describe('repetir: a data não troca de dia, a lixeira não enche e a repetição volta', () => {
+  const lixeiraDoCalendario = async () => ((await s.get('/admin/trash')).json() as Array<{ type: string; id: string; label: string }>).filter((x) => x.type === 'calendarEvent');
+
+  it('outra regra: o cancelado fica no dia dele; as agendadas andam; as que sobram saem sem ir para a lixeira', async () => {
+    const r = await s.post('/calendario/eventos', evento({ titulo: 'Plantão do sábado', repetir: { frequencia: 'semanal', ate: null } }));
+    const serieId = (r.json() as EventoDoCalendario).repeticao!.serieId;
+    const antes = await daSerie(serieId);
+    // a 4ª data foi cancelada (a equipe não vai naquele dia)
+    await s.post(`/calendario/eventos/${antes[3]!.id}/situacao`, { situacao: 'cancelado' });
+    const lixoAntes = (await lixeiraDoCalendario()).length;
+    // da 3ª em diante, todo mês
+    const terceira = antes[2]!;
+    const m = await s.put(`/calendario/eventos/${terceira.id}`, { ...evento({ titulo: 'Plantão do sábado', inicio: terceira.inicio, fim: terceira.fim }), escopo: 'proximos', repetir: { frequencia: 'mensal', ate: null } });
+    expect(m.statusCode, m.body).toBe(200);
+    const depois = await daSerie(serieId);
+    // o cancelado continua cancelado, no dia dele (não "andou" para uma data nova)
+    const cancelado = depois.find((e) => e.id === antes[3]!.id)!;
+    expect([cancelado.inicio, cancelado.situacao]).toEqual([antes[3]!.inicio, 'cancelado']);
+    // as datas: as duas de antes, a 3ª, o cancelado e as do mês dali em diante (até 12 meses)
+    const mensais = datasDaRepeticao(terceira.inicio, 'mensal', somarDias(terceira.inicio > hoje ? terceira.inicio : hoje, 365), terceira.inicio);
+    expect(depois.filter((e) => e.situacao === 'agendado').map((e) => e.inicio).sort()).toEqual([antes[0]!.inicio, antes[1]!.inicio, terceira.inicio, ...mensais].sort());
+    // as semanais que sobraram saíram sem encher a lixeira
+    expect((await lixeiraDoCalendario()).length).toBe(lixoAntes);
+  });
+
+  it('a mesma regra: a hora muda daqui em diante, e cada data fica no dia e na situação dela', async () => {
+    const r = await s.post('/calendario/eventos', evento({ titulo: 'Ronda do servidor', repetir: { frequencia: 'semanal', ate: somarDias(terca, 7 * 6) } }));
+    const serieId = (r.json() as EventoDoCalendario).repeticao!.serieId;
+    const antes = await daSerie(serieId);
+    await s.post(`/calendario/eventos/${antes[4]!.id}/situacao`, { situacao: 'cancelado' });
+    const e = antes[2]!;
+    await s.put(`/calendario/eventos/${e.id}`, { ...evento({ titulo: 'Ronda do servidor', inicio: e.inicio, fim: e.fim, horaInicio: '16:00', horaFim: '17:00' }), escopo: 'proximos', repetir: { frequencia: 'semanal', ate: somarDias(terca, 7 * 6) } });
+    const depois = await daSerie(serieId);
+    expect(depois.map((x) => x.inicio)).toEqual(antes.map((x) => x.inicio));
+    expect(depois.map((x) => x.horaInicio)).toEqual(['09:00', '09:00', '16:00', '16:00', '16:00', '16:00', '16:00']);
+    expect(depois[4]!.situacao).toBe('cancelado');
+  });
+
+  it('parar de repetir (este e os próximos, sem repetir): as agendadas saem sem ir para a lixeira; o cancelado fica', async () => {
+    const r = await s.post('/calendario/eventos', evento({ titulo: 'Backup da sexta', repetir: { frequencia: 'semanal', ate: somarDias(terca, 7 * 5) } }));
+    const serieId = (r.json() as EventoDoCalendario).repeticao!.serieId;
+    const antes = await daSerie(serieId);
+    await s.post(`/calendario/eventos/${antes[4]!.id}/situacao`, { situacao: 'cancelado' });
+    const lixoAntes = (await lixeiraDoCalendario()).length;
+    const e = antes[1]!;
+    const m = await s.put(`/calendario/eventos/${e.id}`, { ...evento({ titulo: 'Backup da sexta', inicio: e.inicio, fim: e.fim }), escopo: 'proximos', repetir: null });
+    expect(m.statusCode, m.body).toBe(200);
+    expect((await daSerie(serieId)).map((x) => x.id)).toEqual([antes[0]!.id, antes[1]!.id, antes[4]!.id]);
+    expect((await lixeiraDoCalendario()).length).toBe(lixoAntes);
+    const aud = (await s.get(`/admin/audit?entityId=${e.id}&pageSize=5`)).json().items[0].summary as string;
+    expect(aud).toContain('parou de repetir (as 3 datas seguintes saíram)');
+  });
+
+  it('restaurar da lixeira o "este e os próximos" devolve a repetição como era (e ela continua sozinha)', async () => {
+    const r = await s.post('/calendario/eventos', evento({ titulo: 'Leitura dos medidores', inicio: hoje, fim: hoje, repetir: { frequencia: 'diaria', ate: null } }));
+    const serieId = (r.json() as EventoDoCalendario).repeticao!.serieId;
+    const todos = await daSerie(serieId);
+    await s.del(`/calendario/eventos/${todos[10]!.id}?escopo=proximos`);
+    const cortada = await daSerie(serieId);
+    expect(cortada).toHaveLength(10);
+    expect(cortada[0]!.repeticao!.ate).toBe(somarDias(hoje, 9));
+    const linha = (await lixeiraDoCalendario()).find((x) => x.label.includes('Leitura dos medidores'))!;
+    expect((await s.post(`/admin/trash/calendarEvent/${linha.id}/restore`)).statusCode).toBe(200);
+    const devolvida = await daSerie(serieId);
+    expect(devolvida).toHaveLength(366);
+    // sem data para acabar outra vez: o relógio continua estendendo
+    expect(devolvida[0]!.repeticao!.ate).toBeNull();
+    expect(await estenderRepeticoes(app.db, new Date(Date.now() + 3 * 86_400_000))).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describe('cancelar o link', () => {
   let carrierId = '';
   let link = '';
@@ -226,7 +297,7 @@ describe('cancelar o link', () => {
   it('fica nas movimentações (e na auditoria), com o dia e o motivo', async () => {
     const m = (await s.get(`/circuits/movimentacoes?circuitId=${link}&pageSize=10`)).json().items[0];
     expect(m.tipo).toBe('circuito_cancelado');
-    expect(m.resumo).toBe('Cancelou o link Link - Clínica Aurora (desde 10/11/2026: O cliente migrou para a nuvem)');
+    expect(m.resumo).toBe('Cancelou o Link - Clínica Aurora (desde 10/11/2026: O cliente migrou para a nuvem)');
     expect(m.campos).toEqual(expect.arrayContaining([{ campo: 'Cancelado em', antes: 'ativo', depois: '10/11/2026' }]));
   });
 
@@ -237,7 +308,7 @@ describe('cancelar o link', () => {
     expect(r.json().cancelamento).toBeNull();
     expect((await s.get('/circuits')).json().items).toHaveLength(2);
     const m = (await s.get(`/circuits/movimentacoes?circuitId=${link}&pageSize=10`)).json().items[0];
-    expect(m.resumo).toBe('Reativou o link Link - Clínica Aurora (estava cancelado desde 10/11/2026)');
+    expect(m.resumo).toBe('Reativou o Link - Clínica Aurora (estava cancelado desde 10/11/2026)');
     expect((await s.post(`/circuits/${link}/reativar`, {})).body).toContain('não está cancelado');
   });
 
@@ -247,5 +318,74 @@ describe('cancelar o link', () => {
     const lia = new Session(app);
     await lia.login('lia@gestor.local', 'SenhaDeTeste!123');
     expect((await lia.post(`/circuits/${link}/cancelar`, { dia: '2026-11-10' })).statusCode).toBe(403);
+  });
+});
+
+describe('o link cancelado some de todo lugar sem a flag', () => {
+  let carrierId = '';
+  let link = '';
+  let outro = '';
+  let cliente = '';
+  const didsDoLink = async () => (await s.get(`/dids?circuitId=${link}&includeCancelled=true&pageSize=50`)).json().items as Array<{ id: string; number: string }>;
+  beforeAll(async () => {
+    carrierId = (await s.get('/admin/catalogs/carriers')).json()[0].id;
+    cliente = newId();
+    await app.db.insert(clients).values({ id: cliente, tradeName: 'Escritório Prado & Lima', legalName: 'Prado e Lima Advogados', cnpj: '44555666000181' });
+    link = (await s.post('/circuits', { name: 'Link - Prado & Lima', code: '73552', carrierId, channels: 2 })).json().id;
+    outro = (await s.post('/circuits', { name: 'Feixe Reserva', code: '88001', carrierId, channels: 10 })).json().id;
+    expect((await s.post(`/circuits/${link}/dids/range`, { baseNumber: '(71) 3186-0000', quantity: 3, clientId: cliente })).statusCode).toBe(201);
+    expect((await s.post(`/circuits/${outro}/dids/range`, { baseNumber: '(71) 3555-0000', quantity: 2, clientId: cliente })).statusCode).toBe(201);
+    expect((await s.post(`/circuits/${link}/cancelar`, { dia: '2026-11-10', motivo: 'Foi para a nuvem' })).statusCode).toBe(200);
+  });
+
+  it('o cliente: a contagem da lista e da ficha e os números da ficha ficam sem os do link cancelado', async () => {
+    expect((await s.get(`/clients/${cliente}`)).json().didCount).toBe(2);
+    const naLista = ((await s.get('/clients?pageSize=200')).json().items as Array<{ id: string; didCount: number }>).find((c) => c.id === cliente)!;
+    expect(naLista.didCount).toBe(2);
+    expect((await s.get(`/clients/${cliente}/dids`)).json().total).toBe(2);
+    // a ficha do cliente mostra os do link cancelado quando a pessoa marca a caixa, com a marca
+    const comFlag = (await s.get(`/clients/${cliente}/dids?includeCancelled=true`)).json() as { total: number; items: Array<{ cancelled: boolean }> };
+    expect(comFlag.total).toBe(5);
+    expect(comFlag.items.filter((d) => d.cancelled)).toHaveLength(3);
+  });
+
+  it('as movimentações: sem o "Mostrar cancelados", some o que é só do link cancelado', async () => {
+    const sem = (await s.get('/circuits/movimentacoes?pageSize=200')).json().items as Array<{ circuitos: Array<{ id: string }> }>;
+    expect(sem.some((m) => m.circuitos.some((c) => c.id === link))).toBe(false);
+    const com = (await s.get('/circuits/movimentacoes?pageSize=200&incluirCancelados=true')).json().items as Array<{ tipo: string; circuitos: Array<{ id: string }> }>;
+    expect(com.filter((m) => m.circuitos.some((c) => c.id === link)).map((m) => m.tipo)).toEqual(expect.arrayContaining(['circuito_cancelado', 'dids_criados', 'circuito_criado']));
+    // dentro da ficha do link, sempre
+    expect((await s.get(`/circuits/movimentacoes?circuitId=${link}&pageSize=10`)).json().items[0].tipo).toBe('circuito_cancelado');
+  });
+
+  it('os seletores: o link cancelado só nos filtros, marcado; o titular dele só com a flag', async () => {
+    expect(((await s.get('/circuits/options')).json() as Array<{ id: string }>).map((c) => c.id)).not.toContain(link);
+    const comFlag = (await s.get('/circuits/options?includeCancelled=true')).json() as Array<{ id: string; cancelled: boolean }>;
+    expect(comFlag.find((c) => c.id === link)!.cancelled).toBe(true);
+    expect(comFlag.find((c) => c.id === outro)!.cancelled).toBe(false);
+  });
+
+  it('nenhum número entra no link cancelado: nem pela linha, nem em massa, nem pela planilha', async () => {
+    const [livre] = (await s.get(`/dids?circuitId=${outro}&pageSize=10`)).json().items as Array<{ id: string }>;
+    const linha = await s.patch(`/dids/${livre!.id}`, { circuitId: link });
+    expect(linha.statusCode).toBe(400);
+    expect(linha.body).toContain('foi cancelado');
+    const massa = await s.post('/dids/bulk', { ids: [livre!.id], set: { circuitId: link } });
+    expect(massa.statusCode).toBe(400);
+    const plano = (await s.post('/data/import/preview', { entity: 'dids', csv: 'numero;circuito\n7131869999;73552\n7135550000;73552', delimiter: ';' })).json();
+    expect(plano.rows.map((x: { errors: string[] }) => x.errors.some((e) => e.includes('foi cancelado')))).toEqual([true, true]);
+    // o que já está no link pode continuar nele (a observação muda)
+    const ja = (await didsDoLink())[0]!;
+    const obs = (await s.post('/data/import/preview', { entity: 'dids', csv: `numero;circuito;observacao\n${ja.number};73552;portado`, delimiter: ';' })).json();
+    expect(obs.rows[0].errors).toEqual([]);
+    // tirar um número do link cancelado pode (o número portado de volta)
+    expect((await s.patch(`/dids/${ja.id}`, { circuitId: outro })).statusCode).toBe(200);
+  });
+
+  it('a exportação leva o cancelamento junto, em colunas', async () => {
+    const csv = (await s.get('/data/export/circuits')).body;
+    expect(csv.split('\n')[0]).toContain('cancelado_em');
+    expect(csv).toContain('10/11/2026');
+    expect((await s.get('/data/export/dids')).body.split('\n')[0]).toContain('link_cancelado_em');
   });
 });

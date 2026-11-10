@@ -15,7 +15,7 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import archiver from 'archiver';
 import { randomBytes } from 'node:crypto';
 import { carriers, circuits, clients, dids, hostingProviders, linepbxSettings, newId, productModules, products, subscriptionModules, subscriptions, type Db } from '@gestor/db';
-import { cnpjLimpo, cnpjValido, consertarAcentos, didLimpo, didValido, paraCentavos } from '@gestor/shared';
+import { cnpjLimpo, cnpjValido, consertarAcentos, didLimpo, didValido, oLink, paraCentavos } from '@gestor/shared';
 import { BadRequest } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 import * as clientsSvc from './clients.js';
@@ -201,8 +201,10 @@ async function planCircuits(db: Db, raw: Record<string, string>[]): Promise<Plan
 }
 
 async function planDids(db: Db, raw: Record<string, string>[]): Promise<Plan> {
-  const existing = new Map((await db.select({ id: dids.id, number: dids.number }).from(dids).where(isNull(dids.deletedAt))).map((d) => [d.number, d.id]));
-  const circ = await db.select({ id: circuits.id, code: circuits.code, name: circuits.name }).from(circuits).where(isNull(circuits.deletedAt));
+  const atuais = await db.select({ id: dids.id, number: dids.number, circuitId: dids.circuitId }).from(dids).where(isNull(dids.deletedAt));
+  const existing = new Map(atuais.map((d) => [d.number, d.id]));
+  const circuitoAtual = new Map(atuais.map((d) => [d.number, d.circuitId]));
+  const circ = await db.select({ id: circuits.id, code: circuits.code, name: circuits.name, cancelledOn: circuits.cancelledOn }).from(circuits).where(isNull(circuits.deletedAt));
   const cls = await db.select({ id: clients.id, name: clients.tradeName, cnpj: clients.cnpj, code: clients.internalCode }).from(clients).where(isNull(clients.deletedAt));
   const findClient = (v: string) => cls.find((c) => c.cnpj === cnpjLimpo(v) && cnpjLimpo(v).length === 14) ?? cls.find((c) => norm(c.name) === norm(v) || c.code === norm(v));
   const seen = new Set<string>();
@@ -219,6 +221,8 @@ async function planDids(db: Db, raw: Record<string, string>[]): Promise<Plan> {
     // todo DID nasce dentro de um circuito: número novo sem circuito no arquivo é erro
     if (!targetId && !circuit) errors.push('Informe o circuito (todo DID pertence a um circuito)');
     if (targetId && circuitRaw !== undefined && !circuit) errors.push('O circuito não pode ficar vazio');
+    // o link cancelado (2.4.6) não recebe números: nem novos, nem vindos de outro circuito (o que já está nele pode mudar)
+    if (circuit?.cancelledOn && (!targetId || circuitoAtual.get(number) !== circuit.id)) errors.push(`${oLink(circuit.name, true)} foi cancelado: reative-o antes de pôr números nele`);
     const clientRaw = pick(r, 'dids', 'client');
     const isFree = !clientRaw || /^(livre|free|-)$/i.test(clientRaw);
     const client = !isFree ? findClient(clientRaw!) : undefined;
@@ -358,15 +362,20 @@ export async function exportCsv(db: Db, vault: SecretsVault, entity: Entity, wit
         id: r.c.id, nome: r.c.name, n_circuito: r.c.code, numero_chave: r.c.keyNumber ?? '', operadora: r.carrierName ?? '', canais: r.c.channels, ip: r.c.signalingIp ?? '', ip_pbx: r.c.authIp ?? '', usuario_auth: r.c.authUsername ?? '',
         ...(withSecrets ? { senha_auth: r.c.authPasswordSecretId ? (await vault.read(db, r.c.authPasswordSecretId))?.value ?? '' : '' } : {}),
         valor: r.c.monthlyValueCents != null ? (r.c.monthlyValueCents / 100).toFixed(2).replace('.', ',') : '', titular: r.ownerName ?? '', observacoes: r.c.notes ?? '',
+        // o link cancelado (2.4.6) vai junto, marcado: a exportação é o dado inteiro, não a tela
+        cancelado_em: r.c.cancelledOn ? r.c.cancelledOn.split('-').reverse().join('/') : '', motivo_cancelamento: r.c.cancelReason ?? '',
       });
     }
     return { filename: `circuitos-${stamp}.csv`, csv: BOM + stringify(out, { header: true, delimiter: ';' }) };
   }
   const rows = await db
-    .select({ number: dids.number, circuitCode: circuits.code, circuitName: circuits.name, clientCnpj: clients.cnpj, clientName: clients.tradeName, note: dids.note })
+    .select({ number: dids.number, circuitCode: circuits.code, circuitName: circuits.name, circuitCancelledOn: circuits.cancelledOn, clientCnpj: clients.cnpj, clientName: clients.tradeName, note: dids.note })
     .from(dids).leftJoin(circuits, eq(circuits.id, dids.circuitId)).leftJoin(clients, eq(clients.id, dids.clientId)).where(isNull(dids.deletedAt)).orderBy(dids.number);
   // sem o titular desde o 1.9: ele é do circuito (o CSV de circuitos traz)
-  const out = rows.map((r) => ({ numero: r.number, circuito: r.circuitCode ?? '', circuito_nome: r.circuitName ?? '', cliente: r.clientCnpj ?? '', cliente_nome: r.clientName ?? 'livre', observacao: r.note ?? '' }));
+  const out = rows.map((r) => ({
+    numero: r.number, circuito: r.circuitCode ?? '', circuito_nome: r.circuitName ?? '', cliente: r.clientCnpj ?? '', cliente_nome: r.clientName ?? 'livre', observacao: r.note ?? '',
+    link_cancelado_em: r.circuitCancelledOn ? r.circuitCancelledOn.split('-').reverse().join('/') : '',
+  }));
   return { filename: `dids-${stamp}.csv`, csv: BOM + stringify(out, { header: true, delimiter: ';' }) };
 }
 

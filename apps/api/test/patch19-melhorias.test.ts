@@ -34,7 +34,8 @@ describe('o DID sem titular', () => {
     const dids = await s.get('/data/export/dids');
     expect(dids.statusCode).toBe(200);
     const cabecalho = dids.body.replace(/^﻿/, '').split(/\r?\n/)[0];
-    expect(cabecalho).toBe('numero;circuito;circuito_nome;cliente;cliente_nome;observacao');
+    // a última coluna (2.4.6): o número de um link cancelado vem marcado, para a planilha não confundir com o que está ativo
+    expect(cabecalho).toBe('numero;circuito;circuito_nome;cliente;cliente_nome;observacao;link_cancelado_em');
     const circuitos = await s.get('/data/export/circuits');
     expect(circuitos.body.split(/\r?\n/)[0]).toContain('titular');
     expect(circuitos.body).toContain('VoiceNet');

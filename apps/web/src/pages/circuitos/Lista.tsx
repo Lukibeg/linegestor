@@ -50,7 +50,7 @@ export function CircuitosLista() {
   };
   const carriers = useQuery({ queryKey: ['catalog', 'carriers'], queryFn: () => api.admin.catalog('carriers') });
   // só quem é titular de algum circuito da lista (com o interruptor, entram os de links de terceiros)
-  const titulares = useQuery({ queryKey: ['circuit-owners', terceiros], queryFn: () => api.circuits.owners(terceiros) });
+  const titulares = useQuery({ queryKey: ['circuit-owners', terceiros, cancelados], queryFn: () => api.circuits.owners(terceiros, cancelados) });
   // os cartões do topo usam os MESMOS filtros da lista
   const resumo = useQuery({ queryKey: ['circuits', 'summary', filtros], queryFn: () => api.circuits.summary(filtros) });
   const lista = useQuery({ queryKey: ['circuits', filtros, page, tudo, o.ord, o.dir], queryFn: () => api.circuits.list({ ...filtros, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }), enabled: aba === 'circuitos' });

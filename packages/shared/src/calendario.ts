@@ -183,9 +183,18 @@ export function quandoDoEvento(e: { inicio: string; fim?: string | null; diaInte
   return `${quandoDoLembrete(e, agora)}${ate}`;
 }
 
-/** O aviso de que o evento entrou no calendário (o sininho, e o {aviso} do WhatsApp): "Luan França pôs no calendário: Visita — Clínica Aurora, amanhã, 21/10, às 09:00". */
-export function textoDaInclusao(quem: string, e: { titulo: string; inicio: string; fim?: string | null; diaInteiro: boolean; horaInicio: string | null }, agora: Date): string {
-  return `${quem} pôs no calendário: ${e.titulo}, ${quandoDoEvento(e, agora)}`;
+/**
+ * O aviso de que o evento entrou no calendário (o sininho, e o {aviso} do WhatsApp): "Luan França pôs no calendário: Visita — Clínica
+ * Aurora, amanhã, 21/10, às 09:00". O que se repete (2.4.6) diz a regra: "…, segunda, 16/11, às 09:00 (toda segunda, sem data para
+ * acabar)" — o aviso sai uma vez, pela primeira data.
+ */
+export function textoDaInclusao(
+  quem: string,
+  e: { titulo: string; inicio: string; fim?: string | null; diaInteiro: boolean; horaInicio: string | null; repeticao?: { frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string } | null },
+  agora: Date,
+): string {
+  const repete = e.repeticao ? ` (${textoDaRepeticao(e.repeticao, e.repeticao.ancora).replace(/^./, (x) => x.toLocaleLowerCase('pt-BR'))})` : '';
+  return `${quem} pôs no calendário: ${e.titulo}, ${quandoDoEvento(e, agora)}${repete}`;
 }
 
 /**
@@ -218,7 +227,7 @@ export function valoresDoLembrete(
 
 /** As variáveis do aviso de que o evento entrou (as do lembrete, com quem pôs e o período inteiro). */
 export function valoresDaInclusao(
-  e: { titulo: string; inicio: string; fim: string; diaInteiro: boolean; horaInicio: string | null; local: string | null; observacao: string | null },
+  e: { titulo: string; inicio: string; fim: string; diaInteiro: boolean; horaInicio: string | null; local: string | null; observacao: string | null; repeticao?: { frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string } | null },
   nomes: { tipo: string; cliente: string | null; chamado: string | null; pessoas: string[]; paineis: string[]; link: string },
   agora: Date,
   quem: string,
@@ -387,6 +396,46 @@ export function datasDaRepeticao(ancora: string, frequencia: FrequenciaDaRepetic
 export function limiteDaRepeticao(r: { ate: string | null }, ancora: string, hoje: string): string {
   const horizonte = somarDias(ancora > hoje ? ancora : hoje, HORIZONTE_DA_REPETICAO);
   return r.ate && r.ate < horizonte ? r.ate : horizonte;
+}
+
+/** Uma data da série, como o plano do "este e os próximos" lê. */
+export type DataDaSerie = { id: string; inicio: string; situacao: SituacaoDoEvento };
+/** O que fazer com as datas seguintes: mudar (com o dia de cada uma), descartar (sai, fora da lixeira), criar (os dias que faltam). */
+export type PlanoDosProximos = { mesmaRegra: boolean; mudar: Array<{ id: string; inicio: string }>; descartar: string[]; criar: string[]; manter: string[] };
+
+/**
+ * "Este e os próximos" (2.4.6): o que acontece com as datas depois da que a pessoa mudou.
+ *
+ *  - A MESMA regra (o mesmo dia, a mesma frequência e o mesmo fim): cada data fica no dia dela, com a situação dela; só o resto
+ *    muda (o título, a hora, as pessoas…).
+ *  - OUTRA regra: o feito e o cancelado ficam onde estão (são história: o cancelado era daquele dia); as agendadas andam para as
+ *    datas novas, na ordem; as que sobram saem; os dias que faltam nascem. Sem repetir, as agendadas saem e a série para ali.
+ *
+ * `proximos`: as datas depois da que mudou, em ordem; `antes`: a regra e o dia de antes; `depois`: o dia novo, a regra nova (nula
+ * = parar) e até onde as datas vão agora (`limiteDaRepeticao`).
+ */
+export function planoDosProximos(
+  proximos: readonly DataDaSerie[],
+  antes: { inicio: string; frequencia: FrequenciaDaRepeticao; ate: string | null },
+  depois: { inicio: string; repetir: Repeticao | null; limite: string },
+): PlanoDosProximos {
+  const r = depois.repetir;
+  if (r && r.frequencia === antes.frequencia && (r.ate ?? null) === (antes.ate ?? null) && depois.inicio === antes.inicio) {
+    return { mesmaRegra: true, mudar: proximos.map((p) => ({ id: p.id, inicio: p.inicio })), descartar: [], criar: [], manter: [] };
+  }
+  const historia = proximos.filter((p) => p.situacao !== 'agendado');
+  const agendadas = proximos.filter((p) => p.situacao === 'agendado');
+  if (!r) return { mesmaRegra: false, mudar: [], descartar: agendadas.map((p) => p.id), criar: [], manter: historia.map((p) => p.id) };
+  // o dia que já tem um feito ou um cancelado não ganha outra data (o cancelado continua dizendo que naquele dia não teve)
+  const ocupados = new Set(historia.map((p) => p.inicio));
+  const datas = datasDaRepeticao(depois.inicio, r.frequencia, depois.limite, depois.inicio).filter((d) => !ocupados.has(d));
+  return {
+    mesmaRegra: false,
+    mudar: agendadas.slice(0, datas.length).map((p, k) => ({ id: p.id, inicio: datas[k]! })),
+    descartar: agendadas.slice(datas.length).map((p) => p.id),
+    criar: datas.slice(agendadas.length),
+    manter: historia.map((p) => p.id),
+  };
 }
 
 /** "Toda terça", "Todo dia útil (segunda a sexta)", "Todo mês, no dia 10" — e ", até 31/03/2027" ou ", sem data para acabar". */
@@ -723,11 +772,14 @@ export type FiltroDoCalendario = {
   tipos: string[];
   /** só os eventos desta pessoa ("Só os meus") */
   pessoa: string | null;
-  /** mostrar os cancelados (riscados) */
+  /**
+   * mostrar os cancelados (riscados). Desde o 2.4.6 começa desligado (o Luan: "os cancelados eu não quero que apareçam, a não ser
+   * que eu marque alguma flag"): o cancelado só aparece com a caixa marcada.
+   */
   cancelados: boolean;
   busca: string;
 };
-export const FILTRO_DO_CALENDARIO_VAZIO: FiltroDoCalendario = { paineis: [], tipos: [], pessoa: null, cancelados: true, busca: '' };
+export const FILTRO_DO_CALENDARIO_VAZIO: FiltroDoCalendario = { paineis: [], tipos: [], pessoa: null, cancelados: false, busca: '' };
 
 /** Os eventos que passam no filtro (a busca acha o título, o cliente, o local, a observação e o chamado). */
 export function filtrarEventos(eventos: readonly EventoDoCalendario[], f: FiltroDoCalendario, nomesDasPessoas?: ReadonlyMap<string, string>): EventoDoCalendario[] {
@@ -743,6 +795,24 @@ export function filtrarEventos(eventos: readonly EventoDoCalendario[], f: Filtro
     }
     return true;
   });
+}
+
+/**
+ * A lista curta (a "Na agenda" da ficha do chamado, 2.4.6): os eventos avulsos todos e, de cada repetição, uma data só — a próxima
+ * (de hoje em diante) ou, sem próxima, a última —, com quantas outras datas dela estão na lista. Em ordem de dia.
+ */
+export function umaDataPorSerie(eventos: readonly EventoDoCalendario[], hoje: string): Array<{ evento: EventoDoCalendario; outras: number }> {
+  const out: Array<{ evento: EventoDoCalendario; outras: number }> = [];
+  const porSerie = new Map<string, EventoDoCalendario[]>();
+  for (const e of eventos) {
+    if (e.repeticao) porSerie.set(e.repeticao.serieId, [...(porSerie.get(e.repeticao.serieId) ?? []), e]);
+    else out.push({ evento: e, outras: 0 });
+  }
+  for (const lista of porSerie.values()) {
+    const ordem = [...lista].sort((a, b) => a.inicio.localeCompare(b.inicio));
+    out.push({ evento: ordem.find((e) => e.fim >= hoje) ?? ordem.at(-1)!, outras: ordem.length - 1 });
+  }
+  return out.sort((a, b) => a.evento.inicio.localeCompare(b.evento.inicio) || (a.evento.horaInicio ?? '').localeCompare(b.evento.horaInicio ?? ''));
 }
 
 /** Quem está fora no dia (folga, home office: os tipos da equipe), sem os cancelados. */

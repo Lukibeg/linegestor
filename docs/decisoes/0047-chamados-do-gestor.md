@@ -636,3 +636,12 @@ se um dia voltar; a tela de Ajustes diz que os botões saíram.
 **Na prévia do 2.2, em 28/10:** *"coloque observadores juntos com responsável"*: os **Observadores** viraram um botão colado
 no do Responsável, na barra da ficha (quem observa, com o X para tirar, o Incluir e o "Eu observo também", que saiu do
 Mais); o cartão Observadores saiu do meio da ficha (quem só lê continua vendo o responsável e os observadores num cartão).
+
+## Revisto no 2.4.6 (10/11/2026): a Classificação no menu de cima
+
+O Luan, com prints da ficha: *"essa parte de classificação pode ficar apenas no menu de cima e a prioridade dentro, então vai
+deixar de ser etiquetas e vai ser classificação"*. O botão **Etiquetas** da barra (2.0.3) virou **Classificação**, com a
+prioridade em cima e as etiquetas embaixo, e a caixa das etiquetas e a prioridade saíram do cartão da lateral para quem mexe
+no chamado (o 2.0.3 dizia: "A caixa das etiquetas e o Na agenda continuam embaixo"). O que sobra no cartão se chama
+**Detalhes**; quem só lê continua vendo tudo no cartão Classificação; na negociação e no painel sem prioridade, o botão
+continua Etiquetas. Os detalhes estão na **0062** (seção 4).

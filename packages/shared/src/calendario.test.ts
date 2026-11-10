@@ -5,7 +5,7 @@ import {
   quemRecebeOLembrete, textoDoAntes, textoDoHorario, textoDoLembrete, textoDoMes, textoDoPeriodo, textoDosLembretes, TIPOS_DE_EVENTO_PADRAO,
   tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, tituloSugerido, EventosDoPeriodoSchema, quandoDoEvento, quemRecebeAInclusao, textoDaInclusao,
   arrumarNoDia, diasDaSemanaDoDia, minutosAgoraEmBrasilia, minutosDaHora, naFaixaDoDiaInteiro, numeroDaSemana, textoDaSemana,
-  datasDaRepeticao, limiteDaRepeticao, lixeiraDoCalendario, problemaDaRepeticao, textoDaRepeticao,
+  datasDaRepeticao, limiteDaRepeticao, lixeiraDoCalendario, planoDosProximos, problemaDaRepeticao, textoDaRepeticao, umaDataPorSerie,
   type EventoDoCalendario,
 } from './calendario.js';
 
@@ -121,11 +121,13 @@ describe('os filtros e quem está fora', () => {
   const f = (x: Partial<typeof FILTRO_DO_CALENDARIO_VAZIO>) => filtrarEventos(lista, { ...FILTRO_DO_CALENDARIO_VAZIO, ...x }, new Map([['ana', 'Ana Souza'], ['caio', 'Caio Lima']])).map((e) => e.id);
 
   it('por painel, tipo, pessoa, cancelados e a busca (que acha também o cliente e a pessoa)', () => {
-    expect(f({})).toEqual(['v', 'f', 'h', 'x']);
+    // o cancelado só aparece com a caixa marcada (2.4.6)
+    expect(f({})).toEqual(['v', 'f', 'h']);
+    expect(f({ cancelados: true })).toEqual(['v', 'f', 'h', 'x']);
     expect(f({ paineis: ['p-dev'] })).toEqual(['f', 'h']);
-    expect(f({ tipos: ['folga'] })).toEqual(['f', 'x']);
+    expect(f({ tipos: ['folga'] })).toEqual(['f']);
+    expect(f({ tipos: ['folga'], cancelados: true })).toEqual(['f', 'x']);
     expect(f({ pessoa: 'ana' })).toEqual(['v', 'h']);
-    expect(f({ cancelados: false })).toEqual(['v', 'f', 'h']);
     expect(f({ busca: 'aurora' })).toEqual(['v']);
     expect(f({ busca: 'flores' })).toEqual(['v']);
     expect(f({ busca: 'caio lima' })).toEqual(['f']);
@@ -362,3 +364,57 @@ describe('repetir (2.4.6)', () => {
     ]);
   });
 });
+
+describe('repetir: o "este e os próximos" e a lista curta (2.4.6)', () => {
+  // toda terça: 10/11 (a que mudou), 17/11, 24/11 (cancelada), 01/12, 08/12
+  const proximos = [
+    { id: 'b', inicio: '2026-11-17', situacao: 'agendado' as const },
+    { id: 'c', inicio: '2026-11-24', situacao: 'cancelado' as const },
+    { id: 'd', inicio: '2026-12-01', situacao: 'agendado' as const },
+    { id: 'e', inicio: '2026-12-08', situacao: 'agendado' as const },
+  ];
+  const antes = { inicio: '2026-11-10', frequencia: 'semanal' as const, ate: '2026-12-08' };
+
+  it('a mesma regra: cada data fica no dia dela (a cancelada também)', () => {
+    const p = planoDosProximos(proximos, antes, { inicio: '2026-11-10', repetir: { frequencia: 'semanal', ate: '2026-12-08' }, limite: '2026-12-08' });
+    expect(p).toEqual({ mesmaRegra: true, mudar: proximos.map((x) => ({ id: x.id, inicio: x.inicio })), descartar: [], criar: [], manter: [] });
+  });
+
+  it('outra regra: a cancelada fica no dia dela; as agendadas andam na ordem; o que sobra sai; o que falta nasce', () => {
+    // toda quarta a partir de 11/11, até 09/12: 18/11, 25/11, 02/12, 09/12 (a cancelada de 24/11 fica)
+    const quarta = planoDosProximos(proximos, antes, { inicio: '2026-11-11', repetir: { frequencia: 'semanal', ate: '2026-12-09' }, limite: '2026-12-09' });
+    expect(quarta).toEqual({
+      mesmaRegra: false, manter: ['c'], descartar: [], criar: ['2026-12-09'],
+      mudar: [{ id: 'b', inicio: '2026-11-18' }, { id: 'd', inicio: '2026-11-25' }, { id: 'e', inicio: '2026-12-02' }],
+    });
+    // todo mês: só 10/12 cabe até 10/12; das três agendadas, duas sobram
+    const mes = planoDosProximos(proximos, antes, { inicio: '2026-11-10', repetir: { frequencia: 'mensal', ate: '2026-12-10' }, limite: '2026-12-10' });
+    expect([mes.mudar, mes.descartar, mes.criar, mes.manter]).toEqual([[{ id: 'b', inicio: '2026-12-10' }], ['d', 'e'], [], ['c']]);
+    // o dia que já tem a cancelada não ganha outra data
+    const terca = planoDosProximos(proximos, antes, { inicio: '2026-11-10', repetir: { frequencia: 'semanal', ate: '2026-12-15' }, limite: '2026-12-15' });
+    expect(terca.criar).toEqual(['2026-12-15']);
+    expect(terca.mudar.map((x) => x.inicio)).toEqual(['2026-11-17', '2026-12-01', '2026-12-08']);
+  });
+
+  it('sem repetir: as agendadas saem; a cancelada fica', () => {
+    expect(planoDosProximos(proximos, antes, { inicio: '2026-11-10', repetir: null, limite: '2026-11-10' }))
+      .toEqual({ mesmaRegra: false, mudar: [], descartar: ['b', 'd', 'e'], criar: [], manter: ['c'] });
+  });
+
+  it('a lista curta: de cada repetição, a próxima data (ou a última), com quantas outras; os avulsos todos', () => {
+    const serie = (id: string, inicio: string) => evento({ id, inicio, fim: inicio, repeticao: { serieId: 's1', frequencia: 'semanal', ate: null, ancora: '2026-11-03' } });
+    const lista = [serie('s-03', '2026-11-03'), serie('s-10', '2026-11-10'), serie('s-17', '2026-11-17'), evento({ id: 'visita', inicio: '2026-11-12', fim: '2026-11-12' })];
+    expect(umaDataPorSerie(lista, '2026-11-11').map((x) => [x.evento.id, x.outras])).toEqual([['visita', 0], ['s-17', 2]]);
+    // tudo no passado: a última
+    expect(umaDataPorSerie(lista, '2026-12-01').map((x) => [x.evento.id, x.outras])).toEqual([['visita', 0], ['s-17', 2]]);
+    expect(umaDataPorSerie(lista, '2026-11-01').map((x) => [x.evento.id, x.outras])).toEqual([['s-03', 2], ['visita', 0]]);
+  });
+
+  it('o aviso de que o evento entrou diz a regra', () => {
+    const agora = new Date('2026-11-10T12:00:00-03:00');
+    expect(textoDaInclusao('Luan França', { titulo: 'Alinhamento do suporte', inicio: '2026-11-16', diaInteiro: false, horaInicio: '09:00', repeticao: { frequencia: 'semanal', ate: null, ancora: '2026-11-16' } }, agora))
+      .toBe('Luan França pôs no calendário: Alinhamento do suporte, segunda, 16/11, às 09:00 (toda segunda, sem data para acabar)');
+    expect(textoDaInclusao('Luan França', { titulo: 'Visita', inicio: '2026-11-11', diaInteiro: true, horaInicio: null }, agora)).toBe('Luan França pôs no calendário: Visita, amanhã, 11/11 (dia inteiro)');
+  });
+});
+

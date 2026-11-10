@@ -8,6 +8,12 @@
  * texto longo fica junto do relato).
  *
  * E o cartão do responsável e dos observadores, só para quem lê (quem mexe tem os dois juntos na barra de cima, desde o 2.2).
+ *
+ * Desde o 2.4.6 (o Luan: "essa parte de classificação pode ficar apenas no menu de cima e a prioridade dentro, então vai deixar
+ * de ser etiquetas e vai ser classificação"), quem mexe no chamado tem a PRIORIDADE e as ETIQUETAS no botão Classificação da
+ * barra de cima (`PrioridadeDaClassificacao`, no `Acoes.tsx`); o cartão daqui fica com o resto (o assunto, o tipo, a gravidade,
+ * o alcance, os produtos, as operadoras e os campos do painel) e se chama Detalhes — no painel que não usa nenhum deles, ele
+ * some. Quem só lê (sem a barra) continua vendo tudo aqui, no cartão Classificação, como o responsável.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Tags, UserRound } from 'lucide-react';
@@ -42,13 +48,58 @@ function Linha({ id, campo, rotulo, ocupado, erro, children, extra }: { id: stri
   );
 }
 
+/** Os campos do painel que moram no cartão (os de uma parte ficam no meio da ficha; o texto longo, junto do relato). */
+function camposDoCartao(f: ReturnType<typeof useAberta>['f'], opcoes: ReturnType<typeof useAberta>['opcoes']) {
+  const produtos = f.produtos.map((p) => p.id);
+  return opcoes.campos.filter((c) => c.painelId === f.painelId && !c.parte && campoAparece(c, produtos) && c.tipo !== 'texto_longo');
+}
+
+/**
+ * A prioridade, com a sugerida (pela gravidade e pelo alcance) e o "Usar a sugerida" — trocar grava na hora. Mora no botão
+ * Classificação da barra (quem mexe, 2.4.6) e no cartão de quem só lê.
+ */
+export function PrioridadeDaClassificacao() {
+  const { f, painel, pode } = useAberta();
+  const prio = useAcao();
+  const sugerida = f.prioridadeSugerida;
+  const usa = (c: CampoDoSistema) => !painel || campoLigado(painel.ajustes, c);
+  const escolherPrioridade = (p: Prioridade | null) => {
+    if (p === f.prioridade) return;
+    // trocar a sugerida grava na hora (2.2, o Luan: "quando formos trocar a prioridade, n precisar justificar")
+    void prio.rodar(() => api.atendimento.alterar(f.id, { prioridade: p }));
+  };
+  return (
+    <Linha id="campo-prioridade" campo="prioridade" rotulo="Prioridade" ocupado={prio.ocupado} erro={prio.erro}
+      extra={pode && sugerida && f.prioridade !== sugerida && (
+        <button type="button" className="btn-ghost btn-sm -my-1 text-[12px]" onClick={() => escolherPrioridade(sugerida)}>Usar a sugerida</button>
+      )}>
+      {pode ? (
+        <select className="input" value={f.prioridade ?? ''} onChange={(e) => escolherPrioridade((e.target.value || null) as Prioridade | null)} aria-label="Prioridade" id="classificacao-prioridade">
+          <option value="">—</option>
+          {PRIORIDADES.map((p) => <option key={p} value={p} title={DICA_PRIORIDADE[p]}>{NOME_PRIORIDADE[p]}{p === sugerida ? ' (sugerida)' : ''}</option>)}
+        </select>
+      ) : <p className="text-[14px]">{f.prioridade ? NOME_PRIORIDADE[f.prioridade] : <span className="text-muted">—</span>}</p>}
+      {f.prioridade && <p className="text-[12px] text-muted mt-1">{NOME_PRIORIDADE[f.prioridade]}: {DICA_PRIORIDADE[f.prioridade].toLocaleLowerCase('pt-BR')}.</p>}
+      {usa('gravidade') && (
+        <p className="text-[12px] text-muted mt-0.5">
+          {sugerida
+            ? <>Sugerida: <b className="text-ink-2">{NOME_PRIORIDADE[sugerida]}</b>, {usa('alcance') ? 'pela gravidade e pelo alcance' : 'pela gravidade'}.</>
+            : usa('alcance') ? 'Escolha a gravidade e o alcance para o Gestor sugerir a prioridade.' : 'Escolha a gravidade para o Gestor sugerir a prioridade.'}
+        </p>
+      )}
+      {f.motivoPrioridade && f.prioridade !== sugerida && (
+        <p className="text-[12.5px] mt-1 rounded-md bg-surface-2 px-2 py-1"><span className="text-muted">Trocada à mão:</span> {f.motivoPrioridade}</p>
+      )}
+    </Linha>
+  );
+}
+
 export function Classificacao() {
   const { f, opcoes, painel, pode } = useAberta();
   const assunto = useAcao();
   const tipo = useAcao();
   const grav = useAcao();
   const alc = useAcao();
-  const prio = useAcao();
 
   const mudar = (a: ReturnType<typeof useAcao>, d: ChamadoAlterarEntrada) => void a.rodar(() => api.atendimento.alterar(f.id, d));
 
@@ -59,19 +110,18 @@ export function Classificacao() {
   }, [opcoes.assuntos, f.painelId, f.assunto?.id]);
   const descricaoDoAssunto = f.assunto ? opcoes.assuntos.find((a) => a.id === f.assunto!.id)?.descricao : null;
   const tipos = painel?.ajustes.tipos ?? [];
-  const sugerida = f.prioridadeSugerida;
   /** o painel usa este campo do sistema? (desligado na aba Campos, ele some daqui) */
   const usa = (c: CampoDoSistema) => !painel || campoLigado(painel.ajustes, c);
 
-  const escolherPrioridade = (p: Prioridade | null) => {
-    if (p === f.prioridade) return;
-    // trocar a sugerida grava na hora (2.2, o Luan: "quando formos trocar a prioridade, n precisar justificar")
-    mudar(prio, { prioridade: p });
-  };
-
   const vendas = painel?.tipo === 'vendas';
+  // quem mexe tem a prioridade e as etiquetas no botão Classificação da barra (2.4.6): aqui fica o resto, se o painel usa algum
+  const noMenu = pode;
+  // (os produtos da negociação com valor por produto ficam no Valor: não contam aqui, senão o cartão nasce vazio)
+  const produtosAqui = usa('produtos') && !(vendas && (Object.keys(f.valoresDosProdutos).length > 0 || Object.keys(f.ativacoesDosProdutos).length > 0));
+  const outros = usa('assunto') || usa('tipo') || usa('gravidade') || usa('alcance') || produtosAqui || usa('operadoras') || camposDoCartao(f, opcoes).length > 0;
+  if (noMenu && !outros) return null;
   return (
-    <Secao titulo={vendas ? 'Detalhes' : 'Classificação'} icone={<Tags size={16} />}>
+    <Secao titulo={vendas || noMenu ? 'Detalhes' : 'Classificação'} icone={<Tags size={16} />}>
       <div className="flex flex-col gap-3.5">
         {usa('assunto') && <Linha id="campo-assunto" campo="assunto" rotulo="Assunto" ocupado={assunto.ocupado} erro={assunto.erro}>
           {pode ? (
@@ -115,33 +165,12 @@ export function Classificacao() {
           ) : <p className="text-[14px]">{f.alcance ? NOME_ALCANCE[f.alcance] : <span className="text-muted">—</span>}</p>}
         </Linha>}
 
-        {/* a negociação não tem prioridade (nem prazo) */}
-        {!vendas && usa('prioridade') && <Linha id="campo-prioridade" campo="prioridade" rotulo="Prioridade" ocupado={prio.ocupado} erro={prio.erro}
-          extra={pode && sugerida && f.prioridade !== sugerida && (
-            <button type="button" className="btn-ghost btn-sm -my-1 text-[12px]" onClick={() => escolherPrioridade(sugerida)}>Usar a sugerida</button>
-          )}>
-          {pode ? (
-            <select className="input" value={f.prioridade ?? ''} onChange={(e) => escolherPrioridade((e.target.value || null) as Prioridade | null)} aria-label="Prioridade">
-              <option value="">—</option>
-              {PRIORIDADES.map((p) => <option key={p} value={p} title={DICA_PRIORIDADE[p]}>{NOME_PRIORIDADE[p]}{p === sugerida ? ' (sugerida)' : ''}</option>)}
-            </select>
-          ) : <p className="text-[14px]">{f.prioridade ? NOME_PRIORIDADE[f.prioridade] : <span className="text-muted">—</span>}</p>}
-          {f.prioridade && <p className="text-[12px] text-muted mt-1">{NOME_PRIORIDADE[f.prioridade]}: {DICA_PRIORIDADE[f.prioridade].toLocaleLowerCase('pt-BR')}.</p>}
-          {usa('gravidade') && (
-            <p className="text-[12px] text-muted mt-0.5">
-              {sugerida
-                ? <>Sugerida: <b className="text-ink-2">{NOME_PRIORIDADE[sugerida]}</b>, {usa('alcance') ? 'pela gravidade e pelo alcance' : 'pela gravidade'}.</>
-                : usa('alcance') ? 'Escolha a gravidade e o alcance para o Gestor sugerir a prioridade.' : 'Escolha a gravidade para o Gestor sugerir a prioridade.'}
-            </p>
-          )}
-          {f.motivoPrioridade && f.prioridade !== sugerida && (
-            <p className="text-[12.5px] mt-1 rounded-md bg-surface-2 px-2 py-1"><span className="text-muted">Trocada à mão:</span> {f.motivoPrioridade}</p>
-          )}
-        </Linha>}
+        {/* a negociação não tem prioridade (nem prazo); quem mexe tem a prioridade e as etiquetas no botão Classificação (2.4.6) */}
+        {!noMenu && !vendas && usa('prioridade') && <PrioridadeDaClassificacao />}
 
         <ProdutosEOperadoras />
         <CamposDoPainel />
-        <Etiquetas />
+        {!noMenu && <Etiquetas />}
       </div>
     </Secao>
   );
@@ -263,8 +292,7 @@ function ProdutosEOperadoras() {
 function CamposDoPainel() {
   const { f, opcoes } = useAberta();
   // os de uma parte (2.3) ficam no meio da ficha (as partes); o de um produto, só no chamado que tem o produto
-  const produtos = f.produtos.map((p) => p.id);
-  const campos = opcoes.campos.filter((c) => c.painelId === f.painelId && !c.parte && campoAparece(c, produtos) && c.tipo !== 'texto_longo');
+  const campos = camposDoCartao(f, opcoes);
   return <>{campos.map((c) => (ehCaixinhas(c.tipo) ? <Caixinhas key={c.id} c={c} /> : <CampoNaFicha key={c.id} c={c} />))}</>;
 }
 

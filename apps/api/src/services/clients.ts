@@ -24,6 +24,7 @@ import {
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
+import { foraDeLinkCancelado } from './dids.js';
 
 /**
  * Um cliente na lista. Carrega os detalhes que a tela pode mostrar como coluna
@@ -82,7 +83,7 @@ function ordenacaoClientes(db: Db, q: ClienteListar) {
     .limit(1)})`;
 
   const contar = (tabela: 'dids' | 'devices') => (tabela === 'dids'
-    ? sql`(${db.select({ v: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, clients.id), isNull(dids.deletedAt)))})`
+    ? sql`(${db.select({ v: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, clients.id), isNull(dids.deletedAt), foraDeLinkCancelado))})`
     : sql`(${db.select({ v: sql<number>`count(*)` }).from(devices).where(and(eq(devices.clientId, clients.id), isNull(devices.deletedAt)))})`);
 
   let campo: SQL;
@@ -197,7 +198,8 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
   const lps = await db.select({ s: linepbxSettings, hostingName: hostingProviders.name }).from(linepbxSettings).leftJoin(hostingProviders, eq(hostingProviders.id, linepbxSettings.hostingId))
     .where(inArray(linepbxSettings.subscriptionId, subs.filter((s) => s.code === 'linepbx').map((s) => s.subId).concat(['-'])));
   const logos = await db.select({ clientId: clientLogos.clientId, updatedAt: clientLogos.updatedAt }).from(clientLogos).where(inArray(clientLogos.clientId, ids));
-  const didCounts = await db.select({ clientId: dids.clientId, n: sql<number>`count(*)` }).from(dids).where(and(inArray(dids.clientId, ids), isNull(dids.deletedAt))).groupBy(dids.clientId);
+  // os números de um link cancelado (2.4.6) não contam: o cliente já não os tem
+  const didCounts = await db.select({ clientId: dids.clientId, n: sql<number>`count(*)` }).from(dids).where(and(inArray(dids.clientId, ids), isNull(dids.deletedAt), foraDeLinkCancelado)).groupBy(dids.clientId);
   // contagem e valor dos aparelhos com cada cliente (valor próprio do aparelho, ou o do modelo)
   const devCounts = await db.select({ clientId: devices.clientId, n: sql<number>`count(*)`, v: sql<number>`coalesce(sum(${valorDoAparelho}), 0)` })
     .from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
@@ -275,7 +277,7 @@ export async function get(db: Db, id: string) {
   const lpActive = enriched.find((s) => s.productCode === 'linepbx' && s.active);
   const lpRow = lpActive ? lps.find((l) => l.s.subscriptionId === lpActive.id)?.s ?? null : null;
   const hasFop2 = !!lpActive?.modules.some((m) => m.moduleCode === 'fop2' && m.active);
-  const [didC] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, id), isNull(dids.deletedAt)));
+  const [didC] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, id), isNull(dids.deletedAt), foraDeLinkCancelado));
   const [devC] = await db.select({ n: sql<number>`count(*)`, v: sql<number>`coalesce(sum(${valorDoAparelho}), 0)` })
     .from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
     .where(and(eq(devices.clientId, id), isNull(devices.deletedAt), sql`coalesce(${devices.currentModality}, '') <> 'venda'`));

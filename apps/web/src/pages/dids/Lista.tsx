@@ -51,7 +51,9 @@ export function Numeracao({ circuito: fixo }: { circuito?: { id: string; nome: s
   const filtro = { q, circuitId: circuito, clientId: cliente, inUse: uso || undefined, includeThirdParty: terceiros, includeCancelled: cancelados };
   const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const lista = useQuery({ queryKey: ['dids', filtro, page, tudo, o.ord, o.dir], queryFn: () => api.dids.list({ ...filtro, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }) });
-  const circuits = useQuery({ queryKey: ['circuit-options'], queryFn: api.circuits.options });
+  // o filtro de circuito mostra o link cancelado com o "Mostrar cancelados" (2.4.6); mover números para ele, nunca
+  const circuits = useQuery({ queryKey: ['circuit-options', cancelados], queryFn: () => api.circuits.options(cancelados) });
+  const paraOndeMover = (circuits.data ?? []).filter((c) => !c.cancelled);
   const temFiltro = !!(q || (!fixo && circuito) || cliente || uso);
   const clients = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options() });
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -79,7 +81,7 @@ export function Numeracao({ circuito: fixo }: { circuito?: { id: string; nome: s
           <input className="input pl-8 w-[270px] max-w-full" id="dids-busca" autoComplete="off" placeholder="Procurar número ou observação…" value={q} onChange={(e) => set('q', e.target.value)} aria-label="Procurar número ou observação" />
         </label>
         {/* "Sem circuito" saiu do filtro: todo DID pertence a um circuito */}
-        {!fixo && <select className="input w-auto" value={circuito} onChange={(e) => set('circuito', e.target.value || null)}><option value="">Todos os circuitos</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}
+        {!fixo && <select className="input w-auto" value={circuito} onChange={(e) => set('circuito', e.target.value || null)}><option value="">Todos os circuitos</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name}{c.cancelled ? ' (cancelado)' : ''}</option>)}</select>}
         <EscolherComBusca className="input w-[240px] max-w-full" valor={cliente} onChange={(v) => set('cliente', v || null)} vazio="Todos os clientes" opcoes={[{ id: 'free', nome: 'Livres (sem cliente)' }, ...opcoesCliente]} rotulo="Filtrar por cliente" procurar="Procurar cliente…" id="dids-filtro-cliente" />
         <select className="input w-auto" value={uso} onChange={(e) => set('uso', e.target.value || null)} aria-label="Uso"><option value="">Em uso e não usados</option><option value="true">Só em uso</option><option value="false">Só não usados</option></select>
         {!fixo && <Toggle checked={terceiros} onChange={(v) => set('terceiros', v ? '1' : null)} label="Habilitar links de terceiros" />}
@@ -126,7 +128,7 @@ export function Numeracao({ circuito: fixo }: { circuito?: { id: string; nome: s
       )}
       {lista.data && <Paginacao page={page} pageSize={pageSize} total={lista.data.total} onChange={(p) => set('p', String(p))} tudo={tudo} onTudo={(v) => set('tudo', v ? '1' : null)} />}
 
-      {acao && acao !== 'excluir' && <AcaoMassa acao={acao} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} circuits={circuits.data ?? []} clients={clients.data ?? []} />}
+      {acao && acao !== 'excluir' && <AcaoMassa acao={acao} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} circuits={paraOndeMover} clients={clients.data ?? []} />}
       <ConfirmarExcluir open={acao === 'excluir'} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} />
       {!fixo && <FaixaForm open={faixa} onClose={() => setFaixa(false)} onDone={() => { setFaixa(false); void qc.invalidateQueries({ queryKey: ['dids'] }); void qc.invalidateQueries({ queryKey: ['circuits'] }); }} />}
     </div>

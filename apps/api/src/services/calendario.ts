@@ -18,7 +18,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { calendarEvents, calendarSeries, clients, newId, roles, tickets, users, type Db } from '@gestor/db';
 import {
-  datasDaRepeticao, diasEntre, limiteDaRepeticao, textoDaRepeticao, HORIZONTE_DA_REPETICAO,
+  datasDaRepeticao, diasEntre, limiteDaRepeticao, planoDosProximos, textoDaRepeticao, HORIZONTE_DA_REPETICAO,
   type EscopoDaSerie, type FrequenciaDaRepeticao, type Repeticao,
   chaveDoLembrete, comecoDoEvento, eventoVisivel, hojeNoCalendario, lembretesAoGravar, lembretesDevidos, NOME_SITUACAO_DO_EVENTO, paineisDepoisDaEdicao,
   quemRecebeOLembrete, somarDias, textoDoLembrete, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, valoresDoLembrete,
@@ -354,7 +354,10 @@ export async function avisarDaInclusao(app: FastifyInstance, ator: Ator, id: str
     { paineis: l.panelIds, pessoas: l.participantIds, avisar: quem }, new Map(paineis.map((p) => [p.id, quemVe(p, pessoas)])), ator.tipo === 'pessoa' ? ator.id : null,
   );
   if (!para.length) return 0;
-  const evento = { id: l.id, titulo: l.title, inicio: l.startsOn, fim: l.endsOn, diaInteiro: l.allDay, horaInicio: l.startTime, local: l.location, observacao: l.notes };
+  // o que se repete (2.4.6): o aviso diz a regra
+  const [serie] = l.seriesId ? await app.db.select().from(calendarSeries).where(eq(calendarSeries.id, l.seriesId)).limit(1) : [];
+  const repeticao = serie ? { frequencia: serie.frequency as FrequenciaDaRepeticao, ate: serie.untilOn, ancora: serie.anchorOn } : null;
+  const evento = { id: l.id, titulo: l.title, inicio: l.startsOn, fim: l.endsOn, diaInteiro: l.allDay, horaInicio: l.startTime, local: l.location, observacao: l.notes, repeticao };
   const nomes = await nomesDoLembrete(app.db, l, { nomeDoPainel: new Map(paineis.map((p) => [p.id, p.nome])), tipos }, linkDoEvento(app, evento));
   return avisarDoCalendario(app, {
     qual: 'evento_novo', para, evento: { id: l.id, titulo: l.title },
@@ -407,37 +410,49 @@ export async function alterar(db: Db, ator: Ator, id: string, e: EventoGravar, a
 }
 
 /**
- * "Este e os próximos" (2.4.6): o evento já foi gravado; aqui vão os próximos da série. Sem repetir, a série para nele (os
- * próximos vão juntos para a lixeira). Com repetir, a regra recomeça nele (o dia dele vira a âncora, com a frequência e o fim
- * de agora) e os próximos andam para as datas novas, na ordem — cada um com a sua situação; o que sobra vai para a lixeira, o que
- * falta nasce. Os de antes dele ficam como estão. Devolve o pedaço do resumo da auditoria.
+ * "Este e os próximos" (2.4.6): o evento já foi gravado; aqui vão as datas seguintes, pelo `planoDosProximos` (o mesmo da prévia).
+ * A mesma regra: cada data fica no dia e na situação dela, e o resto muda. Outra regra: o feito e o cancelado ficam onde estão,
+ * as agendadas andam para as datas novas, as que sobram saem (fora da lixeira: `dropped_by_series`) e as que faltam nascem.
+ * Sem repetir, a série para nesta data. Devolve o pedaço do resumo da auditoria.
  */
 async function mudarOsProximos(db: Db, antes: Linha, d: Valores, r: Repeticao | null, quem: string | null, agora: Date): Promise<string> {
+  const [serie] = await db.select().from(calendarSeries).where(eq(calendarSeries.id, antes.seriesId!)).limit(1);
   const proximos = await db.select().from(calendarEvents)
     .where(and(eq(calendarEvents.seriesId, antes.seriesId!), isNull(calendarEvents.deletedAt), sql`${calendarEvents.startsOn} > ${antes.startsOn}`, sql`${calendarEvents.id} <> ${antes.id}`))
     .orderBy(asc(calendarEvents.startsOn));
-  if (!r) {
-    if (proximos.length) {
-      await db.update(calendarEvents).set({ deletedAt: agora, updatedById: quem }).where(inArray(calendarEvents.id, proximos.map((x) => x.id)));
-    }
-    await db.update(calendarSeries).set({ untilOn: d.startsOn, generatedUntil: d.startsOn, updatedAt: agora }).where(eq(calendarSeries.id, antes.seriesId!));
-    return ` e parou de repetir${proximos.length ? ` (${proximos.length === 1 ? 'a data seguinte foi' : `as ${proximos.length} datas seguintes foram`} para a lixeira)` : ''}`;
-  }
+  if (!serie) return '';
+  const limite = r ? limiteDaRepeticao(r, d.startsOn, hojeNoCalendario(agora)) : d.startsOn;
+  const plano = planoDosProximos(
+    proximos.map((p) => ({ id: p.id, inicio: p.startsOn, situacao: p.status as SituacaoDoEvento })),
+    { inicio: antes.startsOn, frequencia: serie.frequency as FrequenciaDaRepeticao, ate: serie.untilOn },
+    { inicio: d.startsOn, repetir: r, limite },
+  );
   const m = moldeDe(d);
-  const limite = limiteDaRepeticao(r, d.startsOn, hojeNoCalendario(agora));
-  const datas = datasDaRepeticao(d.startsOn, r.frequencia, limite, d.startsOn);
-  for (let k = 0; k < Math.min(datas.length, proximos.length); k++) {
-    const p = proximos[k]!;
-    const { status: _status, ...v } = doMolde(m, datas[k]!);
+  const porId = new Map(proximos.map((p) => [p.id, p]));
+  for (const x of plano.mudar) {
+    const p = porId.get(x.id)!;
+    // a situação é de cada data (a cancelada continua cancelada); o dia, o do plano
+    const { status: _status, ...v } = doMolde(m, x.inicio);
     await db.update(calendarEvents).set({ ...v, remindersSent: lembretesGravados({ ...v, status: p.status }, p.remindersSent, agora), updatedById: quem, updatedAt: agora })
       .where(eq(calendarEvents.id, p.id));
   }
-  const sobram = proximos.slice(datas.length);
-  if (sobram.length) await db.update(calendarEvents).set({ deletedAt: agora, updatedById: quem }).where(inArray(calendarEvents.id, sobram.map((x) => x.id)));
-  await inserirDatas(db, antes.seriesId!, m, datas.slice(proximos.length), quem, agora);
-  await db.update(calendarSeries).set({ frequency: r.frequencia, anchorOn: d.startsOn, untilOn: r.ate, generatedUntil: limite, template: m, updatedAt: agora })
-    .where(eq(calendarSeries.id, antes.seriesId!));
-  return ` e os próximos${textoDaSerie(r, d.startsOn, datas.length + 1, datas.at(-1) ?? d.startsOn)}`;
+  if (plano.descartar.length) {
+    await db.update(calendarEvents).set({ deletedAt: agora, droppedBySeries: true, updatedById: quem }).where(inArray(calendarEvents.id, plano.descartar));
+  }
+  await inserirDatas(db, serie.id, m, plano.criar, quem, agora);
+  if (plano.mesmaRegra) {
+    await db.update(calendarSeries).set({ template: m, updatedAt: agora }).where(eq(calendarSeries.id, serie.id));
+    return proximos.length ? ` e ${proximos.length === 1 ? 'a data seguinte' : `as ${proximos.length} datas seguintes`}` : '';
+  }
+  if (!r) {
+    await db.update(calendarSeries).set({ untilOn: d.startsOn, generatedUntil: d.startsOn, template: m, undo: null, updatedAt: agora }).where(eq(calendarSeries.id, serie.id));
+    const saiu = plano.descartar.length;
+    return ` e parou de repetir${saiu ? ` (${saiu === 1 ? 'a data seguinte saiu' : `as ${saiu} datas seguintes saíram`})` : ''}`;
+  }
+  await db.update(calendarSeries).set({ frequency: r.frequencia, anchorOn: d.startsOn, untilOn: r.ate, generatedUntil: limite, template: m, undo: null, updatedAt: agora })
+    .where(eq(calendarSeries.id, serie.id));
+  const datas = [d.startsOn, ...plano.mudar.map((x) => x.inicio), ...plano.criar].sort();
+  return ` e os próximos${textoDaSerie(r, d.startsOn, datas.length, datas.at(-1)!)}`;
 }
 
 /** O Feito e o Cancelado (e o voltar a Agendado), sem abrir a janela. */
@@ -473,23 +488,37 @@ export async function mandarParaLixeira(db: Db, ator: Ator, id: string, escopo: 
     const r = await tx.update(calendarEvents).set({ deletedAt: agora, updatedById: quem })
       .where(and(eq(calendarEvents.seriesId, l.seriesId!), isNull(calendarEvents.deletedAt), sql`(${calendarEvents.startsOn} >= ${l.startsOn} or ${calendarEvents.id} = ${id})`))
       .returning({ id: calendarEvents.id });
+    // a série para antes desta data; o fim de antes fica guardado, para a lixeira desfazer (`restaurar`)
+    const [serie] = await tx.select().from(calendarSeries).where(eq(calendarSeries.id, l.seriesId!)).limit(1);
     const ultimo = somarDias(l.startsOn, -1);
-    await tx.update(calendarSeries).set({ untilOn: ultimo, generatedUntil: ultimo, updatedAt: agora }).where(eq(calendarSeries.id, l.seriesId!));
+    const undo: CorteDaSerie | null = serie ? { deletedAt: agora.toISOString(), untilOn: serie.untilOn, generatedUntil: serie.generatedUntil, cortadoEm: ultimo } : null;
+    await tx.update(calendarSeries).set({ untilOn: ultimo, generatedUntil: ultimo, undo, updatedAt: agora }).where(eq(calendarSeries.id, l.seriesId!));
     return r.length;
   });
   return { id, resumo: `Mandou para a lixeira do calendário: ${qual} e os próximos da repetição (${levados === 1 ? '1 data' : `${levados} datas`})` };
 }
 
+/** O fim da série antes do "excluir este e os próximos" (para a lixeira devolver a repetição como estava). */
+type CorteDaSerie = { deletedAt: string; untilOn: string | null; generatedUntil: string; cortadoEm: string };
+
 /**
  * Tirar da lixeira (Administração › Lixeira). O lembrete que passou enquanto estava lá não sai. As datas de uma repetição que foram
- * juntas para a lixeira (2.4.6, "este e os próximos") voltam juntas.
+ * juntas para a lixeira (2.4.6, "este e os próximos") voltam juntas — e a repetição volta a ser como era (o fim de antes; sem data
+ * para acabar, ela continua sozinha), se ninguém mudou a regra no meio.
  */
 export async function restaurar(db: Db, id: string, agora = new Date()): Promise<Linha & { juntos: number }> {
   const [l] = await db.select().from(calendarEvents).where(and(eq(calendarEvents.id, id), isNotNull(calendarEvents.deletedAt))).limit(1);
   if (!l) throw new NotFound('Evento não encontrado na lixeira');
   const linhas = l.seriesId
-    ? await db.select().from(calendarEvents).where(and(eq(calendarEvents.seriesId, l.seriesId), eq(calendarEvents.deletedAt, l.deletedAt!)))
+    ? await db.select().from(calendarEvents).where(and(eq(calendarEvents.seriesId, l.seriesId), eq(calendarEvents.deletedAt, l.deletedAt!), eq(calendarEvents.droppedBySeries, false)))
     : [l];
+  if (l.seriesId) {
+    const [serie] = await db.select().from(calendarSeries).where(eq(calendarSeries.id, l.seriesId)).limit(1);
+    const corte = serie?.undo as CorteDaSerie | null | undefined;
+    if (serie && corte && corte.deletedAt === l.deletedAt!.toISOString() && serie.untilOn === corte.cortadoEm) {
+      await db.update(calendarSeries).set({ untilOn: corte.untilOn, generatedUntil: corte.generatedUntil, undo: null, updatedAt: agora }).where(eq(calendarSeries.id, serie.id));
+    }
+  }
   for (const x of linhas) {
     await db.update(calendarEvents).set({ deletedAt: null, remindersSent: lembretesGravados(x, x.remindersSent, agora), updatedAt: agora }).where(eq(calendarEvents.id, x.id));
   }

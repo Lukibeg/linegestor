@@ -301,7 +301,9 @@ export async function listTrash(db: Db) {
     db.select({ id: knowledgeArticles.id, numero: knowledgeArticles.number, titulo: knowledgeArticles.title, deletedAt: knowledgeArticles.deletedAt }).from(knowledgeArticles).where(isNotNull(knowledgeArticles.deletedAt)),
     db.select({ id: portalArticles.id, numero: portalArticles.number, titulo: portalArticles.title, deletedAt: portalArticles.deletedAt }).from(portalArticles).where(isNotNull(portalArticles.deletedAt)),
     db.select({ id: tickets.id, codigo: tickets.code, titulo: tickets.title, deletedAt: tickets.deletedAt }).from(tickets).where(isNotNull(tickets.deletedAt)),
-    db.select({ id: calendarEvents.id, titulo: calendarEvents.title, inicio: calendarEvents.startsOn, fim: calendarEvents.endsOn, serieId: calendarEvents.seriesId, deletedAt: calendarEvents.deletedAt }).from(calendarEvents).where(isNotNull(calendarEvents.deletedAt)),
+    db.select({ id: calendarEvents.id, titulo: calendarEvents.title, inicio: calendarEvents.startsOn, fim: calendarEvents.endsOn, serieId: calendarEvents.seriesId, deletedAt: calendarEvents.deletedAt }).from(calendarEvents)
+      // a data que saiu porque a regra da repetição mudou (2.4.6) não foi excluída por alguém: não entra na lixeira
+      .where(and(isNotNull(calendarEvents.deletedAt), eq(calendarEvents.droppedBySeries, false))),
     // as simulações do Comercial (2.0.2)
     db.select({ id: salesSimulations.id, label: salesSimulations.name, deletedAt: salesSimulations.deletedAt }).from(salesSimulations).where(isNotNull(salesSimulations.deletedAt)),
   ]);

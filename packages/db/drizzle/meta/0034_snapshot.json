@@ -1,5 +1,5 @@
 {
-  "id": "b3c5bb91-b927-406b-a548-8946100a5a11",
+  "id": "62e8df63-f71e-4150-a1e7-ff9a4da24694",
   "prevId": "055d0166-24a2-4e8e-a697-ab6e78e24445",
   "version": "7",
   "dialect": "postgresql",
@@ -269,6 +269,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "dropped_by_series": {
+          "name": "dropped_by_series",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_by_id": {
           "name": "created_by_id",
           "type": "text",
@@ -478,6 +485,12 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "undo": {
+          "name": "undo",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_by_id": {
           "name": "created_by_id",

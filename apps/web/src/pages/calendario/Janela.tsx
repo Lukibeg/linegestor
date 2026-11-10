@@ -182,7 +182,11 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
       setEvento(novo);
       setRascunho(doEvento(novo));
       void recarregar();
-      toast.push('ok', s === 'feito' ? 'Marcado como feito.' : s === 'cancelado' ? 'Evento cancelado (continua no calendário, riscado).' : 'O evento voltou a agendado.');
+      // o cancelado sai do calendário (2.4.6): só aparece com "Mostrar os cancelados" marcado
+      const so = evento.repeticao ? ' Só esta data: as outras da repetição continuam.' : '';
+      toast.push('ok', s === 'feito' ? `Marcado como feito.${so}`
+        : s === 'cancelado' ? `Evento cancelado.${so} No calendário, ele só aparece com "Mostrar os cancelados" marcado.`
+          : 'O evento voltou a agendado.');
     } catch (e) {
       setErro(erroDoEvento(e));
     } finally {

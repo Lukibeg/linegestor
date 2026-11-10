@@ -463,10 +463,14 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
  * do circuito.
  */
 function Dids({ c }: { c: ClientFull }) {
-  const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
+  // vêm todos, com os de um link cancelado (2.4.6); esses só aparecem quando a pessoa pede ("a não ser que eu marque alguma flag")
+  const q = useQuery({ queryKey: ['client-dids', c.id, 'com-cancelados'], queryFn: () => api.clients.dids(c.id, true) });
   const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const o = useOrdenacaoLocal('numberFormatted');
-  const items = q.data?.items ?? [];
+  const [comCancelados, setComCancelados] = useState(false);
+  const todos = q.data?.items ?? [];
+  const cancelados = todos.filter((d) => d.cancelled).length;
+  const items = useMemo(() => (comCancelados ? todos : todos.filter((d) => !d.cancelled)), [todos, comCancelados]);
   const [busca, setBusca] = useState('');
   const [soNaoUsados, setSoNaoUsados] = useState(false);
   const [operadoras, setOperadoras] = useState<string[]>([]);
@@ -498,7 +502,18 @@ function Dids({ c }: { c: ClientFull }) {
   const { mudando, alternarUso, gravarObservacao } = useEditarDid();
   const podeEditar = can('dids.assign');
   if (q.isLoading) return <Carregando />;
-  if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
+  const mostrarCancelados = cancelados > 0 && (
+    <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Os números que o cliente tinha num link que foi cancelado (ficam no link, como história)." id="dids-cliente-cancelados">
+      <Toggle checked={comCancelados} onChange={setComCancelados} />
+      mostrar os de links cancelados <span className="text-muted tnum">({cancelados})</span>
+    </label>
+  );
+  if (!items.length) {
+    return cancelados ? (
+      <Vazio titulo="Nenhum DID ativo com este cliente" texto={`${cancelados === 1 ? 'O número que ele tinha era' : `Os ${cancelados} números que ele tinha eram`} de um link cancelado.`}
+        acao={<button type="button" className="btn-secondary" onClick={() => setComCancelados(true)}>Mostrar os de links cancelados</button>} />
+    ) : <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
+  }
   const emUso = items.filter((d) => d.inUse).length;
   const temFiltro = !!busca.trim() || soNaoUsados || operadoras.length > 0 || circuitos.length > 0;
   const limpar = () => { setBusca(''); setSoNaoUsados(false); setOperadoras([]); setCircuitos([]); };
@@ -515,6 +530,7 @@ function Dids({ c }: { c: ClientFull }) {
           <Toggle checked={soNaoUsados} onChange={setSoNaoUsados} />
           só não usados <span className="text-muted tnum">({items.length - emUso})</span>
         </label>
+        {mostrarCancelados}
         {temFiltro && <button type="button" className="btn-ghost btn-sm" onClick={limpar}>Limpar filtros</button>}
         <span className="text-[12.5px] text-muted tnum ml-auto">{temFiltro ? `${filtrados.length} de ${items.length} números` : `${items.length} números`}</span>
       </div>
@@ -523,7 +539,7 @@ function Dids({ c }: { c: ClientFull }) {
           <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="note">Observação</Th></tr></thead>
             <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum whitespace-nowrap">{d.numberFormatted}</td>
               <td><UsoDid inUse={d.inUse} podeMudar={podeEditar} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /></td>
-              <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td>
+              <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}{d.cancelled && <Chip tone="bad" title="O link deste número foi cancelado">link cancelado</Chip>}</span> : <span className="text-muted">—</span>}</td>
               <td className="min-w-[200px]"><ObservacaoDid nota={d.note} podeEditar={podeEditar} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td></tr>)}</tbody></table>
         )}
         <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted flex flex-wrap gap-x-3"><span className="tnum">{emUso} em uso · {items.length - emUso} não usado(s)</span><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa ou trocar o cliente.</div></div>

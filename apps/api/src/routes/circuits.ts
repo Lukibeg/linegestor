@@ -15,13 +15,14 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/summary', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Resumo (circuitos, canais, valor mensal, numeração) com os MESMOS filtros da lista', querystring: CircuitoListarSchema.partial() } },
     async (req) => svc.summary(app.db, req.query));
 
-  app.get('/owners', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Titulares que têm pelo menos um circuito (para o filtro)', querystring: z.object({ includeThirdParty: Booleano.default(false) }) } },
-    async (req) => svc.owners(app.db, req.query.includeThirdParty));
+  app.get('/owners', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Titulares que têm pelo menos um circuito (para o filtro)', querystring: z.object({ includeThirdParty: Booleano.default(false), includeCancelled: Booleano.default(false) }) } },
+    async (req) => svc.owners(app.db, req.query.includeThirdParty, req.query.includeCancelled));
 
   app.get('/movimentacoes', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'As movimentações dos circuitos e dos DIDs (2.4.1): o que mudou, quem e quando', querystring: MovimentacoesDosCircuitosSchema } },
     async (req) => mov.listar(app.db, req.query));
 
-  app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Lista curta para seletores' } }, async () => svc.options(app.db));
+  app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Lista curta para seletores (o link cancelado só com includeCancelled, para os filtros)', querystring: z.object({ includeCancelled: Booleano.default(false) }) } },
+    async (req) => svc.options(app.db, req.query.includeCancelled));
 
   app.get('/:id', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Detalhe do circuito', params: Id } }, async (req) => svc.get(app.db, req.params.id));
 

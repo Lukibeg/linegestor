@@ -1,5 +1,6 @@
--- 2.4.6: a série do calendário (o evento que se repete: todo dia, todo dia útil, toda semana, todo mês) e o link cancelado
--- (o circuito que foi cancelado fica guardado, com o dia, o motivo e quem registrou; sai das listas até "Mostrar cancelados").
+-- 2.4.6: a série do calendário (o evento que se repete: todo dia, todo dia útil, toda semana, todo mês; o corte que a lixeira desfaz;
+-- a data que saiu porque a regra mudou) e o link cancelado (o circuito cancelado fica guardado, com o dia, o motivo e quem registrou;
+-- sai das listas até "Mostrar cancelados").
 CREATE TABLE "calendar_series" (
 	"id" text PRIMARY KEY NOT NULL,
 	"frequency" text NOT NULL,
@@ -7,12 +8,14 @@ CREATE TABLE "calendar_series" (
 	"until_on" text,
 	"generated_until" text NOT NULL,
 	"template" jsonb NOT NULL,
+	"undo" jsonb,
 	"created_by_id" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "calendar_events" ADD COLUMN "series_id" text;--> statement-breakpoint
+ALTER TABLE "calendar_events" ADD COLUMN "dropped_by_series" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "circuits" ADD COLUMN "cancelled_on" text;--> statement-breakpoint
 ALTER TABLE "circuits" ADD COLUMN "cancel_reason" text;--> statement-breakpoint
 ALTER TABLE "circuits" ADD COLUMN "cancelled_by_id" text;--> statement-breakpoint

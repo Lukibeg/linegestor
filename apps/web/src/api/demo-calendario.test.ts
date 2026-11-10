@@ -218,3 +218,32 @@ describe('repetir na prévia (2.4.6), como o servidor', () => {
     expect(await daSerie()).toHaveLength(5);
   });
 });
+
+describe('repetir na prévia: a data não troca de dia e a lixeira devolve a repetição (2.4.6)', () => {
+  it('outra regra: o cancelado fica no dia dele, e o que sobra não vai para a lixeira', async () => {
+    await entrar('admin');
+    const e = await api.criar({ titulo: 'Plantão da prévia', tipoId: 'reuniao', paineis: ['painel-suporte'], inicio: hoje, fim: hoje, diaInteiro: false, horaInicio: '08:00', horaFim: '09:00', repetir: { frequencia: 'semanal', ate: null } });
+    const daSerie = async () => (await api.eventos(somarDias(hoje, -1), somarDias(hoje, 380))).filter((x) => x.repeticao?.serieId === e.repeticao!.serieId).sort((a, b) => a.inicio.localeCompare(b.inicio));
+    const antes = await daSerie();
+    await api.situacao(antes[2]!.id, 'cancelado');
+    const lixo = (await demoApi.admin.trash()).length;
+    await api.alterar(antes[1]!.id, { ...gravavel(antes[1]!), escopo: 'proximos', repetir: { frequencia: 'mensal', ate: null } });
+    const depois = await daSerie();
+    expect(depois.find((x) => x.id === antes[2]!.id)).toMatchObject({ inicio: antes[2]!.inicio, situacao: 'cancelado' });
+    expect(depois.filter((x) => x.situacao === 'agendado').length).toBeLessThan(antes.length / 2);
+    expect((await demoApi.admin.trash()).length).toBe(lixo);
+  });
+
+  it('restaurar o "este e os próximos" devolve a repetição como era', async () => {
+    await entrar('admin');
+    const e = await api.criar({ titulo: 'Leitura da prévia', tipoId: 'acao-cliente', paineis: ['painel-suporte'], inicio: hoje, fim: hoje, repetir: { frequencia: 'diaria', ate: null } });
+    const daSerie = async () => (await api.eventos(hoje, somarDias(hoje, 30))).filter((x) => x.repeticao?.serieId === e.repeticao!.serieId);
+    await api.remover((await daSerie())[5]!.id, 'proximos');
+    expect((await daSerie())[0]!.repeticao!.ate).toBe(somarDias(hoje, 4));
+    const linha = (await demoApi.admin.trash()).find((x) => x.label.includes('Leitura da prévia'))!;
+    await demoApi.admin.restore('calendarEvent', linha.id);
+    expect((await daSerie())[0]!.repeticao!.ate).toBeNull();
+    expect(await daSerie()).toHaveLength(31);
+  });
+});
+

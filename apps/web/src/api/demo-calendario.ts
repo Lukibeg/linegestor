@@ -22,7 +22,7 @@ import {
   NOME_SITUACAO_DO_EVENTO, quemRecebeOLembrete, SituacaoDoEventoSchema, TiposDoCalendarioSchema, diaDaSemana, diaEmBrasilia, eventoVisivel,
   hojeNoCalendario, paineisDepoisDaEdicao, somarDias, textoDoLembrete, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tiposDeFabrica,
   NOME_QUEM_RECEBE_O_LEMBRETE, quemRecebeAInclusao, textoDaInclusao,
-  datasDaRepeticao, diasEntre, limiteDaRepeticao, lixeiraDoCalendario, RemoverEventoSchema, textoDaRepeticao, HORIZONTE_DA_REPETICAO,
+  datasDaRepeticao, diasEntre, limiteDaRepeticao, lixeiraDoCalendario, planoDosProximos, RemoverEventoSchema, textoDaRepeticao, HORIZONTE_DA_REPETICAO,
   type EscopoDaSerie, type FrequenciaDaRepeticao, type Repeticao,
   type CalendarioOpcoes, type EventoDoCalendario, type EventoGravar, type Painel, type QuemRecebeOLembrete, type SituacaoDoEvento, type TipoDeEvento,
 } from '@gestor/shared';
@@ -50,11 +50,15 @@ type EventoRow = {
   situacao: SituacaoDoEvento; criadoPorId: string | null; alteradoPorId: string | null; criadoEm: string; alteradoEm: string; deletedAt: string | null;
   /** os lembretes (2.0.2), quem recebe e os que já saíram (`reminders_sent`) */
   lembretes: number[]; lembrarQuem: QuemRecebeOLembrete; enviados: Record<string, string>;
-  /** a série (2.4.6): o evento que se repete */
-  serieId: string | null;
+  /** a série (2.4.6): o evento que se repete; `descartado`: saiu porque a regra mudou (fora da lixeira) */
+  serieId: string | null; descartado?: boolean;
 };
 /** A série (a tabela `calendar_series`): a regra e o modelo das datas que ainda vão nascer. */
-type SerieRow = { id: string; frequencia: FrequenciaDaRepeticao; ancora: string; ate: string | null; geradoAte: string; molde: Molde; criadoPorId: string | null };
+type SerieRow = {
+  id: string; frequencia: FrequenciaDaRepeticao; ancora: string; ate: string | null; geradoAte: string; molde: Molde; criadoPorId: string | null;
+  /** o corte do "excluir este e os próximos" (o fim de antes), para a lixeira desfazer */
+  corte?: { deletedAt: string; ate: string | null; geradoAte: string; cortadoEm: string } | null;
+};
 type Valores = Omit<EventoRow, 'id' | 'enviados' | 'criadoPorId' | 'alteradoPorId' | 'criadoEm' | 'alteradoEm' | 'deletedAt' | 'serieId'>;
 type Molde = Omit<Valores, 'inicio' | 'fim' | 'situacao'> & { duracao: number };
 
@@ -247,33 +251,40 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       inserirDatas(r.id, r.molde, datas, r.criadoPorId, quando);
     }
   }
-  /** "Este e os próximos": como o servidor (mudarOsProximos). */
-  function mudarOsProximos(antes: EventoRow, d: Valores, r: Repeticao | null, quem: string | null, quando: Date): string {
-    const proximos = C.eventos.filter((x) => x.serieId === antes.serieId && !x.deletedAt && x.inicio > antes.inicio && x.id !== antes.id).sort((p, q) => p.inicio.localeCompare(q.inicio));
-    const serie = C.series.find((x) => x.id === antes.serieId)!;
-    if (!r) {
-      for (const p of proximos) Object.assign(p, { deletedAt: quando.toISOString(), alteradoPorId: quem });
-      Object.assign(serie, { ate: d.inicio, geradoAte: d.inicio });
-      return ` e parou de repetir${proximos.length ? ` (${proximos.length === 1 ? 'a data seguinte foi' : `as ${proximos.length} datas seguintes foram`} para a lixeira)` : ''}`;
-    }
+  /** "Este e os próximos": como o servidor (mudarOsProximos), pelo mesmo `planoDosProximos`. */
+  function mudarOsProximos(antes: EventoRow, inicioAntes: string, d: Valores, r: Repeticao | null, quem: string | null, quando: Date): string {
+    const serie = C.series.find((x) => x.id === antes.serieId);
+    if (!serie) return '';
+    const proximos = C.eventos.filter((x) => x.serieId === antes.serieId && !x.deletedAt && x.inicio > inicioAntes && x.id !== antes.id).sort((p, q) => p.inicio.localeCompare(q.inicio));
+    const limite = r ? limiteDaRepeticao(r, d.inicio, hojeNoCalendario(quando)) : d.inicio;
+    const plano = planoDosProximos(proximos, { inicio: inicioAntes, frequencia: serie.frequencia, ate: serie.ate }, { inicio: d.inicio, repetir: r, limite });
     const m = moldeDe(d);
-    const limite = limiteDaRepeticao(r, d.inicio, hojeNoCalendario(quando));
-    const datas = datasDaRepeticao(d.inicio, r.frequencia, limite, d.inicio);
-    proximos.slice(0, datas.length).forEach((p, k) => {
-      const { situacao: _s, ...v } = doMolde(m, datas[k]!);
+    for (const x of plano.mudar) {
+      const p = proximos.find((y) => y.id === x.id)!;
+      const { situacao: _s, ...v } = doMolde(m, x.inicio);
       Object.assign(p, v, { enviados: lembretesAoGravar({ ...v, situacao: p.situacao }, p.enviados, quando), alteradoPorId: quem, alteradoEm: quando.toISOString() });
-    });
-    for (const p of proximos.slice(datas.length)) Object.assign(p, { deletedAt: quando.toISOString(), alteradoPorId: quem });
-    inserirDatas(serie.id, m, datas.slice(proximos.length), quem, quando);
-    Object.assign(serie, { frequencia: r.frequencia, ancora: d.inicio, ate: r.ate, geradoAte: limite, molde: m });
-    return ` e os próximos${textoDaSerie(r, d.inicio, datas.length + 1, datas.at(-1) ?? d.inicio)}`;
+    }
+    for (const id of plano.descartar) Object.assign(proximos.find((y) => y.id === id)!, { deletedAt: quando.toISOString(), descartado: true, alteradoPorId: quem });
+    inserirDatas(serie.id, m, plano.criar, quem, quando);
+    if (plano.mesmaRegra) {
+      serie.molde = m;
+      return proximos.length ? ` e ${proximos.length === 1 ? 'a data seguinte' : `as ${proximos.length} datas seguintes`}` : '';
+    }
+    if (!r) {
+      Object.assign(serie, { ate: d.inicio, geradoAte: d.inicio, molde: m, corte: null });
+      const saiu = plano.descartar.length;
+      return ` e parou de repetir${saiu ? ` (${saiu === 1 ? 'a data seguinte saiu' : `as ${saiu} datas seguintes saíram`})` : ''}`;
+    }
+    Object.assign(serie, { frequencia: r.frequencia, ancora: d.inicio, ate: r.ate, geradoAte: limite, molde: m, corte: null });
+    const datas = [d.inicio, ...plano.mudar.map((x) => x.inicio), ...plano.criar].sort();
+    return ` e os próximos${textoDaSerie(r, d.inicio, datas.length, datas.at(-1)!)}`;
   }
 
   /** O aviso de que o evento entrou (2.0.2): o sininho de quem o evento avisa, menos quem pôs. Devolve quantas pessoas. */
   function avisarDaInclusao(a: AtorDemo, e: EventoRow, quem: QuemRecebeOLembrete, quando = agora()): number {
     const para = quemRecebeAInclusao({ paineis: e.paineis, pessoas: e.pessoas, avisar: quem }, quemVePorPainel(), a.tipo === 'pessoa' ? a.id : null);
     if (!para.length) return 0;
-    return x().avisarDoCalendario({ qual: 'evento_novo', para, evento: { id: e.id, titulo: e.titulo, inicio: e.inicio }, texto: textoDaInclusao(a.nome, e, quando) }, quando);
+    return x().avisarDoCalendario({ qual: 'evento_novo', para, evento: { id: e.id, titulo: e.titulo, inicio: e.inicio }, texto: textoDaInclusao(a.nome, { ...e, repeticao: paraTela(e).repeticao }, quando) }, quando);
   }
 
   // ---------- os lembretes (2.0.2): as mesmas contas do servidor ----------
@@ -461,10 +472,11 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       // os lembretes: o que já saiu para o mesmo começo continua; o que passou fica pulado; mudar o dia vale de novo
       const enviados = lembretesAoGravar(v, antes.enviados, agora());
       const quem = a.tipo === 'pessoa' ? a.id : null;
+      const inicioAntes = antes.inicio;
       Object.assign(antes, v, { enviados, alteradoPorId: quem, alteradoEm: agora().toISOString() });
       // repetir (2.4.6): "este e os próximos" leva a mudança adiante; o avulso que passa a se repetir vira série
       let serie = '';
-      if (antes.serieId && dados.escopo === 'proximos') serie = mudarOsProximos(antes, v, dados.repetir, quem, agora());
+      if (antes.serieId && dados.escopo === 'proximos') serie = mudarOsProximos(antes, inicioAntes, v, dados.repetir, quem, agora());
       else if (!antes.serieId && dados.repetir) {
         antes.serieId = novaSerie(dados.repetir, v, quem, agora());
         serie = ` e passou a repetir${gerarAsDatas(antes.serieId, dados.repetir, v, quem, agora())}`;
@@ -506,7 +518,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       const levados = C.eventos.filter((x) => x.serieId === e.serieId && !x.deletedAt && (x.inicio >= e.inicio || x.id === e.id));
       for (const x of levados) Object.assign(x, { deletedAt: quando, alteradoPorId: quem });
       const serie = C.series.find((x) => x.id === e.serieId);
-      if (serie) Object.assign(serie, { ate: somarDias(e.inicio, -1), geradoAte: somarDias(e.inicio, -1) });
+      if (serie) Object.assign(serie, { ate: somarDias(e.inicio, -1), geradoAte: somarDias(e.inicio, -1), corte: { deletedAt: quando, ate: serie.ate, geradoAte: serie.geradoAte, cortadoEm: somarDias(e.inicio, -1) } });
       ctx.audit('delete', 'calendar_event', `Mandou para a lixeira do calendário: ${qual} e os próximos da repetição (${levados.length === 1 ? '1 data' : `${levados.length} datas`})`, id);
       return { ok: true };
     },
@@ -538,13 +550,16 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
     lixeira: () => {
       if (!C.semeado) return [];
       // as datas de uma repetição que foram juntas para a lixeira são uma linha só (2.4.6)
-      return lixeiraDoCalendario(C.eventos.filter((e) => e.deletedAt).map((e) => ({ id: e.id, titulo: e.titulo, inicio: e.inicio, fim: e.fim, serieId: e.serieId, deletedAt: e.deletedAt! })))
+      return lixeiraDoCalendario(C.eventos.filter((e) => e.deletedAt && !e.descartado).map((e) => ({ id: e.id, titulo: e.titulo, inicio: e.inicio, fim: e.fim, serieId: e.serieId, deletedAt: e.deletedAt! })))
         .map((x) => ({ type: 'calendarEvent', ...x }));
     },
     restaurarDaLixeira: (id) => {
       const e = C.eventos.find((ev) => ev.id === id && ev.deletedAt);
       if (!e) throw erro(404, 'Evento não encontrado na lixeira');
-      const juntos = e.serieId ? C.eventos.filter((x) => x.serieId === e.serieId && x.deletedAt === e.deletedAt) : [e];
+      const juntos = e.serieId ? C.eventos.filter((x) => x.serieId === e.serieId && x.deletedAt === e.deletedAt && !x.descartado) : [e];
+      // a repetição volta a ser como era (se ninguém mudou a regra no meio), como no servidor
+      const serie = e.serieId ? C.series.find((x) => x.id === e.serieId) : undefined;
+      if (serie?.corte && serie.corte.deletedAt === e.deletedAt && serie.ate === serie.corte.cortadoEm) Object.assign(serie, { ate: serie.corte.ate, geradoAte: serie.corte.geradoAte, corte: null });
       for (const x of juntos) {
         x.deletedAt = null;
         x.enviados = lembretesAoGravar(x, x.enviados, agora());

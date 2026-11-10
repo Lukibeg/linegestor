@@ -105,7 +105,7 @@ function Bloco({ b, parte }: { b: BlocoDaParte; parte: string }) {
 
 /**
  * Os grupos de campos da lateral (2.4, o Luan: "tem q ter um conjunto para eu alterar as abas laterais"): um cartão por grupo,
- * abaixo da Classificação, com os campos que o chamado mostra (o texto longo e as caixinhas inteiros, os outros numa linha).
+ * abaixo dos Detalhes (a Classificação até o 2.4.6), com os campos que o chamado mostra (o texto longo e as caixinhas inteiros, os outros numa linha).
  */
 export function GruposDaLateral() {
   const { f, opcoes, painel } = useAberta();

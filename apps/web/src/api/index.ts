@@ -43,7 +43,8 @@ export type Api = {
     saveLogo(id: string, dataUrl: string): Promise<T.ClientFull>;
     removeLogo(id: string): Promise<T.ClientFull>;
     endModule(id: string, productCode: string, moduleCode: string): Promise<T.ClientFull>;
-    dids(id: string): Promise<T.Page<T.Did>>;
+    /** os números do cliente; os de um link cancelado (2.4.6) só com `incluirCancelados` (a ficha esconde até a pessoa pedir) */
+    dids(id: string, incluirCancelados?: boolean): Promise<T.Page<T.Did>>;
     devices(id: string): Promise<{ devices: T.Page<T.Device> }>;
     history(id: string): Promise<T.Page<T.AuditItem>>;
     units(id: string): Promise<T.ClientUnit[]>;
@@ -66,9 +67,10 @@ export type Api = {
   circuits: {
     list(q: Record<string, unknown>): Promise<T.Page<T.Circuit>>;
     summary(q?: Record<string, unknown>): Promise<T.CircuitSummary>;
-    options(): Promise<Array<{ id: string; name: string; code: string; carrierName: string | null }>>;
-    /** Quem é titular de pelo menos um circuito (para o filtro "Titular") */
-    owners(includeThirdParty: boolean): Promise<T.Option[]>;
+    /** A lista curta para os seletores; o link cancelado (2.4.6) só com `incluirCancelados` (nos filtros), marcado */
+    options(incluirCancelados?: boolean): Promise<Array<{ id: string; name: string; code: string; carrierName: string | null; cancelled?: boolean }>>;
+    /** Quem é titular de pelo menos um circuito (para o filtro "Titular"); o do link cancelado só com `includeCancelled` */
+    owners(includeThirdParty: boolean, includeCancelled?: boolean): Promise<T.Option[]>;
     get(id: string): Promise<T.Circuit>;
     create(d: Record<string, unknown>): Promise<T.Circuit>;
     update(id: string, d: Record<string, unknown>): Promise<T.Circuit>;

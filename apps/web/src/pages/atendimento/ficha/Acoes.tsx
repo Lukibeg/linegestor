@@ -16,6 +16,11 @@
  * Os botões são os menores do sistema (`btn-xs`, 2.0.3: "esses botões estão muito grandes, podem ser um pouco
  * menor").
  *
+ * Desde o 2.4.6, o botão Etiquetas virou **Classificação** (o Luan: "essa parte de classificação pode ficar apenas no menu de
+ * cima e a prioridade dentro, então vai deixar de ser etiquetas e vai ser classificação"): a prioridade em cima e as etiquetas
+ * embaixo, no mesmo painel; o cartão Classificação saiu da coluna do lado (o resto dele, no painel que usa, virou Detalhes). No
+ * painel que não usa a prioridade (e na negociação), o botão continua Etiquetas.
+ *
  * Mover usa o `useMover()` comum: ele pede o motivo ao subir ou descer de nível e mostra o que falta
  * quando o servidor recusa. O erro das ações diretas (assumir, parar de esperar…) aparece logo
  * embaixo da barra, com o nome da ação.
@@ -26,13 +31,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRightLeft, ArrowUpRight, CalendarPlus, Columns3, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, ListChecks, MoreHorizontal, Plus, RotateCcw, Sparkles, Tag, ThumbsDown, Trash2, Trophy, Unlink, UserCheck, UserRound, Waypoints, X,
 } from 'lucide-react';
-import { etapaAoAssumir, etiquetasDoPainel, etiquetasUnicas, movimentoDeNivel, nomeDoObrigatorio, type CorEtiqueta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
+import { campoLigado, etapaAoAssumir, etiquetasDoPainel, etiquetasUnicas, movimentoDeNivel, nomeDoObrigatorio, type CorEtiqueta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Confirmar, EscolherComBusca, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
 import { Avatar, chaveDaFicha, fundoDaJanela } from '../comum.js';
 import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { useAgendar } from './Agenda.js';
+import { PrioridadeDaClassificacao } from './Classificacao.js';
 import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 import { JanelaIa, pedirSugestao } from './Ia.js';
 import { BotaoDaNia } from './Nia.js';
@@ -130,6 +136,9 @@ export function BarraDeAcoes() {
   // as etiquetas pelo botão: cada clique grava (a lista fica aberta para marcar outra); a nova nasce com a cor escolhida
   const mudarEtiquetas = (etiquetas: string[], cores?: Record<string, CorEtiqueta>) =>
     void direta('Etiquetas', () => api.atendimento.alterar(f.id, { etiquetas, ...(cores ? { coresDasEtiquetas: cores } : {}) }));
+  // a Classificação (2.4.6): a prioridade e as etiquetas num botão só; sem a prioridade (a negociação, o painel que não usa), Etiquetas
+  const comPrioridade = !vendas && (!painel || campoLigado(painel.ajustes, 'prioridade'));
+  const faltaNaClassificacao = comPrioridade && faltando.has('prioridade');
 
   return (
     <div className="min-w-0">
@@ -194,13 +203,15 @@ export function BarraDeAcoes() {
           )}
         </MenuSuspenso>
 
-        {/* as etiquetas e o agendar ao lado do Mover (2.0.3); a caixa das etiquetas e o Na agenda continuam embaixo */}
-        <SeletorDeEtiquetas id="acao-etiquetas" painelId={f.painelId} valor={f.etiquetas} catalogo={etiquetasDoPainel(opcoes.etiquetas, f.painelId)}
+        {/* a Classificação (2.4.6: a prioridade e as etiquetas; antes, o botão Etiquetas do 2.0.3) e o agendar ao lado do Mover */}
+        <SeletorDeEtiquetas id="acao-classificacao" painelId={f.painelId} valor={f.etiquetas} catalogo={etiquetasDoPainel(opcoes.etiquetas, f.painelId)}
           podeMudar={pode} podeEditar={pode && cuida} ocupado={acao.ocupado && qual === 'Etiquetas'}
           onMudar={(v) => mudarEtiquetas(v)} onCriar={(nome, cor) => mudarEtiquetas(etiquetasUnicas([...f.etiquetas, nome]), { [nome]: cor })}
+          cabecalho={comPrioridade ? <PrioridadeDaClassificacao /> : undefined}
           gatilho={{
-            classe: 'btn-secondary btn-xs', titulo: 'Pôr ou tirar etiquetas',
-            conteudo: <>{acao.ocupado && qual === 'Etiquetas' ? <Spinner /> : <Tag size={14} />} Etiquetas{f.etiquetas.length > 0 && <span className="tnum text-muted font-normal">{f.etiquetas.length}</span>}</>,
+            classe: `btn-secondary btn-xs ${faltaNaClassificacao ? '!border-signal' : ''}`,
+            titulo: faltaNaClassificacao ? `Para sair de ${etapa?.nome ?? 'Novo'}, falta a prioridade` : comPrioridade ? 'A prioridade e as etiquetas do chamado' : 'Pôr ou tirar etiquetas',
+            conteudo: <>{acao.ocupado && qual === 'Etiquetas' ? <Spinner /> : <Tag size={14} />} {comPrioridade ? 'Classificação' : 'Etiquetas'}{f.etiquetas.length > 0 && <span className="tnum text-muted font-normal">{f.etiquetas.length}</span>}</>,
           }} />
         {agenda.podeAgendar && (
           <button type="button" className="btn-secondary btn-xs" onClick={agenda.agendar} id="acao-agendar" title={vendas ? 'Pôr uma reunião ou visita no calendário, já ligada à negociação' : 'Pôr uma visita ou virada no calendário, já ligada ao chamado'}>
