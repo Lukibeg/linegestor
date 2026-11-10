@@ -252,7 +252,7 @@ function CartaoDoEnvio({ e, salvo, inicial, origensDaEscolha, mudou, mandando, r
         <p className="mt-2 rounded-lg bg-bad-soft p-2.5 text-[13px] text-ink flex items-start gap-2"><TriangleAlert size={15} className="mt-0.5 shrink-0 text-bad" />{salvo.origemProblema}</p>
       )}
       {legado && (
-        <p className="mt-2 text-[12.5px] text-muted">Os tickets do LineChat (Suporte › Legado do Helena), como até o 2.4.4. Os chamados novos ficam nos painéis.</p>
+        <p className="mt-2 text-[12.5px] text-muted">Os tickets do LineChat (o Legado do Helena, no botão no alto de Suporte › Relatórios), como até o 2.4.4. Os chamados novos ficam nos painéis.</p>
       )}
       {salvo?.ativo && salvo.hoje && doMesmoPainel && <EnvioDeHoje h={salvo.hoje} />}
 

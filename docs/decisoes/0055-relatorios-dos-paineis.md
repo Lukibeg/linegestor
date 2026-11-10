@@ -185,3 +185,12 @@ Relatórios**. Hoje é a que abre.
 As contas em `packages/shared/src/atendimento-visao.ts` (`visaoDoPainel`, as mesmas no servidor e na prévia), a rota
 `GET /api/atendimento/relatorios/visao` e a tela em `apps/web/src/pages/atendimento/relatorios/visao.tsx`, com as peças
 dos gráficos do Legado.
+
+## Revisto no 2.4.6 (10/11/2026): o Legado do Helena sai do menu
+
+O Luan: *"tire o legado helena, o botão no caso, mas que ainda vou poder acessar acessando o painel novo e clicando no
+botão que já existe"*. O item **Suporte › Legado do Helena** saiu do menu; o Legado abre pelo botão **Legado do Helena**,
+no alto dos Relatórios do Suporte (e pela frase do subtítulo), como já abria. Nas telas do Legado (Hoje, Período e os
+relatórios de lá), o menu marca **Suporte › Relatórios**. As telas, as contas, o endereço (`/chamados`) e o envio do
+Legado não mudam. Os detalhes estão na **0062** (seção 6).
+

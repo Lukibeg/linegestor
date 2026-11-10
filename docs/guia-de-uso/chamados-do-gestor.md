@@ -3,8 +3,9 @@
 Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Painéis** (no menu lateral, logo abaixo
 do Calendário desde o 2.0.2; antes ficava dentro do Suporte e, até o 2.0.1, se chamava Chamados — o
 Comercial também mora ali). O atalho **Suporte › Painel do Suporte** abre direto o quadro do Suporte, e o
-**Suporte › Painel do Dev** (2.4.6), o do Desenvolvimento. Os chamados antigos continuam no LineChat; para consultar, **Suporte › Legado do Helena** abre neles,
-na aba **Hoje** (as abas levam ao Período e aos relatórios). Os relatórios dos chamados do Gestor ficam na
+**Suporte › Painel do Dev** (2.4.6), o do Desenvolvimento. Os chamados antigos continuam no LineChat; para consultar, o botão
+**Legado do Helena**, no alto de **Suporte › Relatórios**, abre neles, na aba **Hoje** (as abas levam ao Período e aos
+relatórios; até o 2.4.6, o Legado era um item do menu). Os relatórios dos chamados do Gestor ficam na
 vista **Relatórios** de cada painel (**Suporte › Relatórios** abre a do Suporte, desde o 2.1): veja
 [Os Relatórios dos painéis](relatorios-dos-paineis.md).
 A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.

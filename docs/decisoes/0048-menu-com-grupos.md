@@ -101,5 +101,17 @@ entrou nele.
   o ícone da calculadora), de quem tem a permissão do Comercial. Nas telas dele (a lista, a simulação e os
   Ajustes), o menu marca o Simulador; a tela usa a largura toda, como os painéis e o calendário.
 
+- **Revisto no 2.4.6 (10/11/2026): o Painel do Dev, os Projetos no Técnico e o Legado fora do menu.** Três pedidos do
+  Luan no mesmo dia (decisão 0062, seções 5 e 6):
+  - o Suporte ganhou o **Painel do Dev** (`/suporte/desenvolvimento`, o atalho para o quadro do painel Desenvolvimento),
+    abaixo do Painel da Implantação (2.3): *"faça um botão … para o painel do dev, dentro do menu suporte mesmo"*;
+  - os **Projetos** foram para o **Técnico**, depois do Inventário: *"bote o projetos dentro de tecnico"* (moravam no
+    Suporte desde o 2.0, pelo pedido de 13/10, *"esse pode ficar dentro de suporte também"*). Quem vê os projetos e não
+    vê os chamados os encontra no Técnico (a mesma permissão dos circuitos e do inventário);
+  - o **Legado do Helena** saiu do menu (*"tire o legado helena, o botão no caso"*): abre pelo botão no alto dos
+    Relatórios do Suporte, e nas telas dele o menu marca os **Relatórios**.
+  O Suporte fica com **Painel do Suporte**, **Painel da Implantação**, **Painel do Dev**, **Meu dia** e **Relatórios**; o
+  Técnico, com **Circuitos e DIDs**, **Inventário** e **Projetos**.
+
 **Consequências.** O menu cai de 12 para 8 entradas no alto, e o Suporte tem três itens. Os guias de
 uso, a nota do 2.0 e o vídeo falam dos nomes novos.

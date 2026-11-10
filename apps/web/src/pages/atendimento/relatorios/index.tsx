@@ -2,7 +2,8 @@
  * OS RELATÓRIOS DE UM PAINEL DE CHAMADOS (Patch 2.1, decisão 0055) — o módulo novo de relatórios, sobre os
  * chamados do Gestor. O pedido do Luan (22/10): sair do Helena como CRM e "fazer um novo módulo [de
  * relatórios], mesmo que seja parecido… por conta dos tipos de assuntos"; o antigo fica como **Legado do
- * Helena** (Suporte › Legado do Helena, a tela de `/chamados`), para consulta, com os assuntos de lá.
+ * Helena** (a tela de `/chamados`; desde o 2.4.6, só pelo botão Legado do Helena, no alto dos Relatórios do
+ * Suporte), para consulta, com os assuntos de lá.
  *
  * É a vista **Relatórios** do painel (Quadro · Lista · Relatórios), de qualquer painel de Gestão: o Suporte, o
  * Desenvolvimento, o Administrativo. Os 25 relatórios em seis abas (Tempo, Volume, Assuntos, Clientes, Equipe

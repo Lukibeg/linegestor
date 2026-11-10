@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { EtapaPainel, Painel } from '@gestor/shared';
-import { NAV, eDoSuporte, parteDoPainel, parteDoSuporte } from './AppShell.js';
+import { NAV, eDoLegado, eDoSuporte, parteDoPainel, parteDoSuporte } from './AppShell.js';
 import { PAINEL_DO_DESENVOLVIMENTO, painelDaImplantacao, painelDoDesenvolvimento } from '../../pages/atendimento/Suporte.js';
 
 describe('o grupo Técnico (2.0.2)', () => {
@@ -12,7 +12,8 @@ describe('o grupo Técnico (2.0.2)', () => {
     const nomes = NAV.map((x) => ('grupo' in x ? `[${x.label}]` : x.label));
     expect(nomes).toEqual(['Painel', 'Clientes', 'Calendário', 'Painéis', '[Técnico]', '[Suporte]', '[Comercial]', '[Base de conhecimento]', 'Novidades', 'Administração']);
     const tecnico = NAV.find((x) => 'grupo' in x && x.grupo === 'tecnico');
-    expect(tecnico && 'itens' in tecnico ? tecnico.itens.map((i) => [i.label, i.to]) : null).toEqual([['Circuitos e DIDs', '/circuitos'], ['Inventário', '/inventario']]);
+    // os Projetos moram nele desde o 2.4.6 ("bote o projetos dentro de tecnico")
+    expect(tecnico && 'itens' in tecnico ? tecnico.itens.map((i) => [i.label, i.to]) : null).toEqual([['Circuitos e DIDs', '/circuitos'], ['Inventário', '/inventario'], ['Projetos', '/projetos']]);
     // o Simulador (2.0.2) mora no Comercial
     const comercial = NAV.find((x) => 'grupo' in x && x.grupo === 'comercial');
     expect(comercial && 'itens' in comercial ? comercial.itens.map((i) => i.label) : null).toEqual(['Painel do Comercial', 'Relatórios', 'Simulador']);
@@ -20,12 +21,18 @@ describe('o grupo Técnico (2.0.2)', () => {
 });
 
 describe('os Relatórios e o Legado do Helena (2.1)', () => {
-  it('o Suporte tem os Relatórios novos (os do painel) e, à parte, o Legado do Helena (os do LineChat)', () => {
+  it('o Suporte tem os Relatórios novos (os do painel); o Legado do Helena saiu do menu no 2.4.6 (abre pelo botão dos Relatórios)', () => {
     const suporte = NAV.find((x) => 'grupo' in x && x.grupo === 'suporte');
     expect(suporte && 'itens' in suporte ? suporte.itens.map((i) => [i.label, i.to]) : null).toEqual([
       ['Painel do Suporte', '/suporte'], ['Painel da Implantação', '/suporte/implantacao'], ['Painel do Dev', '/suporte/desenvolvimento'],
-      ['Meu dia', '/atendimento/meu-dia'], ['Projetos', '/projetos'], ['Relatórios', '/suporte/relatorios'], ['Legado do Helena', '/chamados'],
+      ['Meu dia', '/atendimento/meu-dia'], ['Relatórios', '/suporte/relatorios'],
     ]);
+    const todos = NAV.flatMap((x) => ('grupo' in x ? x.itens : [x]));
+    expect(todos.some((i) => i.to === '/chamados')).toBe(false);
+  });
+  it('as telas do Legado (a aba Hoje, o Período e os relatórios de lá) são as que marcam os Relatórios no lugar do item que saiu', () => {
+    for (const caminho of ['/chamados', '/chamados/relatorios', '/chamados/relatorios/cliente/7']) expect(eDoLegado(caminho), caminho).toBe(true);
+    for (const caminho of ['/atendimento/relatorio', '/suporte/relatorios', '/chamadosx', '/projetos']) expect(eDoLegado(caminho), caminho).toBe(false);
   });
   it('a vista Relatórios do painel Suporte marca os Relatórios; o quadro, a lista e a ficha, o Painel do Suporte', () => {
     expect(parteDoSuporte('/atendimento/relatorio', '?painel=painel-suporte&aba=tempo', 'SUP')).toBe('relatorios');

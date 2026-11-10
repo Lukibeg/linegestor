@@ -7,10 +7,10 @@
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Técnico** (2.0.2: os
- * Circuitos e DIDs e o Inventário), **Suporte** (o Painel do Suporte — o atalho para o quadro dele, 2.0.2 —, o da
- * Implantação, 2.3, e o do Dev, o painel Desenvolvimento, 2.4.6, o Meu dia, 2.0.2, os Projetos, os Relatórios — desde
- * o 2.1, os do painel Suporte, sobre os chamados do Gestor — e o Legado do Helena, os relatórios dos tickets do
- * LineChat, que eram os Relatórios até o 2.0.4),
+ * Circuitos e DIDs e o Inventário; desde o 2.4.6, os Projetos), **Suporte** (o Painel do Suporte — o atalho para o
+ * quadro dele, 2.0.2 —, o da Implantação, 2.3, e o do Dev, o painel Desenvolvimento, 2.4.6, o Meu dia, 2.0.2, e os
+ * Relatórios — desde o 2.1, os do painel Suporte, sobre os chamados do Gestor; o Legado do Helena, os relatórios dos
+ * tickets do LineChat, saiu do menu no 2.4.6 e abre pelo botão no alto deles),
  * **Comercial** (2.0.1: o Painel do Comercial — o atalho para o painel de Vendas — e o relatório dele, de
  * quem tem a permissão do Comercial; 2.0.2: o Simulador) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
  * Exportar foi para dentro da Administração. Os
@@ -22,7 +22,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, CodeXml, Handshake, Headset, History, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
+  BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, CodeXml, Handshake, Headset, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
   Menu, Moon, Rocket, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -58,21 +58,23 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   // o técnico (2.0.2, 20/10, num comentário na prévia: "quero q vc faça uma nova aba de técnico e esses 2
   // pontos vao ficar dentro dele"): os circuitos com a numeração (0010) e o inventário dos aparelhos, que
   // moravam no alto do menu. Logo acima do Suporte (no mesmo dia, outro comentário: "quero q o técnico fique
-  // acima de suporte"; a primeira versão o punha abaixo)
+  // acima de suporte"; a primeira versão o punha abaixo). Desde o 2.4.6, também os Projetos (as tarefas que percorrem
+  // vários clientes), que moravam no Suporte (o Luan, 10/11: "bote o projetos dentro de tecnico")
   {
     grupo: 'tecnico', label: 'Técnico', icon: Wrench, itens: [
       { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
       { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
+      { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
     ],
   },
   // o suporte: o Painel do Suporte (2.0.2, o atalho para o quadro do painel Suporte, "como fizemos no
-  // comercial"), o Meu dia (2.0.2: "o meu dia pode ter um botão aqui tbm"), os projetos (as tarefas que
-  // percorrem vários clientes), os Relatórios e o Legado do Helena. Desde o 2.1 (decisão 0055), os Relatórios
-  // são os do painel Suporte, sobre os chamados do Gestor (a vista Relatórios do painel); os do Helena — os
-  // tickets do LineChat, a cópia de leitura do 1.3, com a aba Hoje, o Período e os 20 relatórios do 1.7 — viraram
-  // o Legado do Helena (o pedido do Luan, 22/10: "vai ter um legado, que vai ser o antigo, e vai ter um novo").
-  // (13/10, os pedidos do Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos Projetos, "pode
-  // ficar dentro de suporte também")
+  // comercial"), o Meu dia (2.0.2: "o meu dia pode ter um botão aqui tbm") e os Relatórios. Desde o 2.1 (decisão
+  // 0055), os Relatórios são os do painel Suporte, sobre os chamados do Gestor (a vista Relatórios do painel); os do
+  // Helena — os tickets do LineChat, a cópia de leitura do 1.3, com a aba Hoje, o Período e os 20 relatórios do 1.7 —
+  // viraram o Legado do Helena (o pedido do Luan, 22/10: "vai ter um legado, que vai ser o antigo, e vai ter um novo").
+  // No 2.4.6, o Legado saiu do menu (o Luan, 10/11: "tire o legado helena, o botão no caso, mas que ainda vou poder
+  // acessar acessando o painel novo e clicando no botão que já existe"): abre pelo botão Legado do Helena, no alto
+  // dos Relatórios do Suporte, e nas telas dele o menu marca os Relatórios. Os Projetos foram para o Técnico.
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/suporte', label: 'Painel do Suporte', icon: Kanban, perm: 'support.read' },
@@ -82,9 +84,7 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
       // dele, e cabe no menu ("Painel do Desenvolvimento" ficava cortado); o atalho abre o painel Desenvolvimento (a sigla DEV)
       { to: '/suporte/desenvolvimento', label: 'Painel do Dev', icon: CodeXml, perm: 'support.read' },
       { to: '/atendimento/meu-dia', label: 'Meu dia', icon: SunMedium, perm: 'support.read' },
-      { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/suporte/relatorios', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
-      { to: '/chamados', label: 'Legado do Helena', icon: History, perm: 'support.read' },
     ],
   },
   // o Comercial (2.0.1, 19/10: "uma aba lateral só para o comercial… com acesso direto ao painel do comercial
@@ -140,6 +140,11 @@ export function parteDoPainel(pathname: string, search: string, painel: { id: st
 }
 /** A tela aberta é do painel do Suporte (qualquer parte)? */
 export const eDoSuporte = (pathname: string, search: string, sigla: string | null): boolean => parteDoSuporte(pathname, search, sigla) !== null;
+/**
+ * A tela aberta é do Legado do Helena (`/chamados`: a aba Hoje, o Período e os relatórios de lá)? Desde o 2.4.6 ele não tem
+ * item no menu (abre pelo botão no alto dos Relatórios do Suporte): nas telas dele, o menu marca os Relatórios do Suporte.
+ */
+export const eDoLegado = (pathname: string): boolean => !!matchPath({ path: '/chamados', end: false }, pathname);
 /** Quem decide se o item está marcado (o do Comercial olha o painel aberto, não o endereço). */
 type Ativo = (i: ItemDoMenu) => boolean;
 
@@ -248,7 +253,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (i.to === '/comercial') return doComercial?.parte === 'negociacoes';
     if (i.to === '/comercial/relatorio') return doComercial?.parte === 'relatorio';
     if (i.to === '/suporte') return doSuporte === 'painel';
-    if (i.to === '/suporte/relatorios') return doSuporte === 'relatorios';
+    if (i.to === '/suporte/relatorios') return doSuporte === 'relatorios' || eDoLegado(pathname);
     if (i.to === '/suporte/implantacao') return !!doImplantacao;
     if (i.to === '/suporte/desenvolvimento') return !!doDesenvolvimento;
     // o Meu dia mora dentro de /atendimento: lá, o item marcado é o dele, e não Painéis

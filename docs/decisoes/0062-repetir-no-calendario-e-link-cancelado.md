@@ -1,6 +1,6 @@
-# 0062 — Repetir o evento no calendário, cancelar o link, os cancelados escondidos, a Classificação no menu de cima e o Painel do Dev
+# 0062 — Repetir o evento no calendário, cancelar o link, os cancelados escondidos, a Classificação no menu de cima e o menu do Suporte
 
-**Data:** 10/11/2026 · **Patch:** 2.4.6 · **Situação:** aceita · **Revê:** a 0049 (o calendário: "repetir o evento" estava em "fica para depois", e o cancelado aparecia riscado por padrão) a 0020 (os links de terceiros: o cancelado segue a mesma regra de exibição) e a 0047 (os chamados: o botão Etiquetas da barra e a caixa das etiquetas embaixo, do 2.0.3)
+**Data:** 10/11/2026 · **Patch:** 2.4.6 · **Situação:** aceita · **Revê:** a 0049 (o calendário: "repetir o evento" estava em "fica para depois", e o cancelado aparecia riscado por padrão), a 0020 (os links de terceiros: o cancelado segue a mesma regra de exibição), a 0047 (os chamados: o botão Etiquetas da barra e a caixa das etiquetas embaixo, do 2.0.3), a 0048 (o menu com grupos: os Projetos no Suporte) e a 0055 (o Legado do Helena no menu)
 
 ## Os pedidos
 
@@ -10,7 +10,9 @@ porém fica um registro que ele foi na verdade cancelado"*. Depois de ver a pré
 algo e os cancelados eu n quero q apareça, a n ser que eu marque alguma flag"*. E, com dois prints da ficha do chamado (o
 cartão Classificação da lateral, com a Prioridade e as Etiquetas, e o botão Etiquetas da barra): *"essa parte de
 classificação pode ficar apenas no menu de cima e a prioridade dentro, então vai deixar de ser etiquetas e vai ser
-classificação"*. Por último: *"faça um botão dentro do inglinegestao para o painel do dev, dentro do menu suporte mesmo"*.
+classificação"*. Depois: *"faça um botão dentro do inglinegestao para o painel do dev, dentro do menu suporte mesmo"*. E
+por último: *"bote o projetos dentro de tecnico e tire o legado helena, o botão no caso, mas que ainda vou poder acessar
+acessando o painel novo e clicando no botão que já existe"*.
 
 ## 1. Repetir o evento
 
@@ -119,3 +121,18 @@ O Luan, depois de ver a prévia: *"os cancelados eu n quero q apareça, a n ser 
    da Implantação"). A tela que abre continua dizendo o nome do painel (Desenvolvimento).
 4. **Sem o painel** (desativado, ou a pessoa não está entre quem vê), a tela diz isso e leva para os Painéis, em vez de
    abrir um quadro vazio. O item aparece para todos que veem os chamados, como os outros atalhos do Suporte.
+
+## 6. Os Projetos no Técnico e o Legado do Helena fora do menu (revê a 0048 e a 0055)
+
+1. **Os Projetos foram para o Técnico**, depois do Inventário (`/projetos`, o mesmo endereço e a mesma permissão). Moravam
+   no Suporte desde o 2.0 (o pedido de 13/10: *"esse pode ficar dentro de suporte também"*).
+2. **O Legado do Helena saiu do menu.** O Luan pediu para continuar entrando pelo "botão que já existe": é o botão
+   **Legado do Helena** no alto dos Relatórios do Suporte (Suporte › Relatórios, ou a vista Relatórios do painel Suporte),
+   e a frase do subtítulo, que já levavam lá desde o 2.1. O endereço (`/chamados`) continua, e os links que já apontavam
+   para lá (a ficha do cliente, o Envio automático) também.
+3. **Nas telas do Legado, o menu marca os Relatórios** do Suporte (o grupo Suporte abre sozinho), para a pessoa não
+   ficar sem nenhum item marcado e saber por onde voltou. As telas do Legado já têm o link para os Relatórios do Suporte.
+4. **Os textos que diziam o caminho pelo menu** ("Suporte › Legado do Helena") passaram a dizer o botão: o aviso do
+   Envio automático, o "ligar clientes" dos relatórios do Legado, o rodapé do relatório do mês e os guias.
+5. O Suporte fica com **Painel do Suporte**, **Painel da Implantação**, **Painel do Dev**, **Meu dia** e **Relatórios**.
+

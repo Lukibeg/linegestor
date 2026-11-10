@@ -5,7 +5,7 @@
  * vê esse painel (ou com ele desativado) vai para a tela dos Painéis.
  *
  * Os Relatórios do menu (2.1, decisão 0055) são o mesmo atalho para a vista Relatórios do painel Suporte;
- * os do Helena ficam no item Legado do Helena.
+ * os do Helena ficam no Legado do Helena (até o 2.4.6, um item do menu; agora, o botão no alto dos Relatórios do Suporte).
  *
  * O Painel da Implantação (2.3, o Luan: "eu quero q o painel de implantação tenha um botão dentro do menu suporte como o
  * painel do suporte"): o mesmo atalho, para o quadro do painel da implantação.
