@@ -213,12 +213,12 @@ export const realApi: Api = {
   envio: {
     ajustes: () => http('GET', '/envio/ajustes'),
     salvarAjustes: (a) => http('PUT', '/envio/ajustes', a),
-    marcados: () => http('GET', '/envio/marcados'),
-    salvarMarcados: (m) => http('PUT', '/envio/marcados', m),
-    pacote: (chave) => http('GET', `/envio/pacote${qs({ chave })}`),
-    enviar: (destinatarioId) => http('POST', '/envio/enviar', { destinatarioId }),
-    testar: (destinatarioId) => http('POST', '/envio/testar', { destinatarioId }),
-    pdfUrl: () => `${BASE}/envio/pdf`,
+    marcados: (origem) => http('GET', `/envio/marcados${qs({ origem })}`),
+    salvarMarcados: (m, origem) => http('PUT', `/envio/marcados${qs({ origem })}`, m),
+    pacote: (q) => http('GET', `/envio/pacote${qs(q)}`),
+    enviar: (envio, destinatarioId) => http('POST', '/envio/enviar', { envio, destinatarioId }),
+    testar: (envio, destinatarioId) => http('POST', '/envio/testar', { envio, destinatarioId }),
+    pdfUrl: (envio) => `${BASE}/envio/pdf${qs({ envio })}`,
     historicoPdfUrl: (id) => `${BASE}/envio/historico/${encodeURIComponent(id)}/pdf`,
   },
   projetos: {

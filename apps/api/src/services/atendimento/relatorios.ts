@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { devices, dids, products, subscriptions, ticketCarrierCases, ticketEvents, ticketLinks, ticketTimeEntries, tickets } from '@gestor/db';
 import {
-  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, arrumacaoCompleta, campoLigado, painelContaPrazo, passagensDosEventos, passagensNoPainel, relatoriosDoPainel, situacaoDaEtapa, visaoDoPainel,
+  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, arrumacaoCompleta, campoLigado, filtroDosRelatoriosDoEnvio, painelContaPrazo, passagensDosEventos, passagensNoPainel, relatoriosDoPainel, situacaoDaEtapa, visaoDoPainel,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type Espera, type FiltroDaVisao, type FiltroDosRelatorios, type VisaoDoPainel,
   type Gravidade, type Alcance, type Nivel, type Origem, type Painel, type Prioridade, type RelatoriosDoPainel, type TipoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
@@ -169,6 +169,41 @@ export async function visaoDoPainelDeChamados(app: FastifyInstance, ator: Ator, 
   const painel = painelDosRelatorios(ctx, ator, filtro.painel);
   const { chamados, contexto } = await baseDosRelatorios(app, ctx, painel, null);
   return visaoDoPainel(chamados, contexto, filtro, ctx.agora);
+}
+
+// =====================================================================
+//  O ENVIO AUTOMÁTICO DE UM PAINEL (2.4.5, decisão 0061)
+// =====================================================================
+
+/** Quem monta o PDF do envio: como as integrações, vê qualquer painel (não há pessoa no relógio). */
+const DO_ENVIO: Ator = { tipo: 'integracao', id: 'envio-automatico', nome: 'Envio automático' };
+
+/** Os painéis que podem ter um envio: os de chamados (os de Vendas têm o relatório deles), ativos ou não. */
+export async function paineisDoEnvio(app: FastifyInstance): Promise<Array<Pick<Painel, 'id' | 'nome' | 'sigla' | 'ativo'>>> {
+  const ctx = await carregarContexto(app.db);
+  return ctx.paineis.filter((p) => p.tipo !== 'vendas').map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, ativo: p.ativo }));
+}
+
+/**
+ * O que o PDF do envio de um painel leva: a Visão geral de **hoje** e, quando algum relatório foi marcado, os 25
+ * com o período = hoje (o Fechamento, com o mês até hoje); e a arrumação da equipe (a ordem dos gráficos e dos
+ * relatórios). Uma leitura só da base, para as duas contas. O painel desativado não manda (diz por quê).
+ */
+export async function paraOEnvio(app: FastifyInstance, painelId: string, comRelatorios: boolean, agora?: Date): Promise<{ visao: VisaoDoPainel; relatorios: RelatoriosDoPainel | null; arrumacao: ArrumacaoGuardada }> {
+  const ctx = await carregarContexto(app.db);
+  const achado = ctx.paineis.find((p) => p.id === painelId);
+  if (!achado) throw new NotFound('Painel');
+  if (!achado.ativo) throw new BadRequest(`O painel ${achado.nome} está desativado: reative o painel ou tire o envio dele.`);
+  const painel = painelDosRelatorios(ctx, DO_ENVIO, painelId);
+  const arrumacao = await lerArrumacaoGuardada(app, painel.id);
+  const { chamados, contexto } = await baseDosRelatorios(app, ctx, painel, arrumacao.campoDaFalha);
+  const quando = agora ?? ctx.agora;
+  const visao = visaoDoPainel(chamados, contexto, FiltroDaVisaoSchema.parse({ painel: painel.id, parte: 'hoje' }), quando);
+  const relatorios = comRelatorios
+    ? relatoriosDoPainel(chamados, contexto, FiltroDosRelatoriosSchema.parse(filtroDosRelatoriosDoEnvio(painel.id, visao.hoje)), quando)
+    : null;
+  // a tabela de baixo da Visão não vai no PDF
+  return { visao: { ...visao, lista: { ...visao.lista, itens: [] } }, relatorios, arrumacao };
 }
 
 // =====================================================================

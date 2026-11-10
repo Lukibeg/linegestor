@@ -12,8 +12,9 @@
 import { problemaDoRecibo, problemaParaAnexar, ReciboAnexarSchema, relatoriosInventario, tipoDoRecibo, UsuarioAtualizarSchema, type BaseInventario } from '@gestor/shared';
 import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, diaEmBrasilia, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, paraBusca, temDataDeAtivacao, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import {
-  AjustesEnvioSchema, MarcadosEnvioSchema, momentoEmBrasilia, numeroLegivel, proximoEnvio, montarPainel,
+  AjustesEnvioSchema, momentoEmBrasilia, numeroLegivel, proximoEnvio, montarPainel,
   agendadoDeHoje, envioDeHoje, horaDeEnviar, type UltimoEnvioAgendado,
+  ID_DO_ENVIO_DE_ANTES, NOME_DO_LEGADO, ORIGEM_LEGADO, marcadosDoPainelComTitulo, nomeDoPdf, pacoteDoPainel, schemaDosMarcados, type Envio, type MarcadosEnvio,
   AjustesRelatoriosSchema, ArrumacaoRelatoriosSchema, CATALOGO_RELATORIOS, montarArrumacao, ajustesParaTela, camposDosRelatorios, chamadosDaPeca, ChamadosDaPecaSchema, conferirAjustes, FiltrosRelatoriosSchema, opcoesLigadasAo,
   raioXChamados, relatoriosChamados, type AjustesRelatorios, type ContextoRelatorios, type MovimentoChamado,
 } from '@gestor/shared';
@@ -32,7 +33,7 @@ import {
   TIPOS_IMAGEM_PORTAL, TutoriaisListarSchema, TutorialGravarSchema, tutorialValePara, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar,
 } from '@gestor/shared';
 import type { Api } from './index.js';
-import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo, type CadastroDaPrevia } from './demo-atendimento.js';
+import { acessoDoEnvioDemo, chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo, type CadastroDaPrevia } from './demo-atendimento.js';
 import type { AssinaturaNoCadastro } from '@gestor/shared';
 import {
   MovimentacoesDosCircuitosSchema, linhaDaMovimentacao, movimentacaoBate, movimentacaoDaLixeiraDoCircuito, movimentacaoDaLixeiraDosDids,
@@ -193,20 +194,28 @@ const S = {
     campos: {} as AjustesRelatorios['campos'], clientes: {} as AjustesRelatorios['clientes'], causas: {} as AjustesRelatorios['causas'],
     atualizadoEm: null as string | null, atualizadoPor: null as string | null,
   },
-  // o envio automático (1.7): desligado e sem token, como no servidor; na prévia nada sai de verdade
+  // o envio automático (1.7; 2.4.5, um envio por painel): na prévia já vem o do Suporte, como o de antes ficou no
+  // sistema — desligado, para nada "sair" sozinho; o token é só a marca de que existe (nada sai de verdade)
   envio: {
-    ativo: false, url: 'https://api.flw.chat/chat/v1/message/send', remetente: '', horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
-    destinatarios: [] as Array<{ id: string; nome: string; numero: string; ativo: boolean }>,
+    url: 'https://api.flw.chat/chat/v1/message/send', remetente: '557135120000',
     // 2.0.1: a conversa é concluída logo depois de mandar (vem ligado, como no servidor)
     concluirConversa: true,
-    temToken: false, configuradoEm: null as string | null, configuradoPor: null as string | null,
-    ultimoAgendado: null as UltimoEnvioAgendado,
+    temToken: true, configuradoEm: null as string | null, configuradoPor: null as string | null,
+    envios: [{
+      id: ID_DO_ENVIO_DE_ANTES, origem: 'painel-suporte', ativo: false, horario: '18:00', dias: [0, 1, 2, 3, 4],
+      destinatarios: [{ id: 'coordenacao', nome: 'Coordenação do suporte', numero: '5571999990001', ativo: true }],
+      ultimoAgendado: null as UltimoEnvioAgendado,
+    }] as Array<Envio & { ultimoAgendado: UltimoEnvioAgendado }>,
     historico: [] as RegistroEnvio[],
   },
-  // o que vai no PDF: na prévia já vem com alguns marcados, para o "Ver como fica" ter o que mostrar
+  // o que vai no PDF: na prévia já vem com alguns marcados, para o "Ver como fica" ter o que mostrar — o do Legado
+  // em cima (como até o 2.4.4) e o de cada painel em `paineis` (2.4.5)
   envioMarcados: {
     relatorios: ['relogio', 'primeira', 'pareto'], graficos: ['serie', 'etapa'],
     atualizadoEm: null as string | null, atualizadoPor: null as string | null,
+    paineis: {
+      'painel-suporte': { relatorios: ['relogio', 'resposta', 'fechamento'], graficos: ['serie', 'assunto', 'etapa'], atualizadoEm: null, atualizadoPor: null },
+    } as Record<string, MarcadosEnvio & { atualizadoEm: string | null; atualizadoPor: string | null }>,
   },
   // a arrumação da página de Relatórios (ordem, escondidos, favoritos) — igual para a equipe toda
   arrumacaoRelatorios: {
@@ -1412,7 +1421,7 @@ const shapeNota = (n: NotaRow): Novidade => ({
 });
 
 // ---------------- a API ----------------
-/** Envio automático (1.7): o que está marcado, com o nome e na ordem das telas (como o servidor). */
+/** Envio automático (1.7): o que está marcado no Legado, com o nome e na ordem das telas (como o servidor). */
 async function marcadosComTituloDemo() {
   const op = await demoApi.chamados.opcoes();
   const resumo = await demoApi.chamados.resumo({ aba: 'hoje' });
@@ -1430,41 +1439,96 @@ async function marcadosComTituloDemo() {
   return { graficos, relatorios };
 }
 
+/** As origens de um envio (2.4.5): os painéis de chamados e o Legado, como o servidor. */
+function origensDoEnvioDemo() {
+  return [...acessoDoEnvioDemo().paineis().map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla as string | null, ativo: p.ativo })), { id: ORIGEM_LEGADO, nome: NOME_DO_LEGADO, sigla: null, ativo: true }];
+}
+const nomeDaOrigemDemo = (origem: string) => origensDoEnvioDemo().find((o) => o.id === origem)?.nome ?? 'um painel que saiu';
+/** O que vai no PDF de uma origem (o Legado, ou um painel). */
+function marcadosDaOrigemDemo(origem: string): MarcadosEnvio & { atualizadoEm: string | null; atualizadoPor: string | null } {
+  const m = S.envioMarcados;
+  if (origem === ORIGEM_LEGADO) return { relatorios: m.relatorios, graficos: m.graficos, atualizadoEm: m.atualizadoEm, atualizadoPor: m.atualizadoPor };
+  return m.paineis[origem] ?? { relatorios: [], graficos: [], atualizadoEm: null, atualizadoPor: null };
+}
+/** O que está marcado numa origem, com o nome de cada um (a tela do envio), como o servidor. */
+async function marcadosComTituloDaOrigemDemo(origem: string) {
+  if (origem === ORIGEM_LEGADO) return { ...(await marcadosComTituloDemo()), atualizadoEm: S.envioMarcados.atualizadoEm, atualizadoPor: S.envioMarcados.atualizadoPor, problema: null as string | null };
+  const m = marcadosDaOrigemDemo(origem);
+  try {
+    const r = m.graficos.length || m.relatorios.length ? acessoDoEnvioDemo().paraOEnvio(origem, false) : null;
+    const t = r ? marcadosDoPainelComTitulo(r.visao, r.arrumacao, m) : { graficos: [], relatorios: [] };
+    return { graficos: t.graficos.map((g) => ({ id: g.id, titulo: g.titulo })), relatorios: t.relatorios, atualizadoEm: m.atualizadoEm, atualizadoPor: m.atualizadoPor, problema: null as string | null };
+  } catch (e) {
+    return { graficos: m.graficos.map((id) => ({ id, titulo: id })), relatorios: m.relatorios.map((id) => ({ id, titulo: id })), atualizadoEm: m.atualizadoEm, atualizadoPor: m.atualizadoPor, problema: e instanceof Error ? e.message : 'O painel não abriu.' };
+  }
+}
+
+/** O pacote da página do PDF de um envio (2.4.5: de um painel, ou do Legado), como o servidor. */
+async function pacoteDemo(q: { envio?: string; origem?: string }): Promise<import('./types.js').PacoteEnvio> {
+  const e = q.envio ? S.envio.envios.find((x) => x.id === q.envio) : null;
+  if (q.envio && !e) throw new ApiError(404, 'Envio não encontrado');
+  const origem = e?.origem ?? q.origem ?? S.envio.envios[0]?.origem ?? ORIGEM_LEGADO;
+  if (origem !== ORIGEM_LEGADO) {
+    const m = marcadosDaOrigemDemo(origem);
+    const r = acessoDoEnvioDemo().paraOEnvio(origem, m.relatorios.length > 0);
+    return pacoteDoPainel({ agora: new Date(), visao: r.visao, relatorios: r.relatorios, arrumacao: r.arrumacao, marcados: m });
+  }
+  const momento = momentoEmBrasilia(new Date());
+  const t = await marcadosComTituloDemo();
+  const ids = t.relatorios.map((r) => r.id);
+  const op = await demoApi.chamados.opcoes();
+  const resumo = await demoApi.chamados.resumo({ aba: 'hoje' });
+  const itens = montarPainel(S.painelChamados.itens, op.campos);
+  return {
+    tipo: 'legado', geradoEm: now(), dia: momento.dia, hhmm: momento.hhmm, painelNome: op.painelNome, primeiroDia: op.primeiroDia,
+    resumo, graficos: itens.filter((x) => t.graficos.some((g) => g.id === x.id)), relatorioIds: ids,
+    relatorios: ids.length ? await demoApi.chamados.relatorios({ de: momento.dia, ate: momento.dia, mes: momento.dia.slice(0, 7) }) : null,
+    titulos: [...t.graficos.map((g) => g.titulo), ...t.relatorios.map((r) => r.titulo)],
+  };
+}
+
 /** O envio na prévia: confere o que falta como o servidor, mas nada sai de verdade. */
-async function envioDemo(gatilho: 'manual' | 'teste' | 'agendado', destinatarioId?: string): Promise<RegistroEnvio> {
+async function envioDemo(gatilho: 'manual' | 'teste' | 'agendado', envioId?: string, destinatarioId?: string): Promise<RegistroEnvio> {
   await wait(gatilho === 'agendado' ? 300 : 900); requirePerm('admin.manage');
-  const e = S.envio;
+  const a = S.envio;
+  const e = (envioId ? a.envios.find((x) => x.id === envioId) : a.envios[0]) ?? null;
   const agora = new Date();
   const momento = momentoEmBrasilia(agora);
-  const lista = e.destinatarios.filter((d) => (destinatarioId ? d.id === destinatarioId : d.ativo));
-  const falta = !e.url ? 'Falta o endereço da API da FlwChat (Administração › Envio automático).'
-    : !e.temToken ? 'Falta o token da API da FlwChat (Administração › Envio automático).'
-      : !e.remetente ? 'Falta o número que envia (Administração › Envio automático).'
-        : !lista.length ? 'Nenhum número ativo na lista.' : null;
-  const t = gatilho === 'teste' ? { graficos: [], relatorios: [] } : await marcadosComTituloDemo();
+  const origemNome = e ? nomeDaOrigemDemo(e.origem) : null;
+  const lista = (e?.destinatarios ?? []).filter((d) => (destinatarioId ? d.id === destinatarioId : d.ativo));
+  let falta = !e ? 'Esse envio não está mais na lista.'
+    : !a.url ? 'Falta o endereço da API da FlwChat (Administração › Envio automático).'
+      : !a.temToken ? 'Falta o token da API da FlwChat (Administração › Envio automático).'
+        : !a.remetente ? 'Falta o número que envia (Administração › Envio automático).'
+          : !lista.length ? 'Nenhum número ativo na lista.' : null;
+  let p: Awaited<ReturnType<typeof pacoteDemo>> | null = null;
+  if (!falta && gatilho !== 'teste') {
+    try { p = await pacoteDemo({ envio: e!.id }); } catch (err) { falta = err instanceof Error ? err.message : 'Falhou ao montar o PDF'; }
+  }
   // como no servidor: faltou algo, não chega a montar o PDF (nem lista o que iria nele)
-  const itens = falta ? [] : [...t.graficos.map((g) => g.titulo), ...t.relatorios.map((r) => r.titulo)];
+  const itens = falta || !p ? [] : p.titulos;
   const destinatarios = falta ? [] : lista.map((d) => ({ nome: d.nome, numero: d.numero, ok: true, mensagem: 'Simulação da prévia: nada foi enviado.' }));
+  const nome = p?.tipo === 'painel' ? nomeDoPdf(momento.dia, p.painel.sigla) : nomeDoPdf(momento.dia);
   const r: RegistroEnvio = {
     id: id(), em: agora.toISOString(), dia: momento.dia, gatilho, quem: gatilho === 'agendado' ? null : S.me?.name ?? null, ok: !falta,
-    mensagem: falta ?? `Simulação da prévia: nada foi para o WhatsApp. No sistema de verdade, ${gatilho === 'teste' ? 'a mensagem de teste' : 'o PDF'} iria para ${destinatarios.length} ${destinatarios.length === 1 ? 'número' : 'números'}${e.concluirConversa ? `, e ${destinatarios.length === 1 ? 'a conversa seria concluída' : 'as conversas seriam concluídas'} logo depois` : ''}.`,
-    pdf: falta || gatilho === 'teste' ? null : { id: id(), nome: `chamados-${momento.dia.slice(8, 10)}-${momento.dia.slice(5, 7)}-${momento.dia.slice(0, 4)}.pdf`, bytes: 0 },
-    itens, destinatarios,
+    mensagem: falta ?? `Simulação da prévia: nada foi para o WhatsApp. No sistema de verdade, ${gatilho === 'teste' ? 'a mensagem de teste' : 'o PDF'} iria para ${destinatarios.length} ${destinatarios.length === 1 ? 'número' : 'números'}${a.concluirConversa ? `, e ${destinatarios.length === 1 ? 'a conversa seria concluída' : 'as conversas seriam concluídas'} logo depois` : ''}.`,
+    pdf: falta || gatilho === 'teste' ? null : { id: id(), nome, bytes: 0 },
+    itens, destinatarios, envioId: e?.id ?? null, origem: e?.origem ?? null, origemNome,
   };
   S.envio.historico = [r, ...S.envio.historico].slice(0, 60);
-  // como no servidor: o envio agendado anota o dia, o horário e quantas tentativas já foram
-  if (gatilho === 'agendado') {
-    S.envio.ultimoAgendado = { dia: momento.dia, horario: e.horario, ok: r.ok, em: r.em, tentativas: (agendadoDeHoje(e, agora, e.ultimoAgendado)?.tentativas ?? 0) + 1 };
+  // como no servidor: o envio agendado anota, no envio, o dia, o horário e quantas tentativas já foram
+  if (gatilho === 'agendado' && e) {
+    e.ultimoAgendado = { dia: momento.dia, horario: e.horario, ok: r.ok, em: r.em, tentativas: (agendadoDeHoje(e, agora, e.ultimoAgendado)?.tentativas ?? 0) + 1 };
   }
   const quem = gatilho === 'agendado' ? 'Envio automático:' : `${S.me?.name} mandou`;
-  audit(gatilho === 'teste' ? 'envio_automatico_teste' : 'envio_automatico', 'settings', `${quem} ${gatilho === 'teste' ? 'mensagem de teste' : `PDF dos Chamados (${itens.length} itens)`} pelo WhatsApp — ${r.ok ? r.mensagem : `falhou: ${r.mensagem}`}${destinatarios.length ? ` (${destinatarios.map((d) => numeroLegivel(d.numero)).join(', ')})` : ''}`, 'envio-automatico');
+  const deOnde = !e ? '' : e.origem === ORIGEM_LEGADO ? ' do Legado do Helena' : ` do painel ${origemNome}`;
+  audit(gatilho === 'teste' ? 'envio_automatico_teste' : 'envio_automatico', 'settings', `${quem} ${gatilho === 'teste' ? `mensagem de teste${deOnde}` : `PDF dos Chamados${deOnde} (${itens.length} itens)`} pelo WhatsApp — ${r.ok ? r.mensagem : `falhou: ${r.mensagem}`}${destinatarios.length ? ` (${destinatarios.map((d) => numeroLegivel(d.numero)).join(', ')})` : ''}`, 'envio-automatico');
   return r;
 }
 
 /** O relógio na prévia: não roda sozinho, então confere quando a tela do envio abre (e a cada minuto, com ela aberta). */
 async function relogioDemo() {
-  const e = S.envio;
-  if (horaDeEnviar(e, new Date(), e.ultimoAgendado)) await envioDemo('agendado');
+  for (const e of [...S.envio.envios]) if (horaDeEnviar(e, new Date(), e.ultimoAgendado)) await envioDemo('agendado', e.id);
 }
 
 // ---------- Base de conhecimento (1.8) ----------
@@ -2962,15 +3026,26 @@ export const demoApi: Api = {
     async ajustes() {
       await wait(80); requirePerm('admin.manage');
       await relogioDemo();
-      const e = S.envio;
+      const a = S.envio;
+      const os = origensDoEnvioDemo();
+      const agora = new Date();
+      const envios = [];
+      for (const e of a.envios) {
+        const o = os.find((x) => x.id === e.origem);
+        envios.push({
+          id: e.id, origem: e.origem, origemNome: o?.nome ?? 'um painel que saiu', origemSigla: o?.sigla ?? null,
+          origemProblema: !o ? 'O painel deste envio saiu do Gestor: escolha outro painel ou tire o envio.' : !o.ativo ? `O painel ${o.nome} está desativado: o envio não sai até ele voltar.` : null,
+          ativo: e.ativo, horario: e.horario, dias: e.dias, destinatarios: e.destinatarios,
+          proximo: proximoEnvio(e, agora, e.ultimoAgendado),
+          hoje: envioDeHoje(e, agora, e.ultimoAgendado, a.historico.filter((h) => (h.envioId ?? ID_DO_ENVIO_DE_ANTES) === e.id)),
+          marcados: await marcadosComTituloDaOrigemDemo(e.origem),
+        });
+      }
       return {
-        ativo: e.ativo, url: e.url, remetente: e.remetente, horario: e.horario, dias: e.dias, destinatarios: e.destinatarios,
-        concluirConversa: e.concluirConversa,
-        temToken: e.temToken, configuradoEm: e.configuradoEm, configuradoPor: e.configuradoPor,
-        proximo: proximoEnvio(e, new Date(), e.ultimoAgendado),
-        hoje: envioDeHoje(e, new Date(), e.ultimoAgendado, e.historico),
-        historico: e.historico.slice(0, 20),
-        marcados: { ...(await marcadosComTituloDemo()), atualizadoEm: S.envioMarcados.atualizadoEm, atualizadoPor: S.envioMarcados.atualizadoPor },
+        url: a.url, remetente: a.remetente, concluirConversa: a.concluirConversa,
+        temToken: a.temToken, configuradoEm: a.configuradoEm, configuradoPor: a.configuradoPor,
+        envios, origens: os,
+        historico: a.historico.slice(0, 20).map((h) => ({ ...h, envioId: h.envioId ?? ID_DO_ENVIO_DE_ANTES, origemNome: h.origemNome ?? NOME_DO_LEGADO })),
         enderecoPublico: 'https://gestao.exemplo.com.br', linkValeDias: 7,
       };
     },
@@ -2978,47 +3053,48 @@ export const demoApi: Api = {
       await wait(200); requirePerm('admin.manage');
       const p = AjustesEnvioSchema.safeParse(novo);
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Ajustes inválidos');
-      const { token, ...resto } = p.data;
+      const os = origensDoEnvioDemo();
+      if (p.data.envios.some((e) => !os.some((o) => o.id === e.origem))) throw bad('Um envio está num painel que não existe (ou que é de vendas). Escolha outro painel.');
+      const { token, envios, ...resto } = p.data;
       // o token não fica guardado nem na prévia: só a marca de que existe um
       // como no servidor (1.7.1): salvar depois de uma falha do envio agendado libera o dia de novo
-      const ultimoAgendado = S.envio.ultimoAgendado && !S.envio.ultimoAgendado.ok ? null : S.envio.ultimoAgendado;
-      S.envio = { ...S.envio, ...resto, ultimoAgendado, temToken: S.envio.temToken || !!token, configuradoEm: now(), configuradoPor: S.me?.name ?? null };
-      const ativos = resto.destinatarios.filter((d) => d.ativo).length;
-      audit('envio_automatico_ajustes', 'settings', `${S.me?.name} ${resto.ativo ? 'ligou' : 'desligou'} o envio automático (${resto.horario}, ${ativos} ${ativos === 1 ? 'número' : 'números'})${token ? ' e trocou o token' : ''}`, 'envio-automatico');
+      S.envio = {
+        ...S.envio, ...resto, temToken: S.envio.temToken || !!token, configuradoEm: now(), configuradoPor: S.me?.name ?? null,
+        envios: envios.map((e) => { const u = S.envio.envios.find((x) => x.id === e.id)?.ultimoAgendado ?? null; return { ...e, ultimoAgendado: u && !u.ok ? null : u }; }),
+      };
+      const lista = S.envio.envios.length ? S.envio.envios.map((e) => {
+        const n = e.destinatarios.filter((d) => d.ativo).length;
+        return `${nomeDaOrigemDemo(e.origem)}, ${e.ativo ? `ligado às ${e.horario}, para ${n} ${n === 1 ? 'número' : 'números'}` : 'desligado'}`;
+      }).join('; ') : 'nenhum envio';
+      audit('envio_automatico_ajustes', 'settings', `${S.me?.name} salvou o envio automático (${lista})${token ? ' e trocou o token' : ''}`, 'envio-automatico');
       return demoApi.envio.ajustes();
     },
-    async marcados() {
+    async marcados(origem = ORIGEM_LEGADO) {
       await wait(40); requirePerm('support.read');
-      return { ...S.envioMarcados };
+      return { origem, ...marcadosDaOrigemDemo(origem) };
     },
-    async salvarMarcados(m) {
+    async salvarMarcados(m, origem = ORIGEM_LEGADO) {
       await wait(120); requirePerm('admin.manage');
-      const p = MarcadosEnvioSchema.safeParse(m);
+      const p = schemaDosMarcados(origem).safeParse(m);
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Marcação inválida');
-      const antes = [...S.envioMarcados.relatorios, ...S.envioMarcados.graficos];
+      const painel = origensDoEnvioDemo().find((o) => o.id === origem);
+      if (!painel) throw new ApiError(404, 'Esse painel não existe (ou é de vendas).');
+      const antesM = marcadosDaOrigemDemo(origem);
+      const antes = [...antesM.relatorios, ...antesM.graficos];
       const depois = [...p.data.relatorios, ...p.data.graficos];
       const entrou = depois.filter((x) => !antes.includes(x)); const saiu = antes.filter((x) => !depois.includes(x));
-      S.envioMarcados = { ...p.data, atualizadoEm: now(), atualizadoPor: S.me?.name ?? null };
-      audit('envio_automatico_marcados', 'settings', `${S.me?.name} mudou o que vai no envio automático (${[entrou.length ? `entrou ${entrou.join(', ')}` : '', saiu.length ? `saiu ${saiu.join(', ')}` : ''].filter(Boolean).join('; ') || 'sem mudança'}; agora ${depois.length} no PDF)`, 'envio-automatico-marcados');
-      return { ...S.envioMarcados };
+      const marca = { ...p.data, atualizadoEm: now(), atualizadoPor: S.me?.name ?? null };
+      if (origem === ORIGEM_LEGADO) S.envioMarcados = { ...S.envioMarcados, ...marca };
+      else S.envioMarcados = { ...S.envioMarcados, paineis: { ...S.envioMarcados.paineis, [origem]: marca } };
+      audit('envio_automatico_marcados', 'settings', `${S.me?.name} mudou o que vai no envio automático ${origem === ORIGEM_LEGADO ? 'do Legado do Helena' : `do painel ${painel.nome}`} (${[entrou.length ? `entrou ${entrou.join(', ')}` : '', saiu.length ? `saiu ${saiu.join(', ')}` : ''].filter(Boolean).join('; ') || 'sem mudança'}; agora ${depois.length} no PDF)`, 'envio-automatico-marcados');
+      return { origem, ...marcadosDaOrigemDemo(origem) };
     },
-    async pacote() {
+    async pacote(q) {
       await wait(150); requirePerm('support.read');
-      const momento = momentoEmBrasilia(new Date());
-      const t = await marcadosComTituloDemo();
-      const ids = t.relatorios.map((r) => r.id);
-      const op = await demoApi.chamados.opcoes();
-      const resumo = await demoApi.chamados.resumo({ aba: 'hoje' });
-      const itens = montarPainel(S.painelChamados.itens, op.campos);
-      return {
-        geradoEm: now(), dia: momento.dia, hhmm: momento.hhmm, painelNome: op.painelNome, primeiroDia: op.primeiroDia,
-        resumo, graficos: itens.filter((x) => t.graficos.some((g) => g.id === x.id)), relatorioIds: ids,
-        relatorios: ids.length ? await demoApi.chamados.relatorios({ de: momento.dia, ate: momento.dia, mes: momento.dia.slice(0, 7) }) : null,
-        titulos: [...t.graficos.map((g) => g.titulo), ...t.relatorios.map((r) => r.titulo)],
-      };
+      return pacoteDemo(q ?? {});
     },
-    async enviar(destinatarioId) { return envioDemo('manual', destinatarioId); },
-    async testar(destinatarioId) { return envioDemo('teste', destinatarioId); },
+    async enviar(envio, destinatarioId) { return envioDemo('manual', envio, destinatarioId); },
+    async testar(envio, destinatarioId) { return envioDemo('teste', envio, destinatarioId); },
     pdfUrl: () => null,
     historicoPdfUrl: () => null,
   },

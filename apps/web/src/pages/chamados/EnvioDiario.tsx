@@ -5,16 +5,21 @@
  * espera o `data-envio-pronto` e manda imprimir em A4. Uma pessoa logada também abre (o "Ver como
  * fica" de Administração › Envio automático): é exatamente o que vai no WhatsApp.
  *
- * O que entra: os números de cima e os gráficos marcados da aba **Hoje** dos Chamados, e os
- * relatórios marcados com o período = **hoje** (o Fechamento do mês, com o mês até hoje). As peças
- * são as mesmas das telas; aqui nada filtra nem abre janela.
+ * O que entra, desde o 2.4.5 (decisão 0061), depende de onde o envio sai:
+ *  - de um **painel** do Gestor: os números de cima e o gráfico do tempo da **Visão geral de hoje** do painel, os
+ *    gráficos marcados (como a equipe arrumou) e os relatórios marcados dos 25, com o período = **hoje** (o
+ *    Fechamento do mês, com o mês até hoje);
+ *  - do **Legado do Helena** (como do 1.7 ao 2.4.4): os números de cima e os gráficos marcados da aba **Hoje** dos
+ *    tickets do LineChat e os relatórios marcados de lá.
+ * As peças são as mesmas das telas; aqui nada filtra nem abre janela. A chave do robô abre a página de um envio;
+ * uma pessoa abre com `?envio=<id>`.
  */
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Printer } from 'lucide-react';
-import type { ItemPainel } from '@gestor/shared';
+import type { ItemPainel, PacoteDoPainel, RelatoriosDoPainel } from '@gestor/shared';
 import { api } from '../../api/index.js';
-import type { PacoteEnvio, RelatoriosChamados } from '../../api/types.js';
+import type { PacoteDoLegado, RelatoriosChamados } from '../../api/types.js';
 import { Logotipo } from '../../components/Marca.js';
 import { Colunas } from '../../components/graficos.js';
 import { Carregando, Kpi, mensagemErro } from '../../components/ui/index.js';
@@ -26,6 +31,12 @@ import { DiasForaDaCurva, EntradaSaida, IdadeDaFila, MapaDeCalor, Pareto, Previs
 import { DeQuemEAFalha, Reincidencia, TamanhoDoCliente } from './relatorios/Clientes.js';
 import { CardBemPreenchido, QuadroDaEquipe } from './relatorios/Equipe.js';
 import { FechamentoDoMes } from './relatorios/Mes.js';
+import { Empaca, Escada as EscadaDoPainel, Operadora, Prazo as PrazoDoPainel, PrioridadeFaz, Relogio as RelogioDoPainel, Resposta } from '../atendimento/relatorios/tempo.js';
+import { Calor, Curva, Fila, Idade, Previsao as PrevisaoDoPainel } from '../atendimento/relatorios/volume.js';
+import { Arvore, Gravidade, Pareto as ParetoDoPainel, Problemas, Sobe } from '../atendimento/relatorios/assuntos.js';
+import { Falha, Tamanho, Voltou } from '../atendimento/relatorios/clientes.js';
+import { Equipe, Preenchido, TempoGasto } from '../atendimento/relatorios/equipe.js';
+import { Fechamento } from '../atendimento/relatorios/mes.js';
 
 const nada = () => {};
 
@@ -35,7 +46,7 @@ const fixa = (item: ItemPainel): Moldura => ({
   aoPegar: nada, aoMover: nada, aoMudar: nada, aoAbrirGrupos: nada,
 });
 
-function Grafico({ item, p }: { item: ItemPainel; p: PacoteEnvio }) {
+function Grafico({ item, p }: { item: ItemPainel; p: PacoteDoLegado }) {
   const r = p.resumo;
   const m = fixa(item);
   if (item.id === 'serie') {
@@ -74,12 +85,59 @@ function Relatorio({ id, r, primeiroDia }: { id: string; r: RelatoriosChamados; 
   }
 }
 
+/** Um dos 25 relatórios de um painel (2.4.5), do jeito da tela, sem os cliques. */
+function RelatorioDoPainel({ id, r }: { id: string; r: RelatoriosDoPainel }) {
+  const p = { r, abrir: nada };
+  switch (id) {
+    case 'prazo': return <PrazoDoPainel {...p} />;
+    case 'relogio': return <RelogioDoPainel {...p} separar={r.relogio.separar} aoSeparar={nada} />;
+    case 'resposta': return <Resposta {...p} />;
+    case 'escada': return <EscadaDoPainel {...p} />;
+    case 'empaca': return <Empaca {...p} />;
+    case 'prioridade': return <PrioridadeFaz {...p} />;
+    case 'operadora': return <Operadora {...p} />;
+    case 'fila': return <Fila {...p} />;
+    case 'idade': return <Idade {...p} />;
+    case 'calor': return <Calor {...p} />;
+    case 'curva': return <Curva {...p} />;
+    case 'previsao': return <PrevisaoDoPainel {...p} />;
+    case 'arvore': return <Arvore {...p} />;
+    case 'sobe': return <Sobe {...p} aoNivel={nada} />;
+    case 'gravidade': return <Gravidade {...p} />;
+    case 'pareto': return <ParetoDoPainel {...p} aoPor={nada} />;
+    case 'problemas': return <Problemas {...p} />;
+    case 'tamanho': return <Tamanho {...p} aoRaioX={nada} />;
+    case 'voltou': return <Voltou {...p} />;
+    case 'falha': return <Falha {...p} podeEscolher={false} aoOrganizar={nada} />;
+    case 'equipe': return <Equipe {...p} />;
+    case 'tempogasto': return <TempoGasto {...p} />;
+    case 'preenchido': return <Preenchido {...p} />;
+    case 'fechamento': return <Fechamento {...p} aoMes={nada} />;
+    default: return null;
+  }
+}
+
+/** Os gráficos marcados de um painel (2.4.5): o do tempo e os de cada campo, como na Visão geral de hoje. */
+function GraficosDoPainel({ p }: { p: PacoteDoPainel }) {
+  return (
+    <div className="grid gap-4 grid-cols-1 md:grid-cols-2 min-w-0">
+      {p.graficos.map(({ id, titulo, item, grafico }) => {
+        const m = { ...fixa({ ...item, id: `visao:${p.painel.id}:${id}`, grupos: grafico?.grupos } as ItemPainel), semEnvio: true };
+        if (id === 'serie') return <Cartao key={id} m={m} titulo={p.serie.titulo} sub={p.serie.sub}><Colunas pontos={p.serie.pontos} vazio="Nenhum chamado chegou hoje ainda." /></Cartao>;
+        if (!grafico) return null;
+        return <GraficoLista key={id} m={m} titulo={titulo} sub={grafico.sub} itens={grafico.itens} semOrdenar={grafico.naOrdem} multiplo={grafico.multiplo} aoClicar={nada} />;
+      })}
+    </div>
+  );
+}
+
 export function EnvioDiario() {
   const [sp] = useSearchParams();
   const nav = useNavigate();
   const { user, loading } = useAuth();
   const chave = sp.get('chave') ?? undefined;
-  const q = useQuery({ queryKey: ['envio', 'pacote', chave ?? ''], queryFn: () => api.envio.pacote(chave), retry: false, enabled: !!chave || !!user });
+  const envio = sp.get('envio') ?? undefined;
+  const q = useQuery({ queryKey: ['envio', 'pacote', chave ?? '', envio ?? ''], queryFn: () => api.envio.pacote({ chave, envio }), retry: false, enabled: !!chave || !!user });
   // sem a chave do robô, é uma pessoa: precisa estar logada
   if (!chave && !loading && !user) return <Navigate to="/entrar" replace />;
 
@@ -89,6 +147,9 @@ export function EnvioDiario() {
   const d = new Date(`${p.dia}T12:00:00Z`);
   const quando = `${d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'UTC' })}, ${d.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}`;
   const nGraficos = p.graficos.length; const nRelatorios = p.relatorioIds.length;
+  const doPainel = p.tipo === 'painel';
+  const painelNome = doPainel ? p.painel.nome : p.painelNome;
+  const kpis = doPainel ? p.kpis : p.resumo.kpis;
 
   return (
     <SemBotaoDeEnvio>
@@ -96,16 +157,16 @@ export function EnvioDiario() {
         {!chave && (
           <div className="so-tela sticky top-0 z-10 border-b border-line bg-surface/95 backdrop-blur px-4 py-2.5 flex flex-wrap items-center gap-2">
             <button type="button" className="btn-ghost btn-sm" onClick={() => nav(-1)}><ArrowLeft size={15} /> Voltar</button>
-            <span className="text-[13px] text-ink-2 flex-1 min-w-[200px]">É assim que o PDF do envio diário sai agora (com os números de agora).</span>
+            <span className="text-[13px] text-ink-2 flex-1 min-w-[200px]">É assim que o PDF do envio diário {doPainel ? `do painel ${painelNome}` : 'do Legado do Helena'} sai agora (com os números de agora).</span>
             <button type="button" className="btn-secondary btn-sm" onClick={() => window.print()}><Printer size={14} /> Imprimir ou salvar em PDF</button>
           </div>
         )}
-        <main className="para-imprimir envio-diario mx-auto max-w-[880px] p-4 sm:p-6 flex flex-col gap-4" data-envio-pronto="1">
+        <main className="para-imprimir envio-diario mx-auto max-w-[880px] p-4 sm:p-6 flex flex-col gap-4" data-envio-pronto="1" data-envio-origem={doPainel ? p.painel.id : 'legado'}>
           <header className="flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
             <div>
               <Logotipo altura={24} />
-              <h1 className="font-display font-semibold text-[22px] leading-tight mt-2">Chamados de hoje</h1>
-              <p className="text-[13.5px] text-ink-2 first-letter:uppercase">{quando}, até {p.hhmm}{p.painelNome ? ` · painel ${p.painelNome}` : ''}</p>
+              <h1 className="font-display font-semibold text-[22px] leading-tight mt-2">Chamados de hoje{doPainel ? ` · ${painelNome}` : ''}</h1>
+              <p className="text-[13.5px] text-ink-2 first-letter:uppercase">{quando}, até {p.hhmm}{painelNome && !doPainel ? ` · painel ${painelNome}` : ''}</p>
             </div>
             <p className="text-[12px] text-muted">
               {nGraficos + nRelatorios ? `${nGraficos ? `${nGraficos} ${nGraficos === 1 ? 'gráfico' : 'gráficos'}` : ''}${nGraficos && nRelatorios ? ' e ' : ''}${nRelatorios ? `${nRelatorios} ${nRelatorios === 1 ? 'relatório' : 'relatórios'}` : ''}` : 'só os números do dia'}
@@ -114,8 +175,40 @@ export function EnvioDiario() {
           </header>
 
           <section aria-label="Os números de hoje" className="grid gap-3 grid-cols-2 md:grid-cols-4">
-            {p.resumo.kpis.map((k) => <Kpi key={k.id} label={k.label} valor={k.valor} sub={k.sub} tone={k.tom} />)}
+            {kpis.map((k) => <Kpi key={k.id} label={k.label} valor={k.valor} sub={k.sub} tone={k.tom} />)}
           </section>
+
+          {doPainel ? (
+            <>
+              {nGraficos > 0 && (
+                <>
+                  <h2 className="eyebrow mt-2">Os gráficos de hoje · como na Visão geral do painel {painelNome}</h2>
+                  <GraficosDoPainel p={p} />
+                </>
+              )}
+              {p.relatorios && nRelatorios > 0 && (
+                <>
+                  <h2 className="eyebrow mt-2">Os relatórios · período: hoje{p.relatorioIds.includes('fechamento') ? ' (o Fechamento do mês: o mês até hoje)' : ''}</h2>
+                  {p.relatorioIds.map((id) => <div key={id} className="envio-bloco min-w-0 flex flex-col"><RelatorioDoPainel id={id} r={p.relatorios!} /></div>)}
+                </>
+              )}
+              <p className="so-tela text-[12px] text-muted border-t border-line pt-3">
+                Enviado pelo Ingline Gestão. Os números de cima e os gráficos são os da Visão geral de hoje do painel {painelNome}; os relatórios usam o dia de hoje como período.
+                O que vai neste PDF é marcado pela administração em cada gráfico e relatório do painel ("Envio diário").
+              </p>
+            </>
+          ) : <OLegado p={p} />}
+        </main>
+      </div>
+    </SemBotaoDeEnvio>
+  );
+}
+
+/** O PDF do Legado do Helena (como do 1.7 ao 2.4.4): os gráficos da aba Hoje e os relatórios dos tickets do LineChat. */
+function OLegado({ p }: { p: PacoteDoLegado }) {
+  const nGraficos = p.graficos.length; const nRelatorios = p.relatorioIds.length;
+  return (
+    <>
 
           {nGraficos > 0 && (
             <>
@@ -137,8 +230,6 @@ export function EnvioDiario() {
             Enviado pelo Ingline Gestão. Os números de cima e os gráficos são os da aba Hoje dos tickets do LineChat; os relatórios usam o dia de hoje como período.
             O que vai neste PDF é marcado pela administração em cada gráfico e relatório ("Envio diário").
           </p>
-        </main>
-      </div>
-    </SemBotaoDeEnvio>
+    </>
   );
 }

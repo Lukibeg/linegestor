@@ -12,6 +12,10 @@
  *  - 2.0.1: depois de mandar, conclui a conversa na FlwChat (a opção vem ligada); se não deixar, a
  *    mensagem continua entregue e o histórico diz que a conversa ficou aberta.
  *
+ * Desde o 2.4.5 os ajustes são uma lista de envios, cada um de uma origem: aqui, um envio do **Legado do
+ * Helena** (os tickets do LineChat), que continua funcionando como antes. O envio de um painel do Gestor
+ * está em `patch245-envio-por-painel.test.ts`.
+ *
  * Sem Chromium e sem FlwChat de verdade: as duas ferramentas são trocadas por imitações.
  */
 import { randomUUID } from 'node:crypto';
@@ -80,38 +84,47 @@ beforeAll(async () => {
 });
 afterAll(async () => { await app.close(); });
 
-const AJUSTES = {
-  ativo: true, url: 'https://api.exemplo.com/chat/v1/message/send', remetente: '(71) 3512-0000', horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
+const ENVIO = {
+  id: 'e1', origem: 'legado', ativo: true, horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
   destinatarios: [
     { id: 'd1', nome: 'Luan', numero: '(71) 99999-0001', ativo: true },
     { id: 'd2', nome: 'Suporte', numero: '71 99999-0002', ativo: true },
     { id: 'd3', nome: 'De férias', numero: '71 99999-0003', ativo: false },
   ],
 };
+/** Os ajustes com o envio do Legado (o que mudar nele vem em `e`; o resto da ligação, em `r`). */
+const ajustes = (e: Partial<typeof ENVIO> = {}, r: Record<string, unknown> = {}) => ({
+  url: 'https://api.exemplo.com/chat/v1/message/send', remetente: '(71) 3512-0000', ...r, envios: [{ ...ENVIO, ...e }],
+});
+const AJUSTES = ajustes();
 
 describe('Os ajustes do envio', () => {
   it('começa desligado; o token vai para o cofre e nunca volta', async () => {
     const a0 = (await s.get('/envio/ajustes')).json();
-    expect([a0.ativo, a0.temToken, a0.destinatarios]).toEqual([false, false, []]);
+    expect([a0.envios, a0.temToken]).toEqual([[], false]);
+    expect(a0.origens.map((o: any) => o.id)).toContain('legado');
     const r = await s.put('/envio/ajustes', { ...AJUSTES, token: TOKEN });
     expect(r.statusCode).toBe(200);
     const a = r.json();
     expect(a.temToken).toBe(true);
     expect(a.remetente).toBe('557135120000');
-    expect(a.destinatarios.map((d: any) => d.numero)).toEqual(['5571999990001', '5571999990002', '5571999990003']);
-    expect(a.proximo).toBeTruthy();
+    expect(a.envios[0].destinatarios.map((d: any) => d.numero)).toEqual(['5571999990001', '5571999990002', '5571999990003']);
+    expect(a.envios[0]).toMatchObject({ origem: 'legado', origemNome: 'Legado do Helena', origemProblema: null });
+    expect(a.envios[0].proximo).toBeTruthy();
     expect(r.body).not.toContain(TOKEN);
     const [seg] = await app.db.select().from(secrets);
     expect(seg?.label).toContain('FlwChat');
     const log = await app.db.select().from(auditLog);
-    expect(JSON.stringify(log)).toContain('ligou o envio automático (18:00, 2 números)');
+    expect(JSON.stringify(log)).toContain('salvou o envio automático (Legado do Helena, ligado às 18:00, para 2 números)');
     expect(JSON.stringify(log)).not.toContain(TOKEN);
     // salvar de novo sem token mantém o guardado
     expect((await s.put('/envio/ajustes', AJUSTES)).json().temToken).toBe(true);
   });
   it('recusa ligar pela metade', async () => {
-    const r = await s.put('/envio/ajustes', { ...AJUSTES, destinatarios: [] });
+    const r = await s.put('/envio/ajustes', ajustes({ destinatarios: [] }));
     expect(r.statusCode).toBe(400);
+    // um painel que não existe não entra na lista
+    expect((await s.put('/envio/ajustes', ajustes({ origem: 'painel-que-nao-existe' }))).statusCode).toBe(400);
   });
 });
 
@@ -123,9 +136,9 @@ describe('O que vai no PDF', () => {
     expect(r.json().relatorios).toEqual(['pareto', 'relogio']);
     const a = (await s.get('/envio/ajustes')).json();
     // na ordem das telas: a dos Relatórios (relógio antes do 80/20) e a dos gráficos dos Chamados
-    expect(a.marcados.relatorios.map((x: any) => x.titulo)).toEqual(['Relógio do chamado', 'Os poucos que pesam muito']);
-    expect(a.marcados.graficos.map((x: any) => x.titulo)).toEqual(['Chamados abertos hoje, por hora', 'Por assunto']);
-    expect(a.marcados.graficos.map((x: any) => x.id)).toEqual(['serie', 'campo:assunto']);
+    expect(a.envios[0].marcados.relatorios.map((x: any) => x.titulo)).toEqual(['Relógio do chamado', 'Os poucos que pesam muito']);
+    expect(a.envios[0].marcados.graficos.map((x: any) => x.titulo)).toEqual(['Chamados abertos hoje, por hora', 'Por assunto']);
+    expect(a.envios[0].marcados.graficos.map((x: any) => x.id)).toEqual(['serie', 'campo:assunto']);
   });
   it('quem só vê chamados vê o que está marcado, mas não marca', async () => {
     const leitor = (await s.get('/admin/roles')).json().find((p: any) => p.key === 'leitor');
@@ -146,6 +159,7 @@ describe('A página do PDF', () => {
     const r = await app.inject({ method: 'GET', url: `/api/envio/pacote?chave=${chave}` });
     expect(r.statusCode).toBe(200);
     const p = r.json();
+    expect(p.tipo).toBe('legado');
     expect(p.relatorioIds).toEqual(['relogio', 'pareto']);
     expect(p.graficos.map((g: any) => g.id)).toEqual(['serie', 'campo:assunto']);
     expect(p.resumo.kpis[0].label).toBe('Abertos hoje');
@@ -223,7 +237,8 @@ describe('O envio', () => {
     expect(e.ok).toBe(false);
     expect(e.mensagem).toContain('recusou o token');
     const { valor } = await envio.lerAjustes(app.db);
-    expect(valor.ultimoAgendado).toMatchObject({ ok: false, tentativas: 1 });
+    expect(valor.envios[0]!.ultimoAgendado).toMatchObject({ ok: false, tentativas: 1 });
+    expect(valor.historico[0]).toMatchObject({ envioId: 'e1', origem: 'legado', origemNome: 'Legado do Helena' });
     expect(valor.historico[0]!.gatilho).toBe('agendado');
   });
   it('sem token: não tenta e diz o que falta', async () => {
@@ -243,17 +258,20 @@ describe('O relógio (1.7.1)', () => {
   /** um momento em Brasília */
   const as = (dia: string, hhmm: string) => () => new Date(`${dia}T${hhmm}:00-03:00`);
   const volta = async (dia: string, hhmm: string) => { envio.trocarFerramentas({ agora: as(dia, hhmm) }); return envio.voltaDoRelogio(app); };
-  const tela = async () => (await s.get('/envio/ajustes')).json();
+  /** a tela do envio (o único da lista) */
+  const tela = async () => (await s.get('/envio/ajustes')).json().envios[0];
+  const historico = async () => (await s.get('/envio/ajustes')).json().historico;
   afterAll(() => { envio.trocarFerramentas({ agora: () => new Date() }); });
   // começa limpo: salvar zera a falha do agendado que o teste da FlwChat deixou (com a data de verdade)
   beforeAll(async () => { expect((await s.put('/envio/ajustes', AJUSTES)).json().temToken).toBe(false); });
+  const primeiro = async (dia: string, hhmm: string) => (await volta(dia, hhmm))[0] ?? null;
 
   it('o caso de 05/10: 3 falhas às 18:00, trocou para 18:40 às 18:35 — sai às 18:40, uma vez', async () => {
     // sem token (o teste anterior tirou): as 3 tentativas das 18:00 falham dizendo o que falta
-    expect((await volta('2026-10-05', '17:59'))).toBeNull();
-    for (const h of ['18:00', '18:15', '18:30']) expect((await volta('2026-10-05', h))?.mensagem).toContain('Falta o token');
-    expect(await volta('2026-10-05', '18:31')).toBeNull();
-    expect(await volta('2026-10-05', '18:46')).toBeNull(); // gastou as 3
+    expect((await primeiro('2026-10-05', '17:59'))).toBeNull();
+    for (const h of ['18:00', '18:15', '18:30']) expect((await primeiro('2026-10-05', h))?.mensagem).toContain('Falta o token');
+    expect(await primeiro('2026-10-05', '18:31')).toBeNull();
+    expect(await primeiro('2026-10-05', '18:46')).toBeNull(); // gastou as 3
     envio.trocarFerramentas({ agora: as('2026-10-05', '18:35') });
     const antes = await tela();
     expect(antes.proximo).toBe('amanhã às 18:00');
@@ -261,34 +279,34 @@ describe('O relógio (1.7.1)', () => {
     expect(antes.hoje.mensagem).toContain('Falta o token');
 
     // às 18:35: põe o token e troca para 18:40
-    const depois = (await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40', token: TOKEN })).json();
+    const depois = (await s.put('/envio/ajustes', { ...ajustes({ horario: '18:40' }), token: TOKEN })).json().envios[0];
     expect(depois.proximo).toBe('hoje às 18:40');
     expect(depois.hoje).toBeNull();
     recebidos = [];
-    expect(await volta('2026-10-05', '18:39')).toBeNull();
-    expect((await volta('2026-10-05', '18:40'))?.ok).toBe(true);
+    expect(await primeiro('2026-10-05', '18:39')).toBeNull();
+    expect((await primeiro('2026-10-05', '18:40'))?.ok).toBe(true);
     expect(envios().map((r) => r.corpo.to)).toEqual(['5571999990001', '5571999990002']);
-    expect(await volta('2026-10-05', '18:41')).toBeNull(); // uma vez só
+    expect(await primeiro('2026-10-05', '18:41')).toBeNull(); // uma vez só
     envio.trocarFerramentas({ agora: as('2026-10-05', '18:42') });
     const fim = await tela();
     expect(fim.proximo).toBe('amanhã às 18:40');
     expect(fim.hoje).toMatchObject({ horario: '18:40', ok: true, tentativas: 1 });
-    expect(fim.historico[0]).toMatchObject({ gatilho: 'agendado', ok: true, quem: null });
+    expect((await historico())[0]).toMatchObject({ gatilho: 'agendado', ok: true, quem: null });
   });
 
   it('salvar depois de uma falha libera 3 tentativas novas, no mesmo horário', async () => {
     respostaDaFlwChat = 500;
-    for (const h of ['18:40', '18:55', '19:10']) expect((await volta('2026-10-06', h))?.ok).toBe(false);
-    expect(await volta('2026-10-06', '19:30')).toBeNull();
+    for (const h of ['18:40', '18:55', '19:10']) expect((await primeiro('2026-10-06', h))?.ok).toBe(false);
+    expect(await primeiro('2026-10-06', '19:30')).toBeNull();
     respostaDaFlwChat = 200;
     envio.trocarFerramentas({ agora: as('2026-10-06', '19:31') });
     expect((await tela()).proximo).toBe('amanhã às 18:40');
     // salvou (por exemplo, depois de reconectar o número na FlwChat): tenta de novo
-    expect((await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40' })).json().proximo).toBe('agora (na próxima volta do relógio)');
-    expect((await volta('2026-10-06', '19:32'))?.ok).toBe(true);
+    expect((await s.put('/envio/ajustes', ajustes({ horario: '18:40' }))).json().envios[0].proximo).toBe('agora (na próxima volta do relógio)');
+    expect((await primeiro('2026-10-06', '19:32'))?.ok).toBe(true);
     // e um envio que deu certo não volta a sair só porque alguém salvou
-    await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40' });
-    expect(await volta('2026-10-06', '19:33')).toBeNull();
+    await s.put('/envio/ajustes', ajustes({ horario: '18:40' }));
+    expect(await primeiro('2026-10-06', '19:33')).toBeNull();
   });
 
   it('uma volta de cada vez: um envio demorado não sai duas vezes', async () => {
@@ -298,12 +316,12 @@ describe('O relógio (1.7.1)', () => {
       gerarPdf: async (_app, chave) => { await segura; if (!envio.chaveValida(chave)) throw new Error('chave inválida'); return Buffer.from('%PDF-1.4 PDF de teste'); },
     });
     recebidos = [];
-    const primeira = volta('2026-10-07', '18:40');
+    const primeira = primeiro('2026-10-07', '18:40');
     await new Promise((r) => setTimeout(r, 50));
-    expect(await volta('2026-10-07', '18:41')).toBeNull(); // a primeira ainda está mandando
+    expect(await primeiro('2026-10-07', '18:41')).toBeNull(); // a primeira ainda está mandando
     soltar();
     expect((await primeira)?.ok).toBe(true);
-    expect(await volta('2026-10-07', '18:42')).toBeNull();
+    expect(await primeiro('2026-10-07', '18:42')).toBeNull();
     expect(envios()).toHaveLength(2); // um para cada número ativo, uma vez
   });
 });
@@ -359,13 +377,13 @@ describe('Concluir a conversa depois de mandar (2.0.1)', () => {
   });
 
   it('desligada: só manda, como antes', async () => {
-    const t = (await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40', concluirConversa: false })).json();
+    const t = (await s.put('/envio/ajustes', ajustes({ horario: '18:40' }, { concluirConversa: false }))).json();
     expect(t.concluirConversa).toBe(false);
     recebidos = [];
     const e = (await s.post('/envio/testar', { destinatarioId: 'd1' })).json();
     expect(e.mensagem).toBe('Teste enviado para 1 número.');
     expect(recebidos.map((r) => r.metodo)).toEqual(['POST']);
     expect(e.destinatarios[0].conversa).toBeUndefined();
-    expect((await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40' })).json().concluirConversa).toBe(true);
+    expect((await s.put('/envio/ajustes', ajustes({ horario: '18:40' }))).json().concluirConversa).toBe(true);
   });
 });

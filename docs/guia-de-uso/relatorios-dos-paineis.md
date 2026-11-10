@@ -93,5 +93,11 @@ A arrumação vai para a auditoria, com quem arrumou e o que ficou à vista.
 ## 6. O Legado do Helena
 
 **Suporte › Legado do Helena** é a tela de sempre dos chamados do LineChat (Hoje, Período e os 20
-relatórios), com os assuntos de lá, só para consulta. O envio diário do PDF continua saindo dos gráficos
-marcados nela até a virada. Veja [Chamados do LineChat](chamados-do-linechat.md).
+relatórios), com os assuntos de lá, só para consulta. Veja [Chamados do LineChat](chamados-do-linechat.md).
+
+## 7. O envio diário pelo WhatsApp (2.4.5)
+
+Quem administra vê um **aviãozinho** no canto de cada gráfico da Visão geral (Hoje e Período) e de cada um dos 25
+relatórios: azul, ele vai no PDF do **envio deste painel**, que sai todo dia pelo WhatsApp com os números de hoje. O
+horário, os dias e os números de cada painel ficam em **Administração › Envio automático** — ver o guia
+[Envio automático](envio-automatico.md).

@@ -11,6 +11,7 @@ import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { Info, TrendingDown, TrendingUp } from 'lucide-react';
 import { ITEM_DO_CATALOGO, duracaoUtil, type ChamadoDoRelatorio, type RelatoriosDoPainel } from '@gestor/shared';
 import { Chip, Modal } from '../../../components/ui/index.js';
+import { BotaoEnvio, useOrigemDoEnvio } from '../../../lib/envio.js';
 import { data } from '../../../lib/format.js';
 import { ChipPrioridade, LinkDoChamado } from '../comum.js';
 
@@ -32,6 +33,8 @@ export const nomeDoAnterior = (r: RelatoriosDoPainel) => `${r.periodo.anterior.n
 /** O cartão de um relatório: o nome e a pergunta (do catálogo), as ações e uma nota de rodapé. */
 export function Cartao({ id, acoes, rodape, children, className = '' }: { id: string; acoes?: ReactNode; rodape?: ReactNode; children: ReactNode; className?: string }) {
   const item = ITEM_DO_CATALOGO.get(id);
+  // dentro dos Relatórios de um painel, o aviãozinho põe este relatório no envio diário dele (2.4.5)
+  const origem = useOrigemDoEnvio();
   return (
     <section id={`relatorio-${id}`} className={`card p-4 sm:p-5 min-w-0 flex flex-col gap-4 ${className}`} aria-labelledby={`relatorio-${id}-t`}>
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -42,7 +45,12 @@ export function Cartao({ id, acoes, rodape, children, className = '' }: { id: st
           </h2>
           {item && <p className="text-[13.5px] text-ink-2 mt-0.5">{item.pergunta}</p>}
         </div>
-        {acoes && <div className="flex flex-wrap items-center gap-2">{acoes}</div>}
+        {(acoes || origem) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {acoes}
+            {origem && <BotaoEnvio tipo="relatorio" id={id} origem={origem} titulo={item?.titulo ?? id} />}
+          </div>
+        )}
       </header>
       {children}
       {rodape && (

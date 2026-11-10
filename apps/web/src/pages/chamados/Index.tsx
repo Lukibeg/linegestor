@@ -631,8 +631,13 @@ export type Moldura = {
   aoMudar: (m: Partial<ItemPainel>) => void;
   /** abre a janela dos grupos deste gráfico */
   aoAbrirGrupos: () => void;
-  /** sem o aviãozinho do envio diário (a Visão geral dos Relatórios novos, 2.2: o envio ainda lê o Legado) */
+  /** sem o aviãozinho do envio diário */
   semEnvio?: boolean;
+  /**
+   * o aviãozinho marca para o envio de um painel (2.4.5: a Visão geral dos Relatórios de cada painel), com o id do
+   * gráfico lá (o da tela leva o painel junto); sem isto, o Legado do Helena, com o id da tela
+   */
+  envio?: { origem: string; id: string };
   /** sem o botão Grupos no Organizar (na Visão geral, as pastas do assunto são os grupos) */
   semGrupos?: boolean;
 };
@@ -652,7 +657,7 @@ export function Cartao({ m, titulo, sub, extra, children, comGrupos = false }: {
         {sub && <span className="text-[12px] text-muted">{sub}</span>}
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        {!m.organizando && !m.semEnvio && <BotaoEnvio tipo="grafico" id={item.id} titulo={titulo} />}
+        {!m.organizando && !m.semEnvio && <BotaoEnvio tipo="grafico" id={m.envio?.id ?? item.id} origem={m.envio?.origem} titulo={titulo} />}
         {extra && <div className="so-tela">{extra}</div>}
       </div>
     </div>

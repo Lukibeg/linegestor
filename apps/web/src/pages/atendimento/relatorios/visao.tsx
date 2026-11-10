@@ -11,6 +11,8 @@
  * só). **Organizar** (quem cuida dos chamados): a ordem dos gráficos (arrastando ou pelas setas), metade ou a linha toda,
  * esconder, pizza ou barras e, no assunto, se abre com as pastas juntas — para a equipe toda, guardado com a arrumação dos
  * 25 relatórios do painel. Cada pessoa ainda troca pizza e barras e o Agrupar só para si (fica no navegador dela).
+ *
+ * Desde o 2.4.5, o aviãozinho de cada gráfico (para quem administra) põe o gráfico no PDF do envio diário deste painel.
  */
 import { useLayoutEffect, useMemo, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -261,7 +263,8 @@ export function VisaoDoPainel({ painel, opcoes, parte }: { painel: Painel; opcoe
               aoMover: (passo, foco) => moverItem(item.id, passo, foco),
               aoMudar: (x) => mudarItem(item.id, { ...(x.largura ? { largura: x.largura } : {}), ...(x.oculto !== undefined ? { oculto: x.oculto } : {}), ...(x.forma ? { forma: x.forma } : {}), ...(x.agrupar !== undefined ? { agrupar: x.agrupar } : {}) }),
               aoAbrirGrupos: () => undefined,
-              semEnvio: true, semGrupos: true,
+              // o aviãozinho marca o gráfico para o envio diário deste painel (2.4.5)
+              envio: { origem: painel.id, id: item.id }, semGrupos: true,
             };
             // a chave muda ao salvar: os gráficos releem a escolha de cada pessoa (pizza ou barras, o Agrupar)
             const chave = `${idTela}:${arrumacao.data?.atualizadoEm ?? ''}`;
