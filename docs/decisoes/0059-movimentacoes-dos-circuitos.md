@@ -40,3 +40,9 @@ novos, alterados, circuito novo, etc fique registrada nessa aba especificamente 
 ## Fica para depois
 
 - As movimentações na ficha do cliente (os DIDs que entraram e saíram dele).
+
+## Revisto no 2.4.6 (10/11/2026): o link cancelado
+
+- Dois tipos novos: **Link cancelado** e **Link reativado**, com o dia e o motivo no antes e no depois (a 0062).
+- Como o link de terceiro, a movimentação que é só de links cancelados some sem o interruptor **Mostrar cancelados**
+  (`incluirCancelados`); dentro da ficha do link, aparece sempre.

@@ -29,6 +29,7 @@ import {
 import { NotFound } from '../../plugins/errors.js';
 import { etiquetasParaAPessoa } from './etiquetas.js';
 import * as integ from '../integracoes.js';
+import { foraDeLinkCancelado } from '../dids.js';
 import { situacaoIa } from '../baseIa.js';
 import { lerAjustes as lerAjustesLineChat } from '../linechat.js';
 import { tipoDaImagem } from '../portal.js';
@@ -305,10 +306,11 @@ export async function cadastroDoCliente(app: FastifyInstance, ator: Ator, client
       .innerJoin(products, eq(products.id, subscriptions.productId))
       .where(and(eq(subscriptions.clientId, clienteId), isNull(subscriptions.deactivatedAt), isNull(products.deletedAt), eq(products.active, true)))
       .orderBy(asc(products.sortOrder), asc(products.name)),
+    // o link cancelado (2.4.6) e os números dele ficam de fora: é história, não o que o cliente tem
     db.select({ id: circuits.id, nome: circuits.name, carrierId: circuits.carrierId }).from(circuits)
-      .where(and(eq(circuits.ownerClientId, clienteId), isNull(circuits.deletedAt))),
+      .where(and(eq(circuits.ownerClientId, clienteId), isNull(circuits.deletedAt), isNull(circuits.cancelledOn))),
     db.select({ id: dids.id, number: dids.number, circuitId: dids.circuitId }).from(dids)
-      .where(and(eq(dids.clientId, clienteId), isNull(dids.deletedAt))).orderBy(asc(dids.number)),
+      .where(and(eq(dids.clientId, clienteId), isNull(dids.deletedAt), foraDeLinkCancelado)).orderBy(asc(dids.number)),
     db.select({ id: devices.id, mac: devices.mac, serial: devices.serialNumber, modelo: deviceModels.name }).from(devices)
       .innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
       .where(and(eq(devices.clientId, clienteId), isNull(devices.deletedAt))).orderBy(asc(deviceModels.name), asc(devices.mac)),

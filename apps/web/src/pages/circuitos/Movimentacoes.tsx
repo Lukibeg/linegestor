@@ -19,7 +19,7 @@ import { data } from '../../lib/format.js';
 import { ThN, TdN, contarDe } from '../../lib/contagem.js';
 
 const TOM: Record<TipoDeMovimentacaoDoCircuito, TomChip> = {
-  circuito_criado: 'accent', circuito_editado: 'accent', circuito_lixeira: 'bad', circuito_restaurado: 'muted',
+  circuito_criado: 'accent', circuito_editado: 'accent', circuito_lixeira: 'bad', circuito_restaurado: 'muted', circuito_cancelado: 'bad', circuito_reativado: 'ok',
   dids_criados: 'ok', did_editado: 'signal', dids_editados: 'signal', dids_lixeira: 'bad', did_restaurado: 'muted',
   importacao: 'roxo',
 };
@@ -35,7 +35,8 @@ function useFiltros(naTela: boolean) {
     if (naTela) { setLocal((x) => ({ ...x, [k]: v ?? undefined, ...(k !== 'p' ? { p: undefined } : {}) })); return; }
     const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true });
   };
-  const limpar = () => { if (naTela) setLocal({}); else setSp({ aba: 'movimentacoes', ...(sp.get('terceiros') ? { terceiros: '1' } : {}) }, { replace: true }); };
+  // "limpar" tira os filtros, não os modos de exibição (os terceiros e os cancelados ficam como estão)
+  const limpar = () => { if (naTela) setLocal({}); else setSp({ aba: 'movimentacoes', ...(sp.get('terceiros') ? { terceiros: '1' } : {}), ...(sp.get('cancelados') ? { cancelados: '1' } : {}) }, { replace: true }); };
   const algum = CHAVES.some((k) => k !== 'p' && k !== 'tudo' && !!get(k));
   return { get, set, limpar, algum };
 }
@@ -50,12 +51,15 @@ export function MovimentacoesDosCircuitos({ circuito }: { circuito?: { id: strin
   // o interruptor dos links de terceiros é o das outras abas (fica no endereço e atravessa as abas)
   const [sp, setSp] = useSearchParams();
   const terceiros = !circuito && sp.get('terceiros') === '1';
-  const filtro = { q: f.get('q'), tipo: f.get('tipo'), userId: f.get('quem'), de: f.get('de'), ate: f.get('ate'), circuitId, incluirTerceiros: terceiros ? 'true' : undefined };
+  // o "Mostrar cancelados" (2.4.6): sem ele, some a movimentação que é só de links cancelados
+  const cancelados = !circuito && sp.get('cancelados') === '1';
+  const filtro = { q: f.get('q'), tipo: f.get('tipo'), userId: f.get('quem'), de: f.get('de'), ate: f.get('ate'), circuitId, incluirTerceiros: terceiros ? 'true' : undefined, incluirCancelados: cancelados ? 'true' : undefined };
+  const alternar = (chave: 'terceiros' | 'cancelados', v: boolean) => { const n = new URLSearchParams(sp); if (v) n.set(chave, '1'); else n.delete(chave); n.delete('p'); setSp(n, { replace: true }); };
   const lista = useQuery({
     queryKey: ['circuit-movements', filtro, page, tudo],
     queryFn: () => api.circuits.movimentacoes({ ...filtro, page: tudo ? 1 : page, pageSize: tamanho }),
   });
-  const circuitos = useQuery({ queryKey: ['circuit-options'], queryFn: () => api.circuits.options(), enabled: !circuito });
+  const circuitos = useQuery({ queryKey: ['circuit-options', cancelados], queryFn: () => api.circuits.options(cancelados), enabled: !circuito });
   const [aberta, setAberta] = useState<string | null>(null);
   const pessoas = lista.data?.pessoas ?? [];
 
@@ -69,7 +73,7 @@ export function MovimentacoesDosCircuitos({ circuito }: { circuito?: { id: strin
         </select>
         {!circuito && (
           <EscolherComBusca className="input w-[220px] max-w-full" valor={f.get('circuito')} onChange={(v) => f.set('circuito', v || null)} vazio="Todos os circuitos"
-            opcoes={(circuitos.data ?? []).map((c) => ({ id: c.id, nome: c.name }))} rotulo="Filtrar por circuito" procurar="Procurar circuito…" />
+            opcoes={(circuitos.data ?? []).map((c) => ({ id: c.id, nome: c.cancelled ? `${c.name} (cancelado)` : c.name }))} rotulo="Filtrar por circuito" procurar="Procurar circuito…" />
         )}
         <select className="input w-auto" value={f.get('quem')} onChange={(e) => f.set('quem', e.target.value || null)} aria-label="Quem fez">
           <option value="">Qualquer pessoa</option>
@@ -78,7 +82,8 @@ export function MovimentacoesDosCircuitos({ circuito }: { circuito?: { id: strin
         <input type="date" className="input w-auto" value={f.get('de')} onChange={(e) => f.set('de', e.target.value || null)} aria-label="De" />
         <input type="date" className="input w-auto" value={f.get('ate')} onChange={(e) => f.set('ate', e.target.value || null)} aria-label="Até" />
         {f.algum && <button className="btn-ghost btn-sm text-muted" onClick={f.limpar}>limpar filtros</button>}
-        {!circuito && <Toggle checked={terceiros} onChange={(v) => { const n = new URLSearchParams(sp); if (v) n.set('terceiros', '1'); else n.delete('terceiros'); n.delete('p'); setSp(n, { replace: true }); }} label="Habilitar links de terceiros" />}
+        {!circuito && <Toggle checked={terceiros} onChange={(v) => alternar('terceiros', v)} label="Habilitar links de terceiros" />}
+        {!circuito && <Toggle checked={cancelados} onChange={(v) => alternar('cancelados', v)} label="Mostrar cancelados" />}
       </div>
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? (
         <Vazio titulo="Nenhuma movimentação" texto={f.algum ? 'Nenhuma movimentação com esses filtros.' : circuito ? 'Nada mudou neste circuito ainda.' : undefined} />

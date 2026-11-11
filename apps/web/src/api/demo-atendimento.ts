@@ -95,7 +95,7 @@ export type EstadoDaPrevia = {
   products: Array<{ id: string; code: string; name: string; color: string; sortOrder: number; active: boolean; deletedAt: string | null }>;
   subs: Array<{ clientId: string; productCode: string; deactivatedAt: string | null }>;
   carriers: Array<{ id: string; name: string; active: boolean }>;
-  circuits: Array<{ id: string; name: string; carrierId: string | null; ownerClientId: string | null; deletedAt: string | null }>;
+  circuits: Array<{ id: string; name: string; carrierId: string | null; ownerClientId: string | null; deletedAt: string | null; cancelledOn?: string | null }>;
   dids: Array<{ id: string; number: string; circuitId: string | null; clientId: string | null; deletedAt: string | null }>;
   models: Array<{ id: string; name: string }>;
   devices: Array<{ id: string; modelId: string; mac: string | null; serialNumber: string | null; clientId: string | null; deletedAt: string | null }>;
@@ -2746,7 +2746,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     for (const id of new Set(linhas.map((t) => t.clienteId).filter((x): x is string => !!x))) {
       clientes.set(id, {
         nome: nomeCliente(id) ?? '(cliente removido)',
-        dids: S.dids.filter((d) => d.clientId === id && !d.deletedAt).length,
+        dids: S.dids.filter((d) => d.clientId === id && !d.deletedAt && !S.circuits.find((c) => c.id === d.circuitId)?.cancelledOn).length,
         aparelhos: S.devices.filter((d) => d.clientId === id && !d.deletedAt).length,
         produtos: [...new Set(S.subs.filter((x) => x.clientId === id && !x.deactivatedAt).map((x) => S.products.find((p) => p.code === x.productCode)?.name).filter((n): n is string => !!n))],
       });
@@ -2847,8 +2847,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       .map((s) => S.products.find((p) => p.code === s.productCode))
       .filter((p): p is NonNullable<typeof p> => !!p && !p.deletedAt && p.active)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
-    const titular = S.circuits.filter((c) => c.ownerClientId === clienteId && !c.deletedAt);
-    const numeros = S.dids.filter((d) => d.clientId === clienteId && !d.deletedAt).sort((a, b) => a.number.localeCompare(b.number));
+    // o link cancelado (2.4.6) e os números dele ficam de fora, como no servidor
+    const titular = S.circuits.filter((c) => c.ownerClientId === clienteId && !c.deletedAt && !c.cancelledOn);
+    const numeros = S.dids.filter((d) => d.clientId === clienteId && !d.deletedAt && !S.circuits.find((c) => c.id === d.circuitId)?.cancelledOn).sort((a, b) => a.number.localeCompare(b.number));
     // os circuitos dos DIDs dele (o DID do cliente pode estar num feixe que é da VoiceNet)
     const dosDids = [...new Set(numeros.map((d) => d.circuitId).filter((x): x is string => !!x))].filter((id) => !titular.some((c) => c.id === id));
     const todosCircuitos = [...titular, ...S.circuits.filter((c) => dosDids.includes(c.id) && !c.deletedAt)].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));

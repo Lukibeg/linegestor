@@ -13,7 +13,7 @@
  * 2.0.2) abre o calendário no dia, com a janela do evento.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Columns3, LayoutGrid, List, Plus, Shapes, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Columns3, LayoutGrid, List, Plus, Repeat, Shapes, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
 import {
   DIAS_DA_SEMANA, diaCurto, diaPorExtenso, diasDaGradeDoMes, diasDaSemanaDoDia, diaValido, eventosDoDia, filtrarEventos, hojeNoCalendario, mesDoDia, numeroDaSemana,
   ordemDoDia, somarDias, somarMeses, textoDaSemana, textoDoHorario, textoDoMes, textoDoPeriodo, tipoDoEvento,
@@ -70,11 +70,12 @@ export function Calendario() {
 
   const filtro: FiltroDoCalendario = {
     paineis: listaDoEndereco(valor('painel')), tipos: listaDoEndereco(valor('tipo')), pessoa: valor('meus') === '1' ? user?.id ?? null : null,
-    cancelados: valor('cancelados') !== '0', busca: valor('q'),
+    // os cancelados só aparecem com a caixa marcada (2.4.6: "não quero que apareçam, a não ser que eu marque alguma flag")
+    cancelados: valor('cancelados') === '1', busca: valor('q'),
   };
   const filtrados = filtrarEventos(eventos.data ?? [], filtro, nomes);
   // no celular, o "Só os meus" fica à vista, fora do botão Filtros (2.4): o número do botão conta só o que está atrás dele
-  const ligados = [filtro.paineis.length > 0, filtro.tipos.length > 0, !filtro.cancelados, !!filtro.busca].filter(Boolean).length;
+  const ligados = [filtro.paineis.length > 0, filtro.tipos.length > 0, filtro.cancelados, !!filtro.busca].filter(Boolean).length;
   const filtrando = ligados > 0 || !!filtro.pessoa;
   const soOsMeus = (className: string, id: string) => (
     <BotaoDeFiltro ativo={!!filtro.pessoa} onClick={() => mudar({ meus: filtro.pessoa ? null : '1' })} titulo="Só os eventos de que você participa" id={id} className={className}>
@@ -223,7 +224,7 @@ function Filtros({ op, filtro, mudar, eventos, filtrando, aberto, soOsMeus }: {
       <CampoBusca valor={filtro.busca} onChange={(v) => mudar({ q: v || null })} placeholder="Buscar no calendário" titulo="Busca no título, no cliente, no local, na observação, no chamado e nas pessoas"
         className="basis-full sm:basis-auto sm:flex-1 sm:min-w-[180px] sm:max-w-[320px]" id="calendario-busca" />
       <label className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-2 cursor-pointer select-none">
-        <input type="checkbox" className="w-4 h-4 accent-[var(--accent)]" checked={filtro.cancelados} onChange={(e) => mudar({ cancelados: e.target.checked ? null : '0' })} id="calendario-cancelados" />
+        <input type="checkbox" className="w-4 h-4 accent-[var(--accent)]" checked={filtro.cancelados} onChange={(e) => mudar({ cancelados: e.target.checked ? '1' : null })} id="calendario-cancelados" />
         Mostrar os cancelados
       </label>
       {filtrando && (
@@ -339,6 +340,7 @@ function Barra({ e, dia, op, onAbrir }: { e: EventoDoCalendario; dia: string; op
       {e.situacao === 'feito' && <span aria-label="feito">✓ </span>}
       {!e.diaInteiro && e.horaInicio && !veio && <><span className="tnum font-semibold">{e.horaInicio}</span>{' '}</>}
       {texto}
+      {e.repeticao && <Repeat size={10} className="inline -mt-0.5 ml-1 opacity-70" aria-label="se repete" />}
     </button>
   );
 }

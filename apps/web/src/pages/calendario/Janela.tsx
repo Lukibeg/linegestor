@@ -11,16 +11,22 @@
  *
  * As regras são as do servidor (o `EventoGravarSchema` do `@gestor/shared`): a janela confere antes de
  * mandar e mostra a frase de cada caso.
+ *
+ * REPETIR (2.4.6, o Luan: "quero q tenha um opção no agendamento se é recorrente diário semanal ou mensal para fixas nas
+ * agendas"): Não repete, Todo dia, Todo dia útil, Toda semana ou Todo mês, até uma data ou sem data para acabar. No evento que
+ * se repete, editar pergunta antes "Só este" ou "Este e os próximos", e excluir dá as duas opções.
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Ban, Bell, Building2, CalendarDays, Check, Copy, Link2, MapPin, Pencil, StickyNote, Ticket, Trash2, Undo2, Users, X,
+  Ban, Bell, Building2, CalendarDays, Check, Copy, Link2, MapPin, Pencil, Repeat, StickyNote, Ticket, Trash2, Undo2, Users, X,
 } from 'lucide-react';
 import {
   diaPorExtenso, diasEntre, fimQueAcompanha, EventoGravarSchema, lerCodigo, NOME_QUEM_RECEBE_O_LEMBRETE, NOME_SITUACAO_DO_EVENTO, pessoasPossiveis, QUEM_RECEBE_O_LEMBRETE,
   SITUACOES_DO_EVENTO, somarDias, textoDoHorario, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tituloSugerido,
+  ESCOPOS_DA_SERIE, FREQUENCIAS_DA_REPETICAO, NOME_DA_FREQUENCIA, NOME_DO_ESCOPO, textoDaRepeticao,
+  type EscopoDaSerie, type Repeticao,
   type CalendarioOpcoes, type CorPainel, type EventoDoCalendario, type EventoGravarEntrada, type QuemRecebeOLembrete, type SituacaoDoEvento,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -45,10 +51,12 @@ type Rascunho = {
   lembretes: number[]; lembretesMexidos: boolean; lembrarQuem: QuemRecebeOLembrete;
   /** o aviso de que o evento entrou (2.0.2, só no evento novo): avisar agora, e quem */
   avisar: boolean; avisarQuem: QuemRecebeOLembrete;
+  /** repetir (2.4.6): a regra (nula = não repete); o evento que já é de uma série; ao mudar, só este ou este e os próximos */
+  repetir: Repeticao | null; daSerie: boolean; escopo: EscopoDaSerie;
 };
 
 /** O que vem preenchido num evento novo (o dia clicado, o chamado do Agendar…); `clienteNome` entra no título sugerido. */
-export type NovoEvento = Partial<Omit<Rascunho, 'tituloMexido'>> & { clienteNome?: string | null };
+export type NovoEvento = Partial<Omit<Rascunho, 'tituloMexido' | 'daSerie' | 'escopo'>> & { clienteNome?: string | null };
 /** A janela abre um evento que existe (para ver) ou um novo (já no formulário). */
 export type AberturaDoEvento = { evento: EventoDoCalendario } | { novo: NovoEvento };
 
@@ -60,6 +68,7 @@ function doEvento(e: EventoDoCalendario): Rascunho {
     local: e.local, observacao: e.observacao, situacao: e.situacao,
     lembretes: [...e.lembretes], lembretesMexidos: true, lembrarQuem: e.lembrarQuem,
     avisar: false, avisarQuem: 'pessoas',
+    repetir: e.repeticao ? { frequencia: e.repeticao.frequencia, ate: e.repeticao.ate } : null, daSerie: !!e.repeticao, escopo: 'este',
   };
 }
 
@@ -92,6 +101,7 @@ function novoRascunho(n: NovoEvento, opcoes: CalendarioOpcoes, nomes: ReadonlyMa
     lembretes: n.lembretes ?? [...(tipo?.lembretes ?? [])], lembretesMexidos: !!n.lembretes, lembrarQuem: n.lembrarQuem ?? 'pessoas',
     // o aviso de que o evento entrou é opcional: desligado até a pessoa pedir
     avisar: n.avisar ?? false, avisarQuem: n.avisarQuem ?? 'pessoas',
+    repetir: n.repetir ?? null, daSerie: false, escopo: 'este',
   };
 }
 
@@ -101,6 +111,7 @@ const paraGravar = (r: Rascunho): EventoGravarEntrada => ({
   horaInicio: r.diaInteiro ? null : r.horaInicio || null, horaFim: r.diaInteiro ? null : r.horaFim || null,
   local: r.local, observacao: r.observacao, situacao: r.situacao, lembretes: r.lembretes, lembrarQuem: r.lembrarQuem,
   avisar: r.avisar ? r.avisarQuem : null,
+  repetir: r.repetir, escopo: r.escopo,
 });
 
 /**
@@ -149,7 +160,11 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
       void recarregar();
       // o aviso de que o evento entrou sai na hora (o sininho de quem recebe já mostra)
       const avisados = !editar && r.avisar ? quantosAvisados(r, pessoasPossiveis(opcoes.paineis, r.paineis), user?.id) : null;
-      toast.push('ok', editar ? 'Evento salvo.' : `"${salvo.titulo}" está no calendário.${avisados === null ? '' : avisados ? ` O aviso saiu para ${avisados === 1 ? '1 pessoa' : `${avisados} pessoas`}.` : ' Não havia ninguém para avisar.'}`);
+      const repete = salvo.repeticao && (!editar || r.escopo === 'proximos' || !evento.repeticao)
+        ? ` ${textoDaRepeticao(salvo.repeticao, salvo.repeticao.ancora)}.` : '';
+      toast.push('ok', editar
+        ? `${evento.repeticao ? (r.escopo === 'proximos' ? 'Este evento e os próximos foram salvos.' : 'Só este evento foi salvo (os outros da repetição ficaram como estavam).') : 'Evento salvo.'}${evento.repeticao && r.escopo === 'este' ? '' : repete}`
+        : `"${salvo.titulo}" está no calendário.${repete}${avisados === null ? '' : avisados ? ` O aviso saiu para ${avisados === 1 ? '1 pessoa' : `${avisados} pessoas`}.` : ' Não havia ninguém para avisar.'}`);
       if (avisados) void qc.invalidateQueries({ queryKey: ['atendimento', 'avisos'] });
       onFechar();
     } catch (e) {
@@ -167,7 +182,11 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
       setEvento(novo);
       setRascunho(doEvento(novo));
       void recarregar();
-      toast.push('ok', s === 'feito' ? 'Marcado como feito.' : s === 'cancelado' ? 'Evento cancelado (continua no calendário, riscado).' : 'O evento voltou a agendado.');
+      // o cancelado sai do calendário (2.4.6): só aparece com "Mostrar os cancelados" marcado
+      const so = evento.repeticao ? ' Só esta data: as outras da repetição continuam.' : '';
+      toast.push('ok', s === 'feito' ? `Marcado como feito.${so}`
+        : s === 'cancelado' ? `Evento cancelado.${so} No calendário, ele só aparece com "Mostrar os cancelados" marcado.`
+          : 'O evento voltou a agendado.');
     } catch (e) {
       setErro(erroDoEvento(e));
     } finally {
@@ -175,13 +194,15 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
     }
   };
 
-  const mandarParaLixeira = async () => {
+  const mandarParaLixeira = async (escopo: EscopoDaSerie = 'este') => {
     if (!evento) return;
     setOcupado(true);
     try {
-      await api.calendario.remover(evento.id);
+      await api.calendario.remover(evento.id, escopo);
       void recarregar();
-      toast.push('ok', 'O evento foi para a lixeira (volta pela Administração › Lixeira).');
+      toast.push('ok', escopo === 'proximos'
+        ? 'Este evento e os próximos da repetição foram para a lixeira (voltam juntos pela Administração › Lixeira).'
+        : 'O evento foi para a lixeira (volta pela Administração › Lixeira).');
       onFechar();
     } catch (e) {
       setErro(erroDoEvento(e));
@@ -195,7 +216,8 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
   const duplicar = () => {
     if (!evento) return;
     const r = doEvento(evento);
-    setRascunho({ ...r, titulo: evento.titulo, situacao: 'agendado', paineis: r.paineis.filter((id) => opcoes.paineis.some((p) => p.id === id && p.ativo)) });
+    // a cópia é um evento avulso (não entra na repetição do original)
+    setRascunho({ ...r, titulo: evento.titulo, situacao: 'agendado', paineis: r.paineis.filter((id) => opcoes.paineis.some((p) => p.id === id && p.ativo)), repetir: null, daSerie: false, escopo: 'este' });
     setEvento(null);
     setErro('');
     setModo('novo');
@@ -240,10 +262,28 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
           ? <Formulario r={rascunho} mudar={(m) => { setRascunho((x) => ({ ...x, ...m })); setErro(''); }} opcoes={opcoes} nomes={nomes} existente={modo === 'editar'} onSalvar={() => void salvar()} />
           : <Detalhe e={evento!} opcoes={opcoes} nomes={nomes} />}
       </Modal>
-      {excluir && evento && (
+      {excluir && evento && !evento.repeticao && (
         <Confirmar open onClose={() => setExcluir(false)} onConfirm={() => void mandarParaLixeira()} loading={ocupado} perigoso botao="Mandar para a lixeira"
           titulo="Excluir o evento"
           texto={<>O evento <b>{evento.titulo}</b> ({textoDoPeriodo(evento)}) sai do calendário de todos e vai para a lixeira. Dá para trazer de volta pela Administração › Lixeira.</>} />
+      )}
+      {excluir && evento?.repeticao && (
+        // o evento que se repete (2.4.6): só esta data, ou ela e as próximas (a repetição para antes dela)
+        <Modal open onClose={() => setExcluir(false)} titulo="Excluir o evento que se repete" largura="max-w-md"
+          rodape={(
+            <>
+              <button type="button" className="btn-secondary mr-auto" onClick={() => setExcluir(false)} disabled={ocupado}>Voltar</button>
+              <button type="button" className="btn-secondary" onClick={() => void mandarParaLixeira('este')} disabled={ocupado} id="excluir-so-este">Só este</button>
+              <button type="button" className="btn-danger" onClick={() => void mandarParaLixeira('proximos')} disabled={ocupado} id="excluir-proximos">{ocupado ? <Spinner className="text-white" /> : 'Este e os próximos'}</button>
+            </>
+          )}>
+          <div className="flex flex-col gap-2 text-[14px]">
+            <p><b>{evento.titulo}</b> ({textoDoPeriodo(evento)}) se repete: {textoDaRepeticao(evento.repeticao, evento.repeticao.ancora).replace(/^./, (x) => x.toLocaleLowerCase('pt-BR'))}.</p>
+            <p className="text-ink-2"><b>Só este</b>: só esta data vai para a lixeira; as outras continuam.</p>
+            <p className="text-ink-2"><b>Este e os próximos</b>: esta data e as seguintes vão juntas para a lixeira, e a repetição para aqui. As de antes ficam.</p>
+            <p className="text-[12.5px] text-muted">Dá para trazer de volta pela Administração › Lixeira.</p>
+          </div>
+        </Modal>
       )}
     </>
   );
@@ -274,6 +314,11 @@ function Detalhe({ e, opcoes, nomes }: { e: EventoDoCalendario; opcoes: Calendar
           <span className="first-letter:uppercase inline-block">{quando}</span> · <span className="tnum">{textoDoHorario(e)}</span>
           {!e.diaInteiro && e.horaFim && e.horaInicio && e.horaFim <= e.horaInicio && <span className="text-muted"> (vira a noite)</span>}
         </Item>
+        {e.repeticao && (
+          <Item icone={<Repeat size={16} />} rotulo="Repete">
+            <span id="evento-repete">{textoDaRepeticao(e.repeticao, e.repeticao.ancora)}</span>
+          </Item>
+        )}
         {pessoas.length > 0 && <Item icone={<Users size={16} />} rotulo={tipo.daEquipe ? 'Quem' : 'Pessoas'}>{pessoas.join(', ')}</Item>}
         {e.clienteId && (
           <Item icone={<Building2 size={16} />} rotulo="Cliente">
@@ -362,6 +407,8 @@ function Formulario({ r, mudar, opcoes, nomes, existente, onSalvar }: {
 
   return (
     <form id="form-do-evento" className="flex flex-col gap-4" autoComplete="off" noValidate onSubmit={(e) => { e.preventDefault(); onSalvar(); }}>
+      {existente && r.daSerie && <EscopoDaEdicao r={r} mudar={mudar} />}
+
       <fieldset>
         <legend className="label">Tipo</legend>
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tipo do evento" id="evento-tipos">
@@ -419,6 +466,8 @@ function Formulario({ r, mudar, opcoes, nomes, existente, onSalvar }: {
           </div>
         )}
       </fieldset>
+
+      {(!existente || !r.daSerie || r.escopo === 'proximos') && <Repetir r={r} mudar={mudar} />}
 
       <fieldset>
         <legend className="label">Painéis <span className="font-normal text-muted">— é o painel que diz quem vê o evento</span></legend>
@@ -504,6 +553,80 @@ function Formulario({ r, mudar, opcoes, nomes, existente, onSalvar }: {
         </fieldset>
       )}
     </form>
+  );
+}
+
+/**
+ * Mudar o evento que se repete (2.4.6): só esta data, ou ela e as próximas. Vem antes de tudo, para a pessoa saber o que o
+ * Salvar vai mexer.
+ */
+function EscopoDaEdicao({ r, mudar }: { r: Rascunho; mudar: (m: Partial<Rascunho>) => void }) {
+  return (
+    <fieldset id="evento-escopo" className="rounded-lg border border-accent/40 bg-accent-soft/50 px-3 py-2.5">
+      <legend className="sr-only">O que mudar</legend>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink"><Repeat size={14} aria-hidden /> Este evento se repete. Mudar:</span>
+        <div className="inline-flex rounded-lg border border-line-strong p-0.5 bg-surface" role="radiogroup" aria-label="O que mudar">
+          {ESCOPOS_DA_SERIE.map((x) => (
+            <button key={x} type="button" role="radio" aria-checked={r.escopo === x} onClick={() => mudar({ escopo: x })} data-escopo={x}
+              className={`px-3 py-1 rounded-md text-[13px] font-semibold ${r.escopo === x ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}>
+              {NOME_DO_ESCOPO[x]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-[12px] text-ink-2 mt-1.5">
+        {r.escopo === 'este'
+          ? 'Só esta data muda; as outras da repetição ficam como estão.'
+          : 'Esta data e as seguintes mudam (as de antes ficam como estão). Aqui dá também para trocar a repetição ou pará-la.'}
+      </p>
+    </fieldset>
+  );
+}
+
+/**
+ * Repetir (2.4.6): para o que é fixo na agenda. Cada data vira um evento de verdade (o Feito, o Cancelar e os lembretes valem um
+ * por um). Até uma data (até 2 anos) ou sem data para acabar (o calendário fica sempre preenchido até 12 meses à frente).
+ */
+function Repetir({ r, mudar }: { r: Rascunho; mudar: (m: Partial<Rascunho>) => void }) {
+  const rep = r.repetir;
+  const opcoes = [null, ...FREQUENCIAS_DA_REPETICAO] as const;
+  return (
+    <fieldset id="evento-repetir">
+      <legend className="label">Repetir <span className="font-normal text-muted">— para o que é fixo na agenda</span></legend>
+      <div className="inline-flex flex-wrap rounded-lg border border-line-strong p-0.5 bg-surface" role="radiogroup" aria-label="Repetir o evento" id="evento-repetir-frequencia">
+        {opcoes.map((f) => {
+          const ativo = (rep?.frequencia ?? null) === f;
+          return (
+            <button key={f ?? 'nao'} type="button" role="radio" aria-checked={ativo} data-frequencia={f ?? 'nao'}
+              onClick={() => mudar({ repetir: f ? { frequencia: f, ate: rep?.ate ?? null } : null })}
+              className={`px-2.5 py-1 rounded-md text-[12.5px] font-semibold ${ativo ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}>
+              {f ? NOME_DA_FREQUENCIA[f] : 'Não repete'}
+            </button>
+          );
+        })}
+      </div>
+      {rep && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+              <input type="radio" name="evento-repetir-fim" className="w-4 h-4 accent-[var(--accent)]" checked={!rep.ate} onChange={() => mudar({ repetir: { ...rep, ate: null } })} id="evento-repetir-sem-fim" />
+              Sem data para acabar
+            </label>
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+              <input type="radio" name="evento-repetir-fim" className="w-4 h-4 accent-[var(--accent)]" checked={!!rep.ate} onChange={() => mudar({ repetir: { ...rep, ate: rep.ate ?? somarDias(r.inicio, 90) } })} id="evento-repetir-com-fim" />
+              Até
+            </label>
+            <input type="date" className="input py-1.5 w-[160px]" value={rep.ate ?? ''} min={r.inicio} disabled={!rep.ate} aria-label="Até quando repete" id="evento-repetir-ate"
+              onChange={(e) => e.target.value && mudar({ repetir: { ...rep, ate: e.target.value } })} />
+          </div>
+          <p className="text-[12px] text-muted" id="evento-repetir-texto">
+            <b className="text-ink-2">{textoDaRepeticao(rep, r.inicio)}.</b> Cada data vira um evento: o Feito, o Cancelar e os lembretes valem um por um.
+            {!rep.ate && ' O calendário fica sempre preenchido até 12 meses à frente.'}
+          </p>
+        </div>
+      )}
+    </fieldset>
   );
 }
 

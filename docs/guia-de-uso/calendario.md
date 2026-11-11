@@ -43,7 +43,8 @@ navegador, o jeito de ver que você usou por último.
 - **Tipos** (2.1): o botão abre a lista dos tipos (Visita, Folga…), cada um com a bolinha da cor dele (é
   a legenda das cores); marque os que quer ver. Como no **Painéis**, o botão mostra quantos estão marcados, e
   nenhum marcado (ou todos) mostra os eventos de todos os tipos.
-- **Mostrar os cancelados**: desmarcado, os cancelados somem.
+- **Mostrar os cancelados**: desde o 2.4.6, começa desmarcada, e o evento cancelado não aparece. Marcada, ele aparece
+  riscado.
 
 Os filtros ficam no endereço da página: dá para mandar o link do jeito que está. No celular, eles ficam
 atrás do botão **Filtros**.
@@ -66,6 +67,24 @@ atrás do botão **Filtros**.
 9. **Pôr no calendário**.
 
 A folga e o home office (os tipos "da equipe") pedem as pessoas e não mostram o cliente nem o local.
+
+## O evento que se repete (2.4.6)
+
+Para o que é fixo na agenda (a reunião de toda segunda, o plantão de todo mês):
+
+- No evento novo, **Repetir**: **Não repete**, **Todo dia**, **Todo dia útil** (de segunda a sexta), **Toda semana** (no
+  mesmo dia da semana) ou **Todo mês** (no mesmo dia; no mês que não tem o dia 31, no último dia). Embaixo, **Sem data para
+  acabar** ou **Até** uma data (até 2 anos depois do primeiro dia).
+- **Cada data é um evento de verdade**: o **Feito**, o **Cancelar** e os lembretes valem um por um. Sem data para acabar, o
+  calendário fica sempre preenchido até 12 meses à frente. O evento que se repete tem o ícone de repetir.
+- A duração cabe no intervalo: o que se repete todo dia dura um dia só; toda semana, até 7 dias; todo mês, até 28.
+- Um evento que já existe também passa a se repetir, pelo **Editar**.
+- **Editar** um evento que se repete pergunta antes o que mudar: **Só este** (só esta data) ou **Este e os próximos** (ela e
+  as seguintes; as de antes ficam como estão). Mudando só a hora ou o título, cada data fica no dia dela. Trocando a
+  repetição, as datas canceladas e as feitas ficam no dia delas, e as outras andam para a regra nova. **Não repete** em
+  "Este e os próximos" para a repetição nele.
+- **Excluir** um evento que se repete dá as mesmas duas opções. Em **Este e os próximos**, a repetição para nele, e as datas
+  que vão juntas para a lixeira são uma linha só lá. Restaurando, elas voltam juntas e a repetição volta a ser como era.
 
 ## Os lembretes
 
@@ -103,8 +122,9 @@ Cada evento lembra antes de acontecer, no **sininho** e no **WhatsApp** de quem 
 
 ## Pelo chamado
 
-Na ficha do chamado, o **Na agenda** mostra as visitas e viradas ligadas a ele. O **Agendar** abre a
-janela já com o chamado, o cliente, o painel e o responsável: escolha o tipo e o dia.
+Na ficha do chamado, o **Na agenda** mostra as visitas e viradas ligadas a ele (o que se repete, numa linha só; o
+cancelado, só com **Mostrar os cancelados**). O **Agendar** abre a janela já com o chamado, o cliente, o painel e o
+responsável: escolha o tipo e o dia.
 
 No **Meu dia**, o **Hoje na agenda** mostra o que está marcado para hoje (os seus primeiro, com "com
 você") e quem está fora do escritório.
@@ -113,8 +133,8 @@ você") e quem está fora do escritório.
 
 Clique no evento para abrir:
 
-- **Feito** quando aconteceu; **Cancelar o evento** quando não vai acontecer (ele fica riscado no
-  calendário); **Voltar a agendado** desfaz.
+- **Feito** quando aconteceu; **Cancelar o evento** quando não vai acontecer (ele sai do calendário e fica guardado; com
+  **Mostrar os cancelados**, aparece riscado); **Voltar a agendado** desfaz.
 - **Editar** muda tudo. Os painéis que você não vê ficam como estavam.
 - **Duplicar** abre um evento novo igual, para você trocar o dia.
 - **Excluir** manda para a lixeira. Ele volta pela Administração › Lixeira (Evento do calendário).

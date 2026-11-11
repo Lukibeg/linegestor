@@ -261,12 +261,12 @@ function secoesDosCampos(painel: Painel, campos: readonly CampoPersonalizado[], 
   return [
     {
       chave: 'classificacao', grupo: null, blocos: blocos(semGrupo),
-      titulo: painel.tipo === 'vendas' ? 'Na lateral (com a negociação)' : 'Na Classificação (a lateral)',
-      dica: 'Sem grupo: ficam no cartão da Classificação; o texto longo, junto do relato.',
+      titulo: painel.tipo === 'vendas' ? 'Na lateral (com a negociação)' : 'Nos Detalhes (a lateral)',
+      dica: 'Sem grupo: ficam no cartão Detalhes, na lateral; o texto longo, junto do relato.',
     },
     ...gruposDoPainel(painel.ajustes.partes, campos).map((g) => ({
       chave: `grupo:${g.nome}`, grupo: g, blocos: blocos(g.campos), titulo: g.nome,
-      dica: g.lugar === 'lateral' ? 'Um cartão na lateral, abaixo da Classificação.' : 'Um cartão no meio da ficha, com um bloco por produto.',
+      dica: g.lugar === 'lateral' ? 'Um cartão na lateral, abaixo dos Detalhes.' : 'Um cartão no meio da ficha, com um bloco por produto.',
     })),
   ];
 }
@@ -300,7 +300,7 @@ function CamposDoPainel({ painel, campos, onNovo, onEditar }: {
       <header className="px-3 py-2.5 sm:px-4 border-b border-line flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="font-display font-semibold text-[15px]" id="campos-painel-titulo">Os campos do painel {painel.nome}</h3>
-          <p className="text-[12.5px] text-muted">Os que a equipe cria, separados como ficam na ficha: os da Classificação e os de cada grupo, com um bloco por produto. Aparecem na ficha e no Abrir chamado nesta ordem.</p>
+          <p className="text-[12.5px] text-muted">Os que a equipe cria, separados como ficam na ficha: os dos Detalhes (a lateral) e os de cada grupo, com um bloco por produto. Aparecem na ficha e no Abrir chamado nesta ordem.</p>
         </div>
         <button type="button" className="btn-primary btn-sm" id="campos-novo" onClick={() => onNovo(null, null)} disabled={cheio}
           title={cheio ? `Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos` : undefined}>
@@ -436,7 +436,7 @@ function GruposDeCampos({ painel, campos }: { painel: Painel; campos: CampoPerso
         </span>
       </header>
       {!grupos.length ? (
-        <p className="px-4 py-3.5 text-[13px] text-muted" id="grupos-vazio">Nenhum grupo: os campos ficam todos na Classificação. Um grupo junta os campos de uma parte do trabalho (ex.: Curadoria, Detalhes da proposta).</p>
+        <p className="px-4 py-3.5 text-[13px] text-muted" id="grupos-vazio">Nenhum grupo: os campos ficam todos nos Detalhes, na lateral. Um grupo junta os campos de uma parte do trabalho (ex.: Curadoria, Detalhes da proposta).</p>
       ) : (
         <ul className="divide-y divide-line" id="grupos-lista">
           {grupos.map((g, i) => (
@@ -517,7 +517,7 @@ function JanelaGrupo({ grupo, outros, onFechar, onSalvar }: {
               <label key={l} className={`flex items-start gap-2 rounded-lg border p-2.5 cursor-pointer ${lugar === l ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2'}`}>
                 <input type="radio" name="grupo-lugar" className="mt-1 accent-[var(--accent)]" checked={lugar === l} onChange={() => setLugar(l)} />
                 <span className="text-[13.5px]"><b className="font-semibold">{NOME_LUGAR_DO_GRUPO[l]}</b>
-                  <span className="block text-[12px] text-muted">{l === 'meio' ? 'Um cartão largo, com um bloco por produto (a Curadoria, os Detalhes da proposta).' : 'Um cartão na coluna do lado, abaixo da Classificação.'}</span>
+                  <span className="block text-[12px] text-muted">{l === 'meio' ? 'Um cartão largo, com um bloco por produto (a Curadoria, os Detalhes da proposta).' : 'Um cartão na coluna do lado, abaixo dos Detalhes.'}</span>
                 </span>
               </label>
             ))}
@@ -728,7 +728,7 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Rotulo rotulo="Grupo" id="campo-parte" dica="O cartão da ficha em que o campo fica. Grupo novo: em Os grupos de campos.">
             <select className="input" id="campo-parte" value={grupos.find((g) => mesmoGrupo(g.nome, f.parte))?.nome ?? f.parte} onChange={(e) => mudar({ parte: e.target.value })}>
-              <option value="">{painel.tipo === 'vendas' ? 'Sem grupo (na lateral, com a negociação)' : 'Sem grupo (na Classificação)'}</option>
+              <option value="">{painel.tipo === 'vendas' ? 'Sem grupo (na lateral, com a negociação)' : 'Sem grupo (nos Detalhes, na lateral)'}</option>
               {grupos.map((g) => <option key={g.nome} value={g.nome}>{g.nome} ({NOME_LUGAR_DO_GRUPO[g.lugar].toLowerCase()})</option>)}
               {f.parte && !grupos.some((g) => mesmoGrupo(g.nome, f.parte)) && <option value={f.parte}>{f.parte}</option>}
             </select>

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
+import { diaComAno } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import type { Circuit } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -28,10 +29,12 @@ export function CircuitosLista() {
   const q = sp.get('q') ?? ''; const carrierId = sp.get('operadora') ?? ''; const ownerClientId = sp.get('titular') ?? ''; const page = Number(sp.get('p') ?? 1);
   // o interruptor dos links de terceiros vale para as DUAS abas e fica no endereço, como os filtros
   const terceiros = sp.get('terceiros') === '1';
+  // o "Mostrar cancelados" (2.4.6): o link cancelado fica guardado, fora da lista, até ligar (vale para as duas abas, como o de cima)
+  const cancelados = sp.get('cancelados') === '1';
   const tudo = sp.get('tudo') === '1';
   const tamanho = tudo ? TODOS : 50;
   const numero = contarDe(tudo ? 1 : page, tamanho); // a contagem segue pela lista toda, não recomeça a cada página
-  const filtros = { q, carrierId, ownerClientId, includeThirdParty: terceiros };
+  const filtros = { q, carrierId, ownerClientId, includeThirdParty: terceiros, includeCancelled: cancelados };
   const temFiltro = !!(q || carrierId || ownerClientId);
   const [novo, setNovo] = useState(false);
   const o = useOrdenacao('name');
@@ -42,11 +45,12 @@ export function CircuitosLista() {
     const n = new URLSearchParams();
     if (a !== 'circuitos') n.set('aba', a);
     if (terceiros) n.set('terceiros', '1');
+    if (cancelados) n.set('cancelados', '1');
     setSp(n, { replace: true });
   };
   const carriers = useQuery({ queryKey: ['catalog', 'carriers'], queryFn: () => api.admin.catalog('carriers') });
   // só quem é titular de algum circuito da lista (com o interruptor, entram os de links de terceiros)
-  const titulares = useQuery({ queryKey: ['circuit-owners', terceiros], queryFn: () => api.circuits.owners(terceiros) });
+  const titulares = useQuery({ queryKey: ['circuit-owners', terceiros, cancelados], queryFn: () => api.circuits.owners(terceiros, cancelados) });
   // os cartões do topo usam os MESMOS filtros da lista
   const resumo = useQuery({ queryKey: ['circuits', 'summary', filtros], queryFn: () => api.circuits.summary(filtros) });
   const lista = useQuery({ queryKey: ['circuits', filtros, page, tudo, o.ord, o.dir], queryFn: () => api.circuits.list({ ...filtros, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }), enabled: aba === 'circuitos' });
@@ -72,6 +76,7 @@ export function CircuitosLista() {
           <select className="input w-auto" value={ownerClientId} onChange={(e) => set('titular', e.target.value || null)}><option value="">Todos os titulares</option>{titulares.data?.map((t) => <option key={t.id} value={t.id}>{t.name}{t.isInternal ? ' (interna)' : ''}</option>)}</select>
           <span className="flex-1" />
           <Toggle checked={terceiros} onChange={(v) => set('terceiros', v ? '1' : null)} label="Habilitar links de terceiros" />
+          <Toggle checked={cancelados} onChange={(v) => set('cancelados', v ? '1' : null)} label="Mostrar cancelados" />
         </div>
         {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum circuito" texto="Cadastre o feixe contratado junto à operadora." /> : (
           <div className="card overflow-x-auto"><table className="table">
@@ -81,8 +86,8 @@ export function CircuitosLista() {
               <Th o={o} col="free" align="right">Livres</Th><Th o={o} col="uso">Ocupação</Th><Th o={o} col="monthlyValueCents" align="right">Valor/mês</Th>
             </tr></thead>
             <tbody>{lista.data.items.map((c, i) => (
-              <tr key={c.id} className="cursor-pointer" onClick={() => nav(`/circuitos/${c.id}`)}>
-                <TdN n={numero(i)} /><td className="font-medium">{c.name} {c.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</td><td>{c.carrierName ?? '—'}</td><td className="font-mono tnum">{c.code}</td><td className="font-mono tnum whitespace-nowrap">{c.keyNumber ? didFormatado(c.keyNumber) : <span className="text-muted">—</span>}</td><td className="text-ink-2">{c.ownerName ?? '—'}</td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.dids.total}</td><td className="text-right tnum">{c.dids.free}</td><td><Ocupacao total={c.dids.total} assigned={c.dids.assigned} /></td><td className="text-right tnum">{reais(c.monthlyValueCents)}</td>
+              <tr key={c.id} className={`cursor-pointer ${c.cancelamento ? 'text-muted' : ''}`} onClick={() => nav(`/circuitos/${c.id}`)} data-cancelado={c.cancelamento ? '1' : undefined}>
+                <TdN n={numero(i)} /><td className="font-medium">{c.name} {c.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}{c.cancelamento && <> <Chip tone="bad" title={`Cancelado desde ${diaComAno(c.cancelamento.dia)}${c.cancelamento.motivo ? `: ${c.cancelamento.motivo}` : ''}`}>cancelado em {diaComAno(c.cancelamento.dia)}</Chip></>}</td><td>{c.carrierName ?? '—'}</td><td className="font-mono tnum">{c.code}</td><td className="font-mono tnum whitespace-nowrap">{c.keyNumber ? didFormatado(c.keyNumber) : <span className="text-muted">—</span>}</td><td className="text-ink-2">{c.ownerName ?? '—'}</td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.dids.total}</td><td className="text-right tnum">{c.dids.free}</td><td><Ocupacao total={c.dids.total} assigned={c.dids.assigned} /></td><td className="text-right tnum">{reais(c.monthlyValueCents)}</td>
               </tr>))}</tbody></table></div>
         )}
         {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} tudo={tudo} onTudo={(v) => set('tudo', v ? '1' : null)} />}

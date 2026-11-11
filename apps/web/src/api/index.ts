@@ -5,7 +5,7 @@
 import type * as T from './types.js';
 import type {
   PaginaDeMovimentacoes,
-  AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
+  AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, EscopoDaSerie, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
   AoMoverEntrada, LeituraDoHelenaNaTela, OQueAEtapaFaz, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
   AjustesDaNiaAcoesEntrada, CatalogoDaNia, NiaAcoesTela, NiaAplicarEntrada, NiaProporEntrada, PropostaDaNia, TesteDaNia,
@@ -43,7 +43,8 @@ export type Api = {
     saveLogo(id: string, dataUrl: string): Promise<T.ClientFull>;
     removeLogo(id: string): Promise<T.ClientFull>;
     endModule(id: string, productCode: string, moduleCode: string): Promise<T.ClientFull>;
-    dids(id: string): Promise<T.Page<T.Did>>;
+    /** os números do cliente; os de um link cancelado (2.4.6) só com `incluirCancelados` (a ficha esconde até a pessoa pedir) */
+    dids(id: string, incluirCancelados?: boolean): Promise<T.Page<T.Did>>;
     devices(id: string): Promise<{ devices: T.Page<T.Device> }>;
     history(id: string): Promise<T.Page<T.AuditItem>>;
     units(id: string): Promise<T.ClientUnit[]>;
@@ -66,14 +67,19 @@ export type Api = {
   circuits: {
     list(q: Record<string, unknown>): Promise<T.Page<T.Circuit>>;
     summary(q?: Record<string, unknown>): Promise<T.CircuitSummary>;
-    options(): Promise<Array<{ id: string; name: string; code: string; carrierName: string | null }>>;
-    /** Quem é titular de pelo menos um circuito (para o filtro "Titular") */
-    owners(includeThirdParty: boolean): Promise<T.Option[]>;
+    /** A lista curta para os seletores; o link cancelado (2.4.6) só com `incluirCancelados` (nos filtros), marcado */
+    options(incluirCancelados?: boolean): Promise<Array<{ id: string; name: string; code: string; carrierName: string | null; cancelled?: boolean }>>;
+    /** Quem é titular de pelo menos um circuito (para o filtro "Titular"); o do link cancelado só com `includeCancelled` */
+    owners(includeThirdParty: boolean, includeCancelled?: boolean): Promise<T.Option[]>;
     get(id: string): Promise<T.Circuit>;
     create(d: Record<string, unknown>): Promise<T.Circuit>;
     update(id: string, d: Record<string, unknown>): Promise<T.Circuit>;
     remove(id: string): Promise<{ ok: boolean }>;
     createRange(id: string, d: Record<string, unknown>): Promise<{ created: number; first: string; last: string }>;
+    /** Cancelar o link (2.4.6): fica guardado, com o dia e o motivo, e sai das listas até "Mostrar cancelados" */
+    cancelar(id: string, d: { dia: string; motivo: string }): Promise<T.Circuit>;
+    /** Reativar o link cancelado (volta às listas) */
+    reativar(id: string): Promise<T.Circuit>;
     /** As movimentações dos circuitos e dos DIDs (2.4.1): o que mudou, quem e quando, com os filtros */
     movimentacoes(q: Record<string, unknown>): Promise<PaginaDeMovimentacoes>;
   };
@@ -465,8 +471,8 @@ export type Api = {
     alterar(id: string, d: EventoGravarEntrada): Promise<EventoDoCalendario>;
     /** o Feito, o Cancelar e o voltar a Agendado, sem abrir a janela */
     situacao(id: string, situacao: SituacaoDoEvento): Promise<EventoDoCalendario>;
-    /** vai para a lixeira (volta pela Administração › Lixeira) */
-    remover(id: string): Promise<{ ok: boolean }>;
+    /** vai para a lixeira (volta pela Administração › Lixeira); no que se repete (2.4.6), só este ou este e os próximos */
+    remover(id: string, escopo?: EscopoDaSerie): Promise<{ ok: boolean }>;
     /** só quem cuida dos chamados; o tipo com evento não sai: desativa */
     salvarTipos(tipos: TipoDeEvento[]): Promise<{ tipos: TipoDeEvento[] }>;
   };

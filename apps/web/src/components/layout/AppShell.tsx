@@ -7,9 +7,10 @@
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Técnico** (2.0.2: os
- * Circuitos e DIDs e o Inventário), **Suporte** (o Painel do Suporte — o atalho para o quadro dele, 2.0.2 —,
- * o Meu dia, 2.0.2, os Projetos, os Relatórios — desde o 2.1, os do painel Suporte, sobre os chamados do
- * Gestor — e o Legado do Helena, os relatórios dos tickets do LineChat, que eram os Relatórios até o 2.0.4),
+ * Circuitos e DIDs e o Inventário; desde o 2.4.6, os Projetos), **Suporte** (o Painel do Suporte — o atalho para o
+ * quadro dele, 2.0.2 —, o da Implantação, 2.3, e o do Dev, o painel Desenvolvimento, 2.4.6, o Meu dia, 2.0.2, e os
+ * Relatórios — desde o 2.1, os do painel Suporte, sobre os chamados do Gestor; o Legado do Helena, os relatórios dos
+ * tickets do LineChat, saiu do menu no 2.4.6 e abre pelo botão no alto deles),
  * **Comercial** (2.0.1: o Painel do Comercial — o atalho para o painel de Vendas — e o relatório dele, de
  * quem tem a permissão do Comercial; 2.0.2: o Simulador) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
  * Exportar foi para dentro da Administração. Os
@@ -21,7 +22,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, History, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
+  BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, CodeXml, Handshake, Headset, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
   Menu, Moon, Rocket, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -32,7 +33,7 @@ import { fundoDaJanela, useLerOQuadroAntes } from '../../pages/atendimento/comum
 import { AvisosQueChegam } from '../../pages/atendimento/AvisosQueChegam.js';
 import { useAuth } from '../../lib/auth.js';
 import { lembrarPainelDoComercial, painelLembradoDoComercial } from '../../lib/comercial.js';
-import { PAINEL_DO_SUPORTE, painelDaImplantacao } from '../../pages/atendimento/Suporte.js';
+import { PAINEL_DO_DESENVOLVIMENTO, PAINEL_DO_SUPORTE, painelDaImplantacao } from '../../pages/atendimento/Suporte.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
 
@@ -57,30 +58,33 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   // o técnico (2.0.2, 20/10, num comentário na prévia: "quero q vc faça uma nova aba de técnico e esses 2
   // pontos vao ficar dentro dele"): os circuitos com a numeração (0010) e o inventário dos aparelhos, que
   // moravam no alto do menu. Logo acima do Suporte (no mesmo dia, outro comentário: "quero q o técnico fique
-  // acima de suporte"; a primeira versão o punha abaixo)
+  // acima de suporte"; a primeira versão o punha abaixo). Desde o 2.4.6, também os Projetos (as tarefas que percorrem
+  // vários clientes), que moravam no Suporte (o Luan, 10/11: "bote o projetos dentro de tecnico")
   {
     grupo: 'tecnico', label: 'Técnico', icon: Wrench, itens: [
       { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
       { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
+      { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
     ],
   },
   // o suporte: o Painel do Suporte (2.0.2, o atalho para o quadro do painel Suporte, "como fizemos no
-  // comercial"), o Meu dia (2.0.2: "o meu dia pode ter um botão aqui tbm"), os projetos (as tarefas que
-  // percorrem vários clientes), os Relatórios e o Legado do Helena. Desde o 2.1 (decisão 0055), os Relatórios
-  // são os do painel Suporte, sobre os chamados do Gestor (a vista Relatórios do painel); os do Helena — os
-  // tickets do LineChat, a cópia de leitura do 1.3, com a aba Hoje, o Período e os 20 relatórios do 1.7 — viraram
-  // o Legado do Helena (o pedido do Luan, 22/10: "vai ter um legado, que vai ser o antigo, e vai ter um novo").
-  // (13/10, os pedidos do Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos Projetos, "pode
-  // ficar dentro de suporte também")
+  // comercial"), o Meu dia (2.0.2: "o meu dia pode ter um botão aqui tbm") e os Relatórios. Desde o 2.1 (decisão
+  // 0055), os Relatórios são os do painel Suporte, sobre os chamados do Gestor (a vista Relatórios do painel); os do
+  // Helena — os tickets do LineChat, a cópia de leitura do 1.3, com a aba Hoje, o Período e os 20 relatórios do 1.7 —
+  // viraram o Legado do Helena (o pedido do Luan, 22/10: "vai ter um legado, que vai ser o antigo, e vai ter um novo").
+  // No 2.4.6, o Legado saiu do menu (o Luan, 10/11: "tire o legado helena, o botão no caso, mas que ainda vou poder
+  // acessar acessando o painel novo e clicando no botão que já existe"): abre pelo botão Legado do Helena, no alto
+  // dos Relatórios do Suporte, e nas telas dele o menu marca os Relatórios. Os Projetos foram para o Técnico.
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/suporte', label: 'Painel do Suporte', icon: Kanban, perm: 'support.read' },
       // 2.3, o Luan: "eu quero q o painel de implantação tenha um botão dentro do menu suporte como o painel do suporte"
       { to: '/suporte/implantacao', label: 'Painel da Implantação', icon: Rocket, perm: 'support.read' },
+      // 2.4.6, o Luan: "faça um botão dentro do inglinegestao para o painel do dev, dentro do menu suporte mesmo". O nome é o
+      // dele, e cabe no menu ("Painel do Desenvolvimento" ficava cortado); o atalho abre o painel Desenvolvimento (a sigla DEV)
+      { to: '/suporte/desenvolvimento', label: 'Painel do Dev', icon: CodeXml, perm: 'support.read' },
       { to: '/atendimento/meu-dia', label: 'Meu dia', icon: SunMedium, perm: 'support.read' },
-      { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/suporte/relatorios', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
-      { to: '/chamados', label: 'Legado do Helena', icon: History, perm: 'support.read' },
     ],
   },
   // o Comercial (2.0.1, 19/10: "uma aba lateral só para o comercial… com acesso direto ao painel do comercial
@@ -136,6 +140,11 @@ export function parteDoPainel(pathname: string, search: string, painel: { id: st
 }
 /** A tela aberta é do painel do Suporte (qualquer parte)? */
 export const eDoSuporte = (pathname: string, search: string, sigla: string | null): boolean => parteDoSuporte(pathname, search, sigla) !== null;
+/**
+ * A tela aberta é do Legado do Helena (`/chamados`: a aba Hoje, o Período e os relatórios de lá)? Desde o 2.4.6 ele não tem
+ * item no menu (abre pelo botão no alto dos Relatórios do Suporte): nas telas dele, o menu marca os Relatórios do Suporte.
+ */
+export const eDoLegado = (pathname: string): boolean => !!matchPath({ path: '/chamados', end: false }, pathname);
 /** Quem decide se o item está marcado (o do Comercial olha o painel aberto, não o endereço). */
 type Ativo = (i: ItemDoMenu) => boolean;
 
@@ -233,18 +242,24 @@ export function AppShell({ children }: { children: ReactNode }) {
   // o painel da implantação (2.3): na tela dele, o menu marca o Painel da Implantação
   const implantacao = useMemo(() => painelDaImplantacao(opcoes.data?.paineis ?? []), [opcoes.data]);
   const doImplantacao = suporte && !doComercial && !doSuporte && implantacao ? parteDoPainel(pathname, search, { id: implantacao.id, sigla: implantacao.sigla }) : null;
+  // o painel do Desenvolvimento (2.4.6): na tela dele, o menu marca o Painel do Dev. Como o do Suporte, pelo id
+  // (o endereço marca antes de as opções chegarem) e pela sigla dele (a ficha DEV-…)
+  const siglaDoDesenvolvimento = opcoes.data?.paineis.find((p) => p.id === PAINEL_DO_DESENVOLVIMENTO)?.sigla ?? null;
+  const doDesenvolvimento = suporte && !doComercial && !doSuporte && !doImplantacao
+    ? parteDoPainel(pathname, search, { id: PAINEL_DO_DESENVOLVIMENTO, sigla: siglaDoDesenvolvimento }) : null;
   // o painel de Vendas aberto fica lembrado: o Painel do Comercial e o Relatórios do menu voltam para ele
   useEffect(() => { if (doComercial) lembrarPainelDoComercial(doComercial.painelId); }, [doComercial?.painelId]);
   const ativo = useCallback<Ativo>((i) => {
     if (i.to === '/comercial') return doComercial?.parte === 'negociacoes';
     if (i.to === '/comercial/relatorio') return doComercial?.parte === 'relatorio';
     if (i.to === '/suporte') return doSuporte === 'painel';
-    if (i.to === '/suporte/relatorios') return doSuporte === 'relatorios';
+    if (i.to === '/suporte/relatorios') return doSuporte === 'relatorios' || eDoLegado(pathname);
     if (i.to === '/suporte/implantacao') return !!doImplantacao;
+    if (i.to === '/suporte/desenvolvimento') return !!doDesenvolvimento;
     // o Meu dia mora dentro de /atendimento: lá, o item marcado é o dele, e não Painéis
-    if (i.to === '/atendimento') return !doComercial && !doSuporte && !doImplantacao && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
+    if (i.to === '/atendimento') return !doComercial && !doSuporte && !doImplantacao && !doDesenvolvimento && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
     return ehAtivo(i, pathname);
-  }, [doComercial?.parte, doSuporte, doImplantacao, pathname]);
+  }, [doComercial?.parte, doSuporte, doImplantacao, doDesenvolvimento, pathname]);
   const { abertos, alternar } = useGruposAbertos(items.filter(ehGrupo), ativo);
   const sair = async () => { await logout(); nav('/entrar'); };
   // nos chamados, a tela usa a largura toda e a margem é menor: o quadro e a ficha precisam de lugar
@@ -323,12 +338,14 @@ type Contagem = (i: ItemDoMenu) => { n: number; tom: 'accent' | 'signal'; titulo
 
 /**
  * O Painel do Suporte e o Painel do Comercial do menu (2.1.2): o mouse parado em cima já lê o quadro, que abre pronto.
- * O do Comercial é o painel de Vendas lembrado (ou o primeiro, pelas opções já lidas); os outros itens, nada.
+ * O do Comercial é o painel de Vendas lembrado (ou o primeiro, pelas opções já lidas); desde o 2.4.6, o do Desenvolvimento
+ * também; os outros itens, nada.
  */
 function useQuadroDoAtalho(to: string) {
   const qc = useQueryClient();
   const lerOQuadro = useLerOQuadroAntes();
   if (to === '/suporte') return lerOQuadro(PAINEL_DO_SUPORTE);
+  if (to === '/suporte/desenvolvimento') return lerOQuadro(PAINEL_DO_DESENVOLVIMENTO);
   if (to !== '/comercial') return {};
   const vendas = qc.getQueryData<{ paineis: Array<{ id: string; tipo: string; ativo: boolean }> }>(['atendimento', 'opcoes'])?.paineis.filter((p) => p.tipo === 'vendas' && p.ativo) ?? [];
   const lembrado = painelLembradoDoComercial();

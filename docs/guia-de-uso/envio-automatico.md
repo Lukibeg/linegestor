@@ -25,7 +25,7 @@ Vale para a equipe toda e fica na auditoria. Os números de cima vão sempre. O 
 de um cliente escolhido). O PDF segue a ordem das telas: os gráficos na arrumação da Visão geral (com a largura e a pizza
 ou as barras que a equipe escolheu) e os relatórios na ordem do Organizar.
 
-No **Legado do Helena** (Suporte › Legado do Helena), o aviãozinho continua marcando para o envio do Legado.
+No **Legado do Helena** (Suporte › Relatórios › Legado do Helena), o aviãozinho continua marcando para o envio do Legado.
 
 ## 2. Criar e ligar um envio
 

@@ -27,3 +27,7 @@ mostra os seus números.
 **Consequência.** Os números da ficha do cliente podem ficar **maiores** que os do Painel, e isso é
 correto: são perguntas diferentes. O Painel e a tela de Circuitos são o controle da VoiceNet; a
 ficha é o retrato do cliente.
+
+**Revisto no 2.4.6 (10/11/2026).** O **link cancelado** (a 0062) segue a mesma regra de exibição: ele e os números dele
+somem da lista de Circuitos, da Numeração, das Movimentações, dos cartões e do Painel até alguém ligar **Mostrar
+cancelados**. Diferente do de terceiro, ele sai também da **ficha do cliente**: o cliente já não tem esses números.

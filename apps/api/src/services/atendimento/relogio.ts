@@ -26,7 +26,7 @@ import {
 } from '@gestor/shared';
 import { AppError } from '../../plugins/errors.js';
 import * as audit from '../audit.js';
-import { mandarLembretes } from '../calendario.js';
+import { estenderRepeticoes, mandarLembretes } from '../calendario.js';
 import { avisarEquipe, avisarObservadores } from './avisos.js';
 import { carregarContexto, cartaoDaLinha, lerPrazos, registrarEvento, type Ator, type Contexto, type LinhaChamado, type Parentes } from './contexto.js';
 import { filhosDoChamado } from './leitura.js';
@@ -148,6 +148,9 @@ async function nascerAgendados(app: FastifyInstance, agora: Date, volta: VoltaDo
 // =====================================================================
 
 async function lembretesDoCalendario(app: FastifyInstance, agora: Date, volta: VoltaDoRelogio) {
+  // as séries sem data para acabar (2.4.6) ganham as datas novas antes: o lembrete de amanhã já encontra o evento
+  const nasceram = await estenderRepeticoes(app.db, agora);
+  if (nasceram) app.log.info({ eventos: nasceram }, 'calendário: as repetições ganharam datas novas');
   const r = await mandarLembretes(app, agora);
   volta.lembretes += r.lembretes;
   volta.erros += r.erros;

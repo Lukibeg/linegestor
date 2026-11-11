@@ -15,6 +15,7 @@ import {
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
+import { foraDeLinkCancelado } from '../dids.js';
 import { carregarContexto, podeVerPainel, type Ator, type Contexto } from './contexto.js';
 
 /** O painel de Gestão pelo id ou pela sigla, conferindo se a pessoa o vê. */
@@ -135,7 +136,7 @@ async function nomesEClientes(app: FastifyInstance, ctx: Contexto, clientesDosCh
   const db = app.db;
   const [porDids, porAparelhos, assinaturas] = await Promise.all([
     db.select({ id: dids.clientId, n: sql<number>`count(*)::int` }).from(dids)
-      .where(and(inArray(dids.clientId, ids), isNull(dids.deletedAt))).groupBy(dids.clientId),
+      .where(and(inArray(dids.clientId, ids), isNull(dids.deletedAt), foraDeLinkCancelado)).groupBy(dids.clientId),
     db.select({ id: devices.clientId, n: sql<number>`count(*)::int` }).from(devices)
       .where(and(inArray(devices.clientId, ids), isNull(devices.deletedAt), sql`coalesce(${devices.currentModality}, '') <> 'venda'`)).groupBy(devices.clientId),
     db.selectDistinct({ clienteId: subscriptions.clientId, nome: products.name, ordem: products.sortOrder })

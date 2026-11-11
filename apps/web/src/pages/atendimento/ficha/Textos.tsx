@@ -43,7 +43,8 @@ const DO_PROBLEMA: Bloco[] = [
 export const ALVO_DO_CAMPO: Record<string, string> = {
   relato: 'campo-relato', descricao: 'campo-descricao', solucao: 'campo-solucao', causa: 'campo-causa', validacao: 'campo-validacao',
   cliente: 'campo-cliente', contato: 'campo-contato', assunto: 'campo-assunto', tipo: 'campo-tipo', gravidade: 'campo-gravidade', alcance: 'campo-alcance',
-  prioridade: 'campo-prioridade', produto: 'campo-produtos', operadora: 'campo-operadoras', responsavel: 'campo-responsavel',
+  // a prioridade mora no botão Classificação da barra (2.4.6): o aviso leva até ele e abre
+  prioridade: 'acao-classificacao', produto: 'campo-produtos', operadora: 'campo-operadoras', responsavel: 'campo-responsavel',
   checklist: 'campo-checklist', tempo: 'campo-tempo',
 };
 
@@ -55,6 +56,12 @@ export function irParaOCampo(campo: string) {
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.classList.add('ring-2', 'ring-signal');
   window.setTimeout(() => el.classList.remove('ring-2', 'ring-signal'), 1600);
+  // o campo que mora num menu da barra (a prioridade, no botão Classificação, 2.4.6): o menu abre, com o foco na prioridade
+  // (e não na busca das etiquetas, onde o menu põe o foco ao abrir)
+  if (el.getAttribute('aria-haspopup') && el.getAttribute('aria-expanded') === 'false') {
+    el.click();
+    if (campo === 'prioridade') window.setTimeout(() => document.getElementById('classificacao-prioridade')?.focus({ preventScroll: true }), 350);
+  }
 }
 
 /**

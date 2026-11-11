@@ -1,7 +1,7 @@
 /** Circuitos. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CircuitoAtualizarSchema, CircuitoGravarSchema, CircuitoListarSchema, DidCriarFaixaSchema, MovimentacoesDosCircuitosSchema, PaginacaoSchema, Booleano } from '@gestor/shared';
+import { CancelarCircuitoSchema, CircuitoAtualizarSchema, CircuitoGravarSchema, CircuitoListarSchema, DidCriarFaixaSchema, MovimentacoesDosCircuitosSchema, PaginacaoSchema, Booleano, movimentacaoDoCancelamento } from '@gestor/shared';
 import * as svc from '../services/circuits.js';
 import * as didsSvc from '../services/dids.js';
 import * as mov from '../services/movimentacoesCircuitos.js';
@@ -15,19 +15,20 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/summary', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Resumo (circuitos, canais, valor mensal, numeração) com os MESMOS filtros da lista', querystring: CircuitoListarSchema.partial() } },
     async (req) => svc.summary(app.db, req.query));
 
-  app.get('/owners', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Titulares que têm pelo menos um circuito (para o filtro)', querystring: z.object({ includeThirdParty: Booleano.default(false) }) } },
-    async (req) => svc.owners(app.db, req.query.includeThirdParty));
+  app.get('/owners', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Titulares que têm pelo menos um circuito (para o filtro)', querystring: z.object({ includeThirdParty: Booleano.default(false), includeCancelled: Booleano.default(false) }) } },
+    async (req) => svc.owners(app.db, req.query.includeThirdParty, req.query.includeCancelled));
 
   app.get('/movimentacoes', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'As movimentações dos circuitos e dos DIDs (2.4.1): o que mudou, quem e quando', querystring: MovimentacoesDosCircuitosSchema } },
     async (req) => mov.listar(app.db, req.query));
 
-  app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Lista curta para seletores' } }, async () => svc.options(app.db));
+  app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Lista curta para seletores (o link cancelado só com includeCancelled, para os filtros)', querystring: z.object({ includeCancelled: Booleano.default(false) }) } },
+    async (req) => svc.options(app.db, req.query.includeCancelled));
 
   app.get('/:id', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Detalhe do circuito', params: Id } }, async (req) => svc.get(app.db, req.params.id));
 
   app.get('/:id/dids', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'DIDs do circuito', params: Id, querystring: PaginacaoSchema } },
-    // dentro de um circuito, mostra os números dele — inclusive se for um link de terceiro
-    async (req) => didsSvc.list(app.db, { ...req.query, circuitId: req.params.id, includeThirdParty: true, sort: 'number', dir: 'asc' }));
+    // dentro de um circuito, mostra os números dele — inclusive se for um link de terceiro ou cancelado
+    async (req) => didsSvc.list(app.db, { ...req.query, circuitId: req.params.id, includeThirdParty: true, includeCancelled: true, sort: 'number', dir: 'asc' }));
 
   app.post('/', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Circuitos'], summary: 'Criar circuito', body: CircuitoGravarSchema } },
     async (req, reply) => {
@@ -59,6 +60,25 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       await app.audit(req, { action: 'restore', entityType: 'circuit', entityId: row.id, summary: `Restaurou o circuito ${row.name}` });
       await mov.aoMexerNaLixeiraDoCircuito(app.db, req.user!.id, row, 'circuito_restaurado');
       return svc.get(app.db, row.id);
+    });
+
+  // o link cancelado (2.4.6): sai das listas, mas fica guardado — com o dia, o motivo e quem registrou
+  app.post('/:id/cancelar', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Circuitos'], summary: 'Cancelar o link (fica guardado, fora das listas até "Mostrar cancelados")', params: Id, body: CancelarCircuitoSchema } },
+    async (req) => {
+      const row = await svc.cancelar(app.db, req.params.id, req.body, req.user!.id);
+      const m = movimentacaoDoCancelamento(row, 'circuito_cancelado', { dia: req.body.dia, motivo: req.body.motivo });
+      await app.audit(req, { action: 'update', entityType: 'circuit', entityId: row.id, summary: m.resumo, after: { cancelledOn: row.cancelledOn, cancelReason: row.cancelReason } });
+      await mov.guardarMovimentacao(app.db, req.user!.id, m);
+      return svc.get(app.db, row.id);
+    });
+
+  app.post('/:id/reativar', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Circuitos'], summary: 'Reativar o link cancelado (volta às listas)', params: Id } },
+    async (req) => {
+      const antes = await svc.reativar(app.db, req.params.id);
+      const m = movimentacaoDoCancelamento(antes, 'circuito_reativado', { dia: antes.cancelledOn!, motivo: antes.cancelReason });
+      await app.audit(req, { action: 'update', entityType: 'circuit', entityId: antes.id, summary: m.resumo, before: { cancelledOn: antes.cancelledOn, cancelReason: antes.cancelReason } });
+      await mov.guardarMovimentacao(app.db, req.user!.id, m);
+      return svc.get(app.db, antes.id);
     });
 
   app.post('/:id/dids/range', { preHandler: app.requirePermission('dids.assign'), schema: { tags: ['Circuitos'], summary: 'Criar uma faixa de DIDs dentro do circuito', params: Id, body: DidCriarFaixaSchema.omit({ circuitId: true }) } },

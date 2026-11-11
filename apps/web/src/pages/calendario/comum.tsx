@@ -6,12 +6,8 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Bell, Check, Plus, TreePalm, X } from 'lucide-react';
-import {
-  MAX_ANTES_DO_LEMBRETE, MAX_LEMBRETES, MINUTOS_DA_UNIDADE, NOME_SITUACAO_DO_EVENTO, quemEstaFora, textoDoAntes, textoDoHorario, textoDoPeriodo, tipoDoEvento,
-  UNIDADES_DO_LEMBRETE,
-  type CalendarioOpcoes, type CorEtiqueta, type CorPainel, type EventoDoCalendario, type SituacaoDoEvento, type TipoDeEvento, type UnidadeDoLembrete,
-} from '@gestor/shared';
+import { Ban, Bell, Check, Plus, Repeat, TreePalm, X } from 'lucide-react';
+import { textoDaRepeticao, MAX_ANTES_DO_LEMBRETE, MAX_LEMBRETES, MINUTOS_DA_UNIDADE, NOME_SITUACAO_DO_EVENTO, quemEstaFora, textoDoAntes, textoDoHorario, textoDoPeriodo, tipoDoEvento, UNIDADES_DO_LEMBRETE, type CalendarioOpcoes, type CorEtiqueta, type CorPainel, type EventoDoCalendario, type SituacaoDoEvento, type TipoDeEvento, type UnidadeDoLembrete } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { mensagemErro } from '../../components/ui/index.js';
@@ -95,8 +91,10 @@ export function MarcaDaSituacao({ s }: { s: SituacaoDoEvento }) {
  * Um evento numa linha que abre a janela dele: a hora (ou "Dia inteiro"), o tipo, o título, o cliente e
  * as pessoas, e os painéis (as bolinhas). `comPeriodo`: mostra os dias (na lista do mês e na ficha).
  */
-export function LinhaDoEvento({ e, opcoes, nomes, onAbrir, comPeriodo = false, comVoce }: {
+export function LinhaDoEvento({ e, opcoes, nomes, onAbrir, comPeriodo = false, comVoce, outrasDatas = 0 }: {
   e: EventoDoCalendario; opcoes: CalendarioOpcoes; nomes: ReadonlyMap<string, string>; onAbrir: () => void; comPeriodo?: boolean; comVoce?: string | null;
+  /** na lista curta (2.4.6), quantas outras datas da repetição ficaram de fora */
+  outrasDatas?: number;
 }) {
   const tipo = tipoDoEvento(opcoes.tipos, e.tipoId);
   const cancelado = e.situacao === 'cancelado';
@@ -115,6 +113,11 @@ export function LinhaDoEvento({ e, opcoes, nomes, onAbrir, comPeriodo = false, c
           <span className="tnum font-semibold text-ink-2">{quando}</span>
           <span>{tipo.nome}</span>
           <MarcaDaSituacao s={e.situacao} />
+          {e.repeticao && (
+            <span className="inline-flex items-center gap-0.5" title={textoDaRepeticao(e.repeticao, e.repeticao.ancora)}>
+              <Repeat size={11} aria-hidden /> se repete{outrasDatas > 0 ? ` · mais ${outrasDatas === 1 ? '1 data' : `${outrasDatas} datas`}` : ''}
+            </span>
+          )}
           {comigo && <span className="chip bg-accent-soft text-accent-ink px-1.5 py-0 leading-4 text-[11px]">com você</span>}
         </span>
         <span className={`block font-medium text-[13.5px] leading-snug break-words ${cancelado ? 'line-through text-muted' : 'text-ink'}`}>{e.titulo}</span>

@@ -257,6 +257,8 @@ export const CircuitoListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).exten
   ownerClientId: IdSchema.optional(),
   /** ligar o interruptor "links de terceiros" traz também o que não é da VoiceNet */
   includeThirdParty: Booleano.default(false),
+  /** ligar "Mostrar cancelados" (2.4.6) traz também os links cancelados */
+  includeCancelled: Booleano.default(false),
 });
 
 // ---------- DIDs ----------
@@ -270,6 +272,8 @@ export const DidListarSchema = PaginacaoSchema.extend({
   inUse: z.enum(['true', 'false']).optional(),
   /** o mesmo interruptor da lista de circuitos: sem ele, número de terceiro não aparece */
   includeThirdParty: Booleano.default(false),
+  /** o "Mostrar cancelados" (2.4.6): sem ele, o número de um link cancelado não aparece */
+  includeCancelled: Booleano.default(false),
   sort: z.string().trim().max(60).optional(),
   dir: z.enum(['asc', 'desc']).optional(),
 });

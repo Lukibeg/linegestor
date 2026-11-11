@@ -183,9 +183,18 @@ export function quandoDoEvento(e: { inicio: string; fim?: string | null; diaInte
   return `${quandoDoLembrete(e, agora)}${ate}`;
 }
 
-/** O aviso de que o evento entrou no calendário (o sininho, e o {aviso} do WhatsApp): "Luan França pôs no calendário: Visita — Clínica Aurora, amanhã, 21/10, às 09:00". */
-export function textoDaInclusao(quem: string, e: { titulo: string; inicio: string; fim?: string | null; diaInteiro: boolean; horaInicio: string | null }, agora: Date): string {
-  return `${quem} pôs no calendário: ${e.titulo}, ${quandoDoEvento(e, agora)}`;
+/**
+ * O aviso de que o evento entrou no calendário (o sininho, e o {aviso} do WhatsApp): "Luan França pôs no calendário: Visita — Clínica
+ * Aurora, amanhã, 21/10, às 09:00". O que se repete (2.4.6) diz a regra: "…, segunda, 16/11, às 09:00 (toda segunda, sem data para
+ * acabar)" — o aviso sai uma vez, pela primeira data.
+ */
+export function textoDaInclusao(
+  quem: string,
+  e: { titulo: string; inicio: string; fim?: string | null; diaInteiro: boolean; horaInicio: string | null; repeticao?: { frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string } | null },
+  agora: Date,
+): string {
+  const repete = e.repeticao ? ` (${textoDaRepeticao(e.repeticao, e.repeticao.ancora).replace(/^./, (x) => x.toLocaleLowerCase('pt-BR'))})` : '';
+  return `${quem} pôs no calendário: ${e.titulo}, ${quandoDoEvento(e, agora)}${repete}`;
 }
 
 /**
@@ -218,7 +227,7 @@ export function valoresDoLembrete(
 
 /** As variáveis do aviso de que o evento entrou (as do lembrete, com quem pôs e o período inteiro). */
 export function valoresDaInclusao(
-  e: { titulo: string; inicio: string; fim: string; diaInteiro: boolean; horaInicio: string | null; local: string | null; observacao: string | null },
+  e: { titulo: string; inicio: string; fim: string; diaInteiro: boolean; horaInicio: string | null; local: string | null; observacao: string | null; repeticao?: { frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string } | null },
   nomes: { tipo: string; cliente: string | null; chamado: string | null; pessoas: string[]; paineis: string[]; link: string },
   agora: Date,
   quem: string,
@@ -318,6 +327,143 @@ export function diaValido(dia: string): boolean {
 export const DiaDoCalendarioSchema = z.string().trim().refine(diaValido, 'A data vai como dia/mês/ano, e o dia precisa existir.');
 export const HoraDoEventoSchema = z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'A hora vai como 14:30.');
 
+// =====================================================================
+//  REPETIR (Patch 2.4.6): o evento fixo da agenda
+// =====================================================================
+
+/*
+ * O pedido do Luan (10/11): "quero q tenha um opção no agendamento se é recorrente diário semanal ou mensal para fixas nas
+ * agendas". O evento que se repete é uma SÉRIE: cada data vira um evento de verdade (com o seu Feito, o seu Cancelar e os seus
+ * lembretes), e a série guarda a regra — a frequência, o primeiro dia (a âncora) e até quando. Sem data para acabar, o sistema
+ * mantém as datas sempre até 12 meses à frente (o relógio estende um pouco por dia); com data, gera tudo de uma vez (até 2 anos).
+ * Ao mudar ou excluir um evento da série, a pessoa escolhe: só este, ou este e os próximos.
+ */
+
+export const FREQUENCIAS_DA_REPETICAO = ['diaria', 'dias_uteis', 'semanal', 'mensal'] as const;
+export type FrequenciaDaRepeticao = (typeof FREQUENCIAS_DA_REPETICAO)[number];
+export const NOME_DA_FREQUENCIA: Record<FrequenciaDaRepeticao, string> = {
+  diaria: 'Todo dia', dias_uteis: 'Todo dia útil', semanal: 'Toda semana', mensal: 'Todo mês',
+};
+/** Sem data para acabar, as datas vão sempre até tantos dias à frente (de hoje, ou do primeiro dia, se ele é no futuro). */
+export const HORIZONTE_DA_REPETICAO = 365;
+/** Com data para acabar, até 2 anos depois do primeiro dia (mais que isso, sem data: ela continua sozinha). */
+export const MAX_DIAS_DA_REPETICAO = 731;
+/** Quantos dias um evento que se repete pode durar: menos que o intervalo, para uma data não cair em cima da outra. */
+export const DURACAO_MAXIMA_NA_REPETICAO: Record<FrequenciaDaRepeticao, number> = { diaria: 1, dias_uteis: 1, semanal: 7, mensal: 28 };
+
+export const RepeticaoSchema = z.object({
+  frequencia: z.enum(FREQUENCIAS_DA_REPETICAO, { errorMap: () => ({ message: 'Escolha de quanto em quanto tempo o evento se repete.' }) }),
+  /** o último dia em que pode cair (nulo = sem data para acabar) */
+  ate: DiaDoCalendarioSchema.nullable().default(null),
+});
+export type Repeticao = z.infer<typeof RepeticaoSchema>;
+
+/** Ao mudar ou excluir um evento que se repete: só ele, ou ele e os próximos da série. */
+export const ESCOPOS_DA_SERIE = ['este', 'proximos'] as const;
+export type EscopoDaSerie = (typeof ESCOPOS_DA_SERIE)[number];
+export const NOME_DO_ESCOPO: Record<EscopoDaSerie, string> = { este: 'Só este', proximos: 'Este e os próximos' };
+
+const ehDiaUtil = (dia: string) => diaDaSemana(dia) <= 4;
+const ultimoDiaDoMes = (mes: string) => Number(somarDias(`${somarMeses(mes, 1)}-01`, -1).slice(8, 10));
+
+/**
+ * As datas da série, do primeiro dia (sempre entra: é o evento que a pessoa pôs) até `ate`, inclusive. Todo mês cai no mesmo dia
+ * do primeiro; no mês que não tem esse dia (o 31 em abril), no último dia do mês. `depoisDe`: só as datas depois deste dia (para
+ * estender a série). `max`: um teto de segurança.
+ */
+export function datasDaRepeticao(ancora: string, frequencia: FrequenciaDaRepeticao, ate: string, depoisDe?: string | null, max = 1000): string[] {
+  const out: string[] = [];
+  const entra = (d: string) => (!depoisDe || d > depoisDe) && out.push(d);
+  if (frequencia === 'mensal') {
+    const dia = Number(ancora.slice(8, 10));
+    for (let k = 0; out.length < max; k++) {
+      const mes = somarMeses(ancora.slice(0, 7), k);
+      const d = `${mes}-${String(Math.min(dia, ultimoDiaDoMes(mes))).padStart(2, '0')}`;
+      if (d > ate) break;
+      entra(d);
+    }
+    return out;
+  }
+  const passo = frequencia === 'semanal' ? 7 : 1;
+  for (let d = ancora; d <= ate && out.length < max; d = somarDias(d, passo)) {
+    if (frequencia === 'dias_uteis' && d !== ancora && !ehDiaUtil(d)) continue;
+    entra(d);
+  }
+  return out;
+}
+
+/** Até onde a série tem datas agora: a data para acabar, ou 12 meses à frente (de hoje, ou do primeiro dia no futuro). */
+export function limiteDaRepeticao(r: { ate: string | null }, ancora: string, hoje: string): string {
+  const horizonte = somarDias(ancora > hoje ? ancora : hoje, HORIZONTE_DA_REPETICAO);
+  return r.ate && r.ate < horizonte ? r.ate : horizonte;
+}
+
+/** Uma data da série, como o plano do "este e os próximos" lê. */
+export type DataDaSerie = { id: string; inicio: string; situacao: SituacaoDoEvento };
+/** O que fazer com as datas seguintes: mudar (com o dia de cada uma), descartar (sai, fora da lixeira), criar (os dias que faltam). */
+export type PlanoDosProximos = { mesmaRegra: boolean; mudar: Array<{ id: string; inicio: string }>; descartar: string[]; criar: string[]; manter: string[] };
+
+/**
+ * "Este e os próximos" (2.4.6): o que acontece com as datas depois da que a pessoa mudou.
+ *
+ *  - A MESMA regra (o mesmo dia, a mesma frequência e o mesmo fim): cada data fica no dia dela, com a situação dela; só o resto
+ *    muda (o título, a hora, as pessoas…).
+ *  - OUTRA regra: o feito e o cancelado ficam onde estão (são história: o cancelado era daquele dia); as agendadas andam para as
+ *    datas novas, na ordem; as que sobram saem; os dias que faltam nascem. Sem repetir, as agendadas saem e a série para ali.
+ *
+ * `proximos`: as datas depois da que mudou, em ordem; `antes`: a regra e o dia de antes; `depois`: o dia novo, a regra nova (nula
+ * = parar) e até onde as datas vão agora (`limiteDaRepeticao`).
+ */
+export function planoDosProximos(
+  proximos: readonly DataDaSerie[],
+  antes: { inicio: string; frequencia: FrequenciaDaRepeticao; ate: string | null },
+  depois: { inicio: string; repetir: Repeticao | null; limite: string },
+): PlanoDosProximos {
+  const r = depois.repetir;
+  if (r && r.frequencia === antes.frequencia && (r.ate ?? null) === (antes.ate ?? null) && depois.inicio === antes.inicio) {
+    return { mesmaRegra: true, mudar: proximos.map((p) => ({ id: p.id, inicio: p.inicio })), descartar: [], criar: [], manter: [] };
+  }
+  const historia = proximos.filter((p) => p.situacao !== 'agendado');
+  const agendadas = proximos.filter((p) => p.situacao === 'agendado');
+  if (!r) return { mesmaRegra: false, mudar: [], descartar: agendadas.map((p) => p.id), criar: [], manter: historia.map((p) => p.id) };
+  // o dia que já tem um feito ou um cancelado não ganha outra data (o cancelado continua dizendo que naquele dia não teve)
+  const ocupados = new Set(historia.map((p) => p.inicio));
+  const datas = datasDaRepeticao(depois.inicio, r.frequencia, depois.limite, depois.inicio).filter((d) => !ocupados.has(d));
+  return {
+    mesmaRegra: false,
+    mudar: agendadas.slice(0, datas.length).map((p, k) => ({ id: p.id, inicio: datas[k]! })),
+    descartar: agendadas.slice(datas.length).map((p) => p.id),
+    criar: datas.slice(agendadas.length),
+    manter: historia.map((p) => p.id),
+  };
+}
+
+/** "Toda terça", "Todo dia útil (segunda a sexta)", "Todo mês, no dia 10" — e ", até 31/03/2027" ou ", sem data para acabar". */
+export function textoDaRepeticao(r: { frequencia: FrequenciaDaRepeticao; ate: string | null }, ancora: string): string {
+  const dia = diaDaSemana(ancora);
+  const regra = r.frequencia === 'diaria' ? 'Todo dia'
+    : r.frequencia === 'dias_uteis' ? 'Todo dia útil (segunda a sexta)'
+      : r.frequencia === 'semanal' ? `${dia >= 5 ? 'Todo' : 'Toda'} ${DIAS_POR_EXTENSO[dia]}`
+        : `Todo mês, no dia ${Number(ancora.slice(8, 10))}${Number(ancora.slice(8, 10)) > 28 ? ' (no mês que não tem, no último dia)' : ''}`;
+  return `${regra}${r.ate ? `, até ${diaCurto(r.ate)}/${r.ate.slice(0, 4)}` : ', sem data para acabar'}`;
+}
+
+/** A frase do que não serve na repetição (a mesma no servidor e na janela); nula quando serve. */
+export function problemaDaRepeticao(r: { frequencia: FrequenciaDaRepeticao; ate: string | null }, inicio: string, fim: string): string | null {
+  if (!diaValido(inicio) || !diaValido(fim)) return null;
+  const dias = diasEntre(inicio, fim) + 1;
+  if (dias > DURACAO_MAXIMA_NA_REPETICAO[r.frequencia]) {
+    return r.frequencia === 'mensal' ? 'O evento que se repete todo mês dura até 28 dias.'
+      : r.frequencia === 'semanal' ? 'O evento que se repete toda semana dura até 7 dias.'
+        : 'O evento que se repete todo dia dura um dia só.';
+  }
+  if (r.ate && diaValido(r.ate)) {
+    if (r.ate < inicio) return 'A repetição acaba depois do primeiro dia do evento.';
+    if (diasEntre(inicio, r.ate) > MAX_DIAS_DA_REPETICAO) return 'A repetição com data para acabar vai até 2 anos. Para mais, deixe sem data: ela continua sozinha.';
+  }
+  return null;
+}
+
 /** Criar e editar um evento (a janela do evento). Dia inteiro tira as horas. */
 export const EventoGravarSchema = z.object({
   titulo: z.string().trim().min(1, 'Dê um título ao evento.').max(160, 'O título vai até 160 letras.'),
@@ -342,7 +488,18 @@ export const EventoGravarSchema = z.object({
    * pessoas dele ou todos que veem (nulo = não avisa). Só vale ao criar; quem pôs não recebe.
    */
   avisar: z.enum(QUEM_RECEBE_O_LEMBRETE).nullable().default(null),
+  /**
+   * repetir (2.4.6): de quanto em quanto tempo e até quando (nulo = não repete). Ao mudar um evento da série, vale com o escopo
+   * "este e os próximos" (no "só este", a regra fica como está).
+   */
+  repetir: RepeticaoSchema.nullable().default(null),
+  /** ao mudar um evento que se repete (2.4.6): só ele, ou ele e os próximos (no evento novo, não conta) */
+  escopo: z.enum(ESCOPOS_DA_SERIE).default('este'),
 }).superRefine((e, ctx) => {
+  if (e.repetir) {
+    const p = problemaDaRepeticao(e.repetir, e.inicio, e.fim);
+    if (p) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['repetir'], message: p });
+  }
   if (diaValido(e.inicio) && diaValido(e.fim)) {
     if (e.fim < e.inicio) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['fim'], message: 'O último dia vem depois do primeiro.' });
     else if (diasEntre(e.inicio, e.fim) + 1 > MAX_DIAS_DO_EVENTO) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['fim'], message: `Um evento vai até ${MAX_DIAS_DO_EVENTO} dias seguidos: para mais, divida em partes.` });
@@ -386,6 +543,8 @@ export type EventoDoCalendario = {
   /** os lembretes (2.0.2): minutos antes do começo, do mais cedo para o mais tarde */
   lembretes: number[];
   lembrarQuem: QuemRecebeOLembrete;
+  /** a série (2.4.6): o evento que se repete, com a regra de agora (a âncora é o dia de onde as datas saem) */
+  repeticao: { serieId: string; frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string } | null;
   criadoPor: string | null;
   criadoEm: string;
   alteradoPor: string | null;
@@ -395,6 +554,9 @@ export type EventoDoCalendario = {
 /** Os eventos de um período (a tela pede o mês que mostra, com as pontas da grade). */
 export const EventosDoPeriodoSchema = z.object({ de: DiaDoCalendarioSchema, ate: DiaDoCalendarioSchema })
   .refine((p) => !diaValido(p.de) || !diaValido(p.ate) || (p.ate >= p.de && diasEntre(p.de, p.ate) <= 400), 'O período vai até 400 dias, e o fim vem depois do começo.');
+
+/** Mandar para a lixeira (2.4.6): só este evento, ou ele e os próximos da série. */
+export const RemoverEventoSchema = z.object({ escopo: z.enum(ESCOPOS_DA_SERIE).default('este') });
 
 /** A situação de um evento (o Feito e o Cancelado, sem abrir a janela). */
 export const SituacaoDoEventoSchema = z.object({ situacao: z.enum(SITUACOES_DO_EVENTO) });
@@ -610,11 +772,14 @@ export type FiltroDoCalendario = {
   tipos: string[];
   /** só os eventos desta pessoa ("Só os meus") */
   pessoa: string | null;
-  /** mostrar os cancelados (riscados) */
+  /**
+   * mostrar os cancelados (riscados). Desde o 2.4.6 começa desligado (o Luan: "os cancelados eu não quero que apareçam, a não ser
+   * que eu marque alguma flag"): o cancelado só aparece com a caixa marcada.
+   */
   cancelados: boolean;
   busca: string;
 };
-export const FILTRO_DO_CALENDARIO_VAZIO: FiltroDoCalendario = { paineis: [], tipos: [], pessoa: null, cancelados: true, busca: '' };
+export const FILTRO_DO_CALENDARIO_VAZIO: FiltroDoCalendario = { paineis: [], tipos: [], pessoa: null, cancelados: false, busca: '' };
 
 /** Os eventos que passam no filtro (a busca acha o título, o cliente, o local, a observação e o chamado). */
 export function filtrarEventos(eventos: readonly EventoDoCalendario[], f: FiltroDoCalendario, nomesDasPessoas?: ReadonlyMap<string, string>): EventoDoCalendario[] {
@@ -630,6 +795,24 @@ export function filtrarEventos(eventos: readonly EventoDoCalendario[], f: Filtro
     }
     return true;
   });
+}
+
+/**
+ * A lista curta (a "Na agenda" da ficha do chamado, 2.4.6): os eventos avulsos todos e, de cada repetição, uma data só — a próxima
+ * (de hoje em diante) ou, sem próxima, a última —, com quantas outras datas dela estão na lista. Em ordem de dia.
+ */
+export function umaDataPorSerie(eventos: readonly EventoDoCalendario[], hoje: string): Array<{ evento: EventoDoCalendario; outras: number }> {
+  const out: Array<{ evento: EventoDoCalendario; outras: number }> = [];
+  const porSerie = new Map<string, EventoDoCalendario[]>();
+  for (const e of eventos) {
+    if (e.repeticao) porSerie.set(e.repeticao.serieId, [...(porSerie.get(e.repeticao.serieId) ?? []), e]);
+    else out.push({ evento: e, outras: 0 });
+  }
+  for (const lista of porSerie.values()) {
+    const ordem = [...lista].sort((a, b) => a.inicio.localeCompare(b.inicio));
+    out.push({ evento: ordem.find((e) => e.fim >= hoje) ?? ordem.at(-1)!, outras: ordem.length - 1 });
+  }
+  return out.sort((a, b) => a.evento.inicio.localeCompare(b.evento.inicio) || (a.evento.horaInicio ?? '').localeCompare(b.evento.horaInicio ?? ''));
 }
 
 /** Quem está fora no dia (folga, home office: os tipos da equipe), sem os cancelados. */
@@ -650,4 +833,26 @@ export function quemEstaFora(eventos: readonly EventoDoCalendario[], tipos: read
 export function tituloSugerido(tipo: Pick<TipoDeEvento, 'nome' | 'daEquipe'>, cliente: string | null, pessoas: readonly string[]): string {
   const quem = tipo.daEquipe ? pessoas.join(', ') : cliente ?? '';
   return quem ? `${tipo.nome} — ${quem}` : tipo.nome;
+}
+
+/**
+ * A lixeira do calendário (2.4.6): as datas de uma repetição que foram juntas para a lixeira ("este e os próximos") viram uma linha
+ * só — "18/11 a 03/02 · Reunião do suporte (12 datas da repetição)" —, com o id da primeira; restaurar traz todas.
+ */
+export function lixeiraDoCalendario<D extends string | Date>(
+  linhas: ReadonlyArray<{ id: string; titulo: string; inicio: string; fim: string; serieId: string | null; deletedAt: D }>,
+): Array<{ id: string; label: string; deletedAt: D }> {
+  const grupos = new Map<string, Array<(typeof linhas)[number]>>();
+  for (const l of linhas) {
+    const quando = l.deletedAt instanceof Date ? l.deletedAt.toISOString() : String(l.deletedAt);
+    const chave = l.serieId ? `${l.serieId}|${quando}` : `avulso|${l.id}`;
+    grupos.set(chave, [...(grupos.get(chave) ?? []), l]);
+  }
+  return [...grupos.values()].map((g) => {
+    const ordem = [...g].sort((a, b) => a.inicio.localeCompare(b.inicio));
+    const p = ordem[0]!;
+    const ultimo = ordem.at(-1)!;
+    const periodo = textoDoPeriodo({ inicio: p.inicio, fim: g.length > 1 ? ultimo.fim : p.fim });
+    return { id: p.id, label: `${periodo} · ${p.titulo}${g.length > 1 ? ` (${g.length} datas da repetição)` : ''}`, deletedAt: p.deletedAt };
+  });
 }

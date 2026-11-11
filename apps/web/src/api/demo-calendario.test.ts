@@ -33,7 +33,12 @@ describe('os exemplos e quem vê o quê', () => {
   it('os exemplos nascem pelas regras do servidor (nenhum recusado)', async () => {
     const aviso = vi.spyOn(console, 'warn');
     await entrar('admin');
-    expect((await todos()).length).toBe(19);
+    // 17 avulsos e 2 que se repetem (2.4.6): o alinhamento do suporte toda semana e o fechamento do mês todo mês
+    const eventos = await todos();
+    expect(eventos.filter((e) => !e.repeticao)).toHaveLength(17);
+    expect([...new Set(eventos.filter((e) => e.repeticao).map((e) => e.titulo))].sort()).toEqual(['Alinhamento da semana do suporte', 'Fechamento do mês com o financeiro']);
+    const alinhamento = eventos.filter((e) => e.titulo === 'Alinhamento da semana do suporte').map((e) => e.inicio).sort();
+    expect(alinhamento.every((d, i) => i === 0 || d === somarDias(alinhamento[i - 1]!, 7))).toBe(true);
     expect(aviso.mock.calls.filter((c) => String(c[0]).includes('calendário'))).toEqual([]);
     aviso.mockRestore();
   });
@@ -54,8 +59,10 @@ describe('os exemplos e quem vê o quê', () => {
     expect(await nomes()).toEqual(['SUP', 'DEV', 'COM', 'IMP']);
     expect(await titulos()).toContain('Visita comercial — Construtora Horizonte');
     expect(await titulos()).not.toContain('Fechamento do mês com o financeiro');
+    await entrar('admin');
+    const doAdmin = (await todos()).length;
     await entrar('camila');
-    expect((await todos()).length).toBe(19);
+    expect((await todos()).length).toBe(doAdmin);
     // o Leitor vê, não mexe
     await entrar('leitor');
     const ol = await api.opcoes();
@@ -188,3 +195,55 @@ describe('o aviso de que o evento entrou na prévia (2.0.2), como no servidor', 
     expect(await doAviso(todos.id)).toHaveLength(1);
   });
 });
+
+describe('repetir na prévia (2.4.6), como o servidor', () => {
+  it('toda semana até uma data; só este; este e os próximos; a lixeira junta as datas', async () => {
+    await entrar('admin');
+    const ate = somarDias(hoje, 7 * 4);
+    const e = await api.criar({ titulo: 'Ronda da prévia', tipoId: 'reuniao', paineis: ['painel-suporte'], inicio: hoje, fim: hoje, diaInteiro: false, horaInicio: '09:00', horaFim: '09:30', repetir: { frequencia: 'semanal', ate } });
+    expect(e.repeticao).toMatchObject({ frequencia: 'semanal', ate, ancora: hoje });
+    const daSerie = async () => (await api.eventos(somarDias(hoje, -1), somarDias(hoje, 60))).filter((x) => x.repeticao?.serieId === e.repeticao!.serieId).sort((a, b) => a.inicio.localeCompare(b.inicio));
+    expect((await daSerie()).map((x) => x.inicio)).toEqual([0, 1, 2, 3, 4].map((k) => somarDias(hoje, 7 * k)));
+    const terceiro = (await daSerie())[2]!;
+    await api.alterar(terceiro.id, { ...gravavel(terceiro), titulo: 'Ronda (só esta)', escopo: 'este' });
+    expect((await daSerie()).map((x) => x.titulo).filter((t) => t === 'Ronda (só esta)')).toHaveLength(1);
+    const segundo = (await daSerie())[1]!;
+    await api.alterar(segundo.id, { ...gravavel(segundo), horaInicio: '14:00', horaFim: '15:00', escopo: 'proximos', repetir: { frequencia: 'semanal', ate } });
+    expect((await daSerie()).map((x) => x.horaInicio)).toEqual(['09:00', '14:00', '14:00', '14:00', '14:00']);
+    await api.remover((await daSerie())[3]!.id, 'proximos');
+    expect(await daSerie()).toHaveLength(3);
+    const lixo = (await demoApi.admin.trash()).find((x) => x.label.includes('Ronda da prévia'))!;
+    expect(lixo.label).toContain('(2 datas da repetição)');
+    await demoApi.admin.restore('calendarEvent', lixo.id);
+    expect(await daSerie()).toHaveLength(5);
+  });
+});
+
+describe('repetir na prévia: a data não troca de dia e a lixeira devolve a repetição (2.4.6)', () => {
+  it('outra regra: o cancelado fica no dia dele, e o que sobra não vai para a lixeira', async () => {
+    await entrar('admin');
+    const e = await api.criar({ titulo: 'Plantão da prévia', tipoId: 'reuniao', paineis: ['painel-suporte'], inicio: hoje, fim: hoje, diaInteiro: false, horaInicio: '08:00', horaFim: '09:00', repetir: { frequencia: 'semanal', ate: null } });
+    const daSerie = async () => (await api.eventos(somarDias(hoje, -1), somarDias(hoje, 380))).filter((x) => x.repeticao?.serieId === e.repeticao!.serieId).sort((a, b) => a.inicio.localeCompare(b.inicio));
+    const antes = await daSerie();
+    await api.situacao(antes[2]!.id, 'cancelado');
+    const lixo = (await demoApi.admin.trash()).length;
+    await api.alterar(antes[1]!.id, { ...gravavel(antes[1]!), escopo: 'proximos', repetir: { frequencia: 'mensal', ate: null } });
+    const depois = await daSerie();
+    expect(depois.find((x) => x.id === antes[2]!.id)).toMatchObject({ inicio: antes[2]!.inicio, situacao: 'cancelado' });
+    expect(depois.filter((x) => x.situacao === 'agendado').length).toBeLessThan(antes.length / 2);
+    expect((await demoApi.admin.trash()).length).toBe(lixo);
+  });
+
+  it('restaurar o "este e os próximos" devolve a repetição como era', async () => {
+    await entrar('admin');
+    const e = await api.criar({ titulo: 'Leitura da prévia', tipoId: 'acao-cliente', paineis: ['painel-suporte'], inicio: hoje, fim: hoje, repetir: { frequencia: 'diaria', ate: null } });
+    const daSerie = async () => (await api.eventos(hoje, somarDias(hoje, 30))).filter((x) => x.repeticao?.serieId === e.repeticao!.serieId);
+    await api.remover((await daSerie())[5]!.id, 'proximos');
+    expect((await daSerie())[0]!.repeticao!.ate).toBe(somarDias(hoje, 4));
+    const linha = (await demoApi.admin.trash()).find((x) => x.label.includes('Leitura da prévia'))!;
+    await demoApi.admin.restore('calendarEvent', linha.id);
+    expect((await daSerie())[0]!.repeticao!.ate).toBeNull();
+    expect(await daSerie()).toHaveLength(31);
+  });
+});
+

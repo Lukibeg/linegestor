@@ -19,6 +19,7 @@ import {
   type FiltrosRelatorios, type ItemPainel, type ListaChamadosQuery, type MovimentoChamado,
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
+import { foraDeLinkCancelado } from './dids.js';
 import { gravar } from './integracoes.js';
 import { lerAjustes, versaoDosDados } from './linechat.js';
 
@@ -240,7 +241,7 @@ async function cadastroComTamanho(db: Db) {
     db.select({ id: clients.id, tradeName: clients.tradeName, legalName: clients.legalName })
       .from(clients).where(and(isNull(clients.deletedAt), eq(clients.isInternal, false))),
     db.select({ id: dids.clientId, n: sql<number>`count(*)::int` }).from(dids)
-      .where(and(isNull(dids.deletedAt), sql`${dids.clientId} is not null`)).groupBy(dids.clientId),
+      .where(and(isNull(dids.deletedAt), sql`${dids.clientId} is not null`, foraDeLinkCancelado)).groupBy(dids.clientId),
     db.select({ id: devices.clientId, n: sql<number>`count(*)::int` }).from(devices)
       .where(and(isNull(devices.deletedAt), sql`${devices.clientId} is not null`, sql`coalesce(${devices.currentModality}, '') <> 'venda'`)).groupBy(devices.clientId),
   ]);
@@ -307,7 +308,7 @@ export async function raioX(db: Db, clienteId: string, f: FiltrosRelatorios) {
     .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId))
     .where(and(eq(subscriptions.clientId, clienteId), isNull(subscriptions.deactivatedAt), isNull(products.deletedAt)))
     .orderBy(asc(products.sortOrder));
-  const [didC] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, clienteId), isNull(dids.deletedAt)));
+  const [didC] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, clienteId), isNull(dids.deletedAt), foraDeLinkCancelado));
   // como na ficha: os aparelhos que estão com ele (comodato, locação…), fora os vendidos
   const [devC] = await db.select({ n: sql<number>`count(*)` }).from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
     .where(and(eq(devices.clientId, clienteId), isNull(devices.deletedAt), sql`coalesce(${devices.currentModality}, '') <> 'venda'`));

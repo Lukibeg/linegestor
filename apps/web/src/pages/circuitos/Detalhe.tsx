@@ -3,11 +3,17 @@
  *
  * Patch 1.6 (30/09): os DIDs daqui são a própria tabela da Numeração com o circuito fixo — busca
  * (número ou observação), filtros, seleção e edição em massa, sem ir para a aba Numeração.
+ *
+ * Patch 2.4.6: CANCELAR O LINK (o Luan: "as vezes fazemos cancelamento de links quero que tenha uma opção de marcar como
+ * cancelado, onde ele é meio que excluído porém fica um registro que ele foi na verdade cancelado"). O dia e o motivo; o link
+ * sai das listas, dos cartões e do painel, mas a ficha continua, com a faixa do cancelamento, os números e as movimentações.
+ * O Reativar traz de volta.
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Ban, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
+import { diaComAno, hojeNoCalendario, oLink } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
@@ -19,23 +25,90 @@ import { Numeracao } from '../dids/Lista.js';
 import { MovimentacoesDosCircuitos } from './Movimentacoes.js';
 import { ArtigosLigados } from '../base/partes.js';
 
+/** "O " ou "O link " antes do nome em negrito (o nome que já começa com "Link" não repete a palavra). */
+const prefixo = (nome: string) => oLink(nome, true).slice(0, -nome.length);
+
+// criado uma vez só: um formatador com fuso custa caro para criar
+const fmtQuando = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/**
+ * Cancelar o link (2.4.6): o dia em que vale (hoje, por padrão) e o motivo (opcional). O erro aparece ao lado do botão.
+ */
+function CancelarLink({ circuito: c, onClose, onFeito }: { circuito: { id: string; name: string; dids: { total: number; assigned: number } }; onClose: () => void; onFeito: () => void }) {
+  const toast = useToast();
+  const [dia, setDia] = useState(() => hojeNoCalendario());
+  const [motivo, setMotivo] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+  const confirmar = async () => {
+    if (!dia) { setErro('Diga o dia do cancelamento.'); return; }
+    setOcupado(true); setErro('');
+    try {
+      await api.circuits.cancelar(c.id, { dia, motivo });
+      toast.push('ok', `${oLink(c.name, true)} foi cancelado: saiu das listas e ficou guardado.`);
+      onFeito();
+    } catch (e) {
+      setErro(mensagemErro(e));
+    } finally {
+      setOcupado(false);
+    }
+  };
+  return (
+    <Modal open onClose={onClose} titulo="Cancelar o link" largura="max-w-lg" rodape={(
+      <>
+        {erro && <p className="text-bad text-[13px] mr-auto basis-full sm:basis-auto sm:flex-1 min-w-0" role="alert" id="cancelar-erro">{erro}</p>}
+        <button type="button" className="btn-secondary" onClick={onClose} disabled={ocupado}>Voltar</button>
+        <button type="button" className="btn-danger" onClick={() => void confirmar()} disabled={ocupado} id="cancelar-confirmar">{ocupado ? <Spinner className="text-white" /> : 'Cancelar o link'}</button>
+      </>
+    )}>
+      <div className="flex flex-col gap-3 text-[14px]">
+        <p>{prefixo(c.name)}<b>{c.name}</b> sai das listas, dos cartões e do painel{c.dids.total ? <>, com os <b>{c.dids.total} números</b> dele</> : null}. Ele não vai para a lixeira: fica guardado, com o dia e o motivo, e aparece ligando <b>Mostrar cancelados</b>. Dá para reativar depois.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-[170px_1fr] gap-3">
+          <Campo label="Cancelado em"><input type="date" className="input" value={dia} onChange={(e) => { setDia(e.target.value); setErro(''); }} id="cancelar-dia" /></Campo>
+          <Campo label="Motivo" dica="opcional"><input className="input" maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="O cliente foi para a nuvem, portou os números…" id="cancelar-motivo" /></Campo>
+        </div>
+        {c.dids.assigned > 0 && <p className="text-[12.5px] text-muted">{c.dids.assigned === 1 ? '1 número ainda está com cliente' : `${c.dids.assigned} números ainda estão com cliente`}: eles saem da ficha do cliente e ficam aqui, na ficha do link, como estavam.</p>}
+      </div>
+    </Modal>
+  );
+}
+
 export function CircuitoDetalhe() {
   const { id = '' } = useParams();
   const nav = useNavigate(); const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const q = useQuery({ queryKey: ['circuit', id], queryFn: () => api.circuits.get(id) });
   const [editar, setEditar] = useState(false); const [faixa, setFaixa] = useState(false); const [excluir, setExcluir] = useState(false); const [busy, setBusy] = useState(false);
+  const [cancelar, setCancelar] = useState(false); const [reativar, setReativar] = useState(false);
   if (q.isLoading) return <Carregando />;
   if (!q.data) return <Vazio titulo="Circuito não encontrado" acao={<Link className="btn-secondary" to="/circuitos">Voltar</Link>} />;
   const c = q.data;
   const doDelete = async () => { setBusy(true); try { await api.circuits.remove(c.id); toast.push('ok', 'Circuito foi para a lixeira'); await qc.invalidateQueries({ queryKey: ['circuits'] }); nav('/circuitos'); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
   return (
-    <Pagina voltar={<Voltar rota="/circuitos" texto="Todos os circuitos" />} titulo={<span className="flex items-center gap-2">{c.name}{c.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">link de terceiro</Chip>}</span>} sub={<span>{c.carrierName ?? 'sem operadora'} · N° <span className="font-mono">{c.code}</span>{c.keyNumber ? <> · número chave <span className="font-mono tnum">{didFormatado(c.keyNumber)}</span></> : null}{c.ownerName ? ` · titular: ${c.ownerName}` : ''}</span>} acoes={<>
+    <Pagina voltar={<Voltar rota="/circuitos" texto="Todos os circuitos" />} titulo={<span className="flex items-center gap-2">{c.name}{c.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">link de terceiro</Chip>}{c.cancelamento && <Chip tone="bad">cancelado</Chip>}</span>} sub={<span>{c.carrierName ?? 'sem operadora'} · N° <span className="font-mono">{c.code}</span>{c.keyNumber ? <> · número chave <span className="font-mono tnum">{didFormatado(c.keyNumber)}</span></> : null}{c.ownerName ? ` · titular: ${c.ownerName}` : ''}</span>} acoes={<>
       {/* 1.8: o que a base sabe sobre a operadora deste circuito (só aparece se houver) */}
       <ArtigosLigados tipo="operadora" alvo={c.carrierId} sobre={c.carrierName ? `sobre a ${c.carrierName}` : 'sobre a operadora'} />
-      <Can permission="dids.assign"><button className="btn-primary" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa de DIDs</button></Can>
+      {/* o link cancelado não recebe números novos (2.4.6) */}
+      {!c.cancelamento && <Can permission="dids.assign"><button className="btn-primary" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa de DIDs</button></Can>}
       <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button></Can>
+      <Can permission="records.write">
+        {c.cancelamento
+          ? <button className="btn-secondary" onClick={() => setReativar(true)} id="circuito-reativar"><Undo2 size={15} /> Reativar</button>
+          : <button className="btn-secondary text-bad" onClick={() => setCancelar(true)} id="circuito-cancelar" title="O link foi cancelado: ele sai das listas, mas fica guardado"><Ban size={15} /> Cancelar o link</button>}
+      </Can>
       <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)} title="Mandar para a lixeira"><Trash2 size={15} /></button></Can>
     </>}>
+      {c.cancelamento && (
+        <div className="card border-bad/40 bg-bad-soft p-4 mb-5 flex gap-3" role="status" id="circuito-cancelamento">
+          <Ban size={20} className="text-bad shrink-0 mt-0.5" aria-hidden />
+          <div className="min-w-0 text-[14px]">
+            <p className="font-semibold text-bad">Link cancelado desde {diaComAno(c.cancelamento.dia)}{c.cancelamento.motivo ? <span className="font-normal text-ink">: {c.cancelamento.motivo}</span> : null}</p>
+            <p className="text-ink-2 text-[13px] mt-0.5">
+              {c.cancelamento.por ? `Registrado por ${c.cancelamento.por}` : 'Registrado'}{c.cancelamento.em ? ` em ${fmtQuando.format(new Date(c.cancelamento.em))}` : ''}.
+              {' '}Ele e os números dele ficam fora das listas, dos cartões e do painel — aparecem ligando <b>Mostrar cancelados</b>. Aqui fica a história: os números e as movimentações.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-5">
         <Kpi label="Canais" valor={c.channels} sub="chamadas simultâneas" tone={c.channels === 0 && c.dids.total > 0 ? 'bad' : 'neutral'} />
         <Kpi label="DIDs" valor={c.dids.total} tone="accent" />
@@ -75,6 +148,10 @@ export function CircuitoDetalhe() {
       </div>
       <CircuitoForm open={editar} onClose={() => setEditar(false)} circuito={c} onSaved={() => setEditar(false)} />
       <FaixaForm open={faixa} onClose={() => setFaixa(false)} circuitId={c.id} onDone={() => { setFaixa(false); void qc.invalidateQueries({ queryKey: ['circuit', id] }); void qc.invalidateQueries({ queryKey: ['dids'] }); }} />
+      {cancelar && <CancelarLink circuito={c} onClose={() => setCancelar(false)} onFeito={() => { setCancelar(false); void qc.invalidateQueries(); }} />}
+      <Confirmar open={reativar} onClose={() => setReativar(false)} loading={busy} titulo="Reativar o link" botao="Reativar"
+        onConfirm={async () => { setBusy(true); try { await api.circuits.reativar(c.id); toast.push('ok', `${oLink(c.name, true)} voltou às listas.`); setReativar(false); void qc.invalidateQueries(); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } }}
+        texto={<>{prefixo(c.name)}<b>{c.name}</b> volta às listas, aos cartões e ao painel, com os números dele. O cancelamento continua registrado nas movimentações.</>} />
       <Confirmar open={excluir} onClose={() => setExcluir(false)} onConfirm={doDelete} loading={busy} perigoso titulo="Mandar circuito para a lixeira" botao="Mandar para a lixeira" texto={c.dids.total > 0 ? <>Este circuito ainda tem <b>{c.dids.total} DIDs</b>. O sistema vai recusar: mova-os antes.</> : <>O circuito <b>{c.name}</b> sai das listas, sem apagar nada. Dá para restaurar na lixeira.</>} />
     </Pagina>
   );
@@ -90,7 +167,7 @@ export function FaixaForm({ open, onClose, circuitId, onDone }: { open: boolean;
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const toast = useToast();
   const clients = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options(), enabled: open });
-  const circuits = useQuery({ queryKey: ['circuit-options'], queryFn: api.circuits.options, enabled: open && !circuitId });
+  const circuits = useQuery({ queryKey: ['circuit-options', false], queryFn: () => api.circuits.options(), enabled: open && !circuitId });
   const digits = f.baseNumber.replace(/\D/g, '');
   const preview = digits.length >= 10 && f.quantity > 0 ? `${didFormatado(digits)} … ${didFormatado((BigInt(digits) + BigInt(f.quantity - 1)).toString().padStart(digits.length, '0'))}` : null;
   const save = async () => {

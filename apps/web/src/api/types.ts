@@ -190,6 +190,8 @@ export type Circuit = {
   authUsername: string | null; authPassword: SecretRef; notes: string | null; dids: { total: number; assigned: number; free: number };
   /** true = tronco do próprio cliente, com outra operadora. Só aparece com "links de terceiros" ligado. */
   thirdParty: boolean;
+  /** o link cancelado (2.4.6): desde quando, por quê, quem registrou e quando; nulo = ativo. Só aparece com "Mostrar cancelados". */
+  cancelamento: { dia: string; motivo: string | null; por: string | null; em: string | null } | null;
 };
 /** Os cartões no topo da tela de Circuitos (obedecem aos mesmos filtros da lista). */
 export type CircuitSummary = { circuits: number; channels: number; monthlyValueCents: number; dids: { total: number; assigned: number; free: number } };
@@ -203,6 +205,8 @@ export type Did = {
   inUse: boolean;
   /** o circuito deste número não é da VoiceNet */
   thirdParty?: boolean;
+  /** o circuito deste número foi cancelado (2.4.6) */
+  cancelled?: boolean;
 };
 
 export type DeviceModel = {

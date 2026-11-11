@@ -118,8 +118,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   // a ficha mostra TODOS os números do cliente (a tela pagina, mas sempre deixa ver tudo)
-  app.get('/:id/dids', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'DIDs do cliente (todos)', params: Id, querystring: z.object({ page: z.coerce.number().default(1), pageSize: z.coerce.number().max(SEM_LIMITE).default(SEM_LIMITE) }) } },
+  app.get('/:id/dids', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'DIDs do cliente (todos)', params: Id, querystring: z.object({ page: z.coerce.number().default(1), pageSize: z.coerce.number().max(SEM_LIMITE).default(SEM_LIMITE), includeCancelled: Booleano.default(false) }) } },
     // na ficha do cliente a pergunta é "o que este cliente tem": o tronco dele com outra operadora entra
+    // o número de um link cancelado (2.4.6) só com `includeCancelled`: a ficha esconde e mostra quando a pessoa pede
     async (req) => didsSvc.list(app.db, { ...req.query, clientId: req.params.id, includeThirdParty: true, sort: 'number', dir: 'asc' }));
 
   app.get('/:id/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Aparelhos com o cliente (todos)', params: Id } },

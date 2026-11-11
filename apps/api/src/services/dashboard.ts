@@ -14,7 +14,8 @@ export async function summary(db: Db) {
   const activeClient = and(isNull(clients.deletedAt), eq(clients.archived, false), eq(clients.isInternal, false));
   // O painel é o controle da VoiceNet: link de terceiro (tronco que o cliente contratou de outra
   // operadora) fica de fora de tudo aqui, senão polui os números e inventa inconsistência.
-  const semTerceiro = sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.thirdParty} = true))`;
+  // O link cancelado (2.4.6) também: é história, não controle de agora.
+  const semTerceiro = sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.thirdParty} = true or ${circuits.cancelledOn} is not null))`;
 
   const [cl] = await db.select({ n: sql<number>`count(*)` }).from(clients).where(activeClient);
   const byProduct = await db
@@ -27,7 +28,7 @@ export async function summary(db: Db) {
   const occ = await db
     .select({ id: circuits.id, name: circuits.name, carrierName: carriers.name, channels: circuits.channels, total: sql<number>`count(${dids.id})`, assigned: sql<number>`count(${dids.clientId})` })
     .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).leftJoin(dids, and(eq(dids.circuitId, circuits.id), isNull(dids.deletedAt)))
-    .where(and(isNull(circuits.deletedAt), eq(circuits.thirdParty, false))).groupBy(circuits.id, carriers.name);
+    .where(and(isNull(circuits.deletedAt), eq(circuits.thirdParty, false), isNull(circuits.cancelledOn))).groupBy(circuits.id, carriers.name);
   const circuitsView = occ.map((c) => ({ ...c, total: Number(c.total), assigned: Number(c.assigned), free: Number(c.total) - Number(c.assigned) }));
 
   // vendido não conta: já não é nosso

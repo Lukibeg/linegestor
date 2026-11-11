@@ -16,12 +16,14 @@ describe('as movimentações dos circuitos na prévia (2.4.1)', () => {
   it('nasce com a história de exemplo: cada circuito, a faixa, as atribuições e as mudanças recentes', async () => {
     await entrar('leitor');
     const m = await movs();
-    const circuitos = (await api.circuits.list({ includeThirdParty: true, pageSize: 100 })).items;
-    const comTerceiros = await movs({ incluirTerceiros: 'true' });
+    // todos os circuitos: os de terceiro e o link cancelado (2.4.6) também têm a história deles
+    const circuitos = (await api.circuits.list({ includeThirdParty: true, includeCancelled: true, pageSize: 100 })).items;
+    // com os dois interruptores ligados, todos os circuitos (o link cancelado, 2.4.6, só com o "Mostrar cancelados")
+    const comTerceiros = await movs({ incluirTerceiros: 'true', incluirCancelados: 'true' });
     expect(comTerceiros.items.filter((x) => x.tipo === 'circuito_criado')).toHaveLength(circuitos.length);
     expect(comTerceiros.items.filter((x) => x.tipo === 'dids_criados')).toHaveLength(circuitos.length);
     // sem o interruptor, o link de terceiro (o Vivo do Hospital Vale Verde) fica de fora, como nas outras abas
-    expect(m.items.filter((x) => x.tipo === 'circuito_criado')).toHaveLength(circuitos.filter((c) => !c.thirdParty).length);
+    expect(m.items.filter((x) => x.tipo === 'circuito_criado')).toHaveLength(circuitos.filter((c) => !c.thirdParty && !c.cancelamento).length);
     const vivo = circuitos.find((c) => c.thirdParty)!;
     expect((await movs({ circuitId: vivo.id })).items.map((x) => x.tipo)).toEqual(['dids_editados', 'dids_criados', 'circuito_criado']);
     // a mais recente primeiro: o uso do número da Aurora, há 3 dias
@@ -54,3 +56,48 @@ describe('as movimentações dos circuitos na prévia (2.4.1)', () => {
     expect((await movs({ ate: '2020-01-01' })).total).toBe(0);
   });
 });
+
+describe('o link cancelado na prévia (2.4.6), como o servidor', () => {
+  it('o Link - Prado & Lima já vem cancelado: fora da lista, com a faixa e a movimentação; cancelar e reativar outro', async () => {
+    await entrar('admin');
+    const lista = (await api.circuits.list({ pageSize: 100 })).items;
+    expect(lista.map((c) => c.name)).not.toContain('Link - Prado & Lima');
+    const todos = (await api.circuits.list({ pageSize: 100, includeCancelled: true })).items;
+    const prado = todos.find((c) => c.name === 'Link - Prado & Lima')!;
+    expect(prado.cancelamento).toMatchObject({ por: 'Luan França' });
+    expect((await movs({ circuitId: prado.id })).items[0]!.tipo).toBe('circuito_cancelado');
+    const aurora = lista.find((c) => c.name === 'Link - Aurora')!;
+    const c = await api.circuits.cancelar(aurora.id, { dia: '2026-11-10', motivo: 'Teste' });
+    expect(c.cancelamento).toMatchObject({ dia: '2026-11-10', motivo: 'Teste' });
+    expect((await api.circuits.list({ pageSize: 100 })).items.map((x) => x.id)).not.toContain(aurora.id);
+    expect((await api.dids.list({ pageSize: 1000 })).items.some((d) => d.circuitId === aurora.id)).toBe(false);
+    await api.circuits.reativar(aurora.id);
+    expect((await api.circuits.list({ pageSize: 100 })).items.map((x) => x.id)).toContain(aurora.id);
+    expect((await movs({ circuitId: aurora.id })).items.slice(0, 2).map((x) => x.tipo)).toEqual(['circuito_reativado', 'circuito_cancelado']);
+  });
+});
+
+describe('o link cancelado some de todo lugar sem a flag, na prévia (2.4.6)', () => {
+  it('as movimentações, o painel, o cliente e os seletores', async () => {
+    await entrar('admin');
+    const prado = (await api.circuits.list({ pageSize: 100, includeCancelled: true })).items.find((c) => c.name === 'Link - Prado & Lima')!;
+    const sem = await movs();
+    expect(sem.items.some((m) => m.circuitos.some((c) => c.id === prado.id))).toBe(false);
+    const com = await movs({ incluirCancelados: 'true' });
+    expect(com.items.some((m) => m.tipo === 'circuito_cancelado')).toBe(true);
+    // o painel: os 4 números do link cancelado não contam
+    const painel = await api.dashboard.summary();
+    const todos = (await api.dids.list({ pageSize: 1000, includeThirdParty: false, includeCancelled: true })).items.length;
+    expect(painel.dids.total).toBe(todos - 4);
+    // o cliente: os números dele eram todos do link cancelado
+    const cliente = (await api.clients.list({ pageSize: 200 })).items.find((c) => c.tradeName === 'Escritório Prado & Lima')!;
+    expect(cliente.didCount).toBe(0);
+    // os seletores
+    expect((await api.circuits.options()).some((c) => c.id === prado.id)).toBe(false);
+    expect((await api.circuits.options(true)).find((c) => c.id === prado.id)!.cancelled).toBe(true);
+    // nenhum número entra nele
+    const livre = (await api.dids.list({ pageSize: 1000 })).items.find((d) => d.free)!;
+    await expect(api.dids.update(livre.id, { circuitId: prado.id })).rejects.toThrow('foi cancelado');
+  });
+});
+

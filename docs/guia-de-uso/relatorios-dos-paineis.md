@@ -2,7 +2,8 @@
 
 Os relatórios dos chamados do Gestor ficam na vista **Relatórios** de cada painel — a mesma troca **Quadro ·
 Lista · Relatórios** do alto do painel. No menu, **Suporte › Relatórios** abre a do painel Suporte. Os
-relatórios dos chamados do Helena (o LineChat) continuam em **Suporte › Legado do Helena**, com os assuntos
+relatórios dos chamados do Helena (o LineChat) continuam no **Legado do Helena** (o botão no alto de Suporte › Relatórios; até o
+2.4.6, um item do menu), com os assuntos
 de lá: os dois não se misturam, porque quase tudo mudou de régua (o tempo, o Resolvido, o nível, os
 assuntos). A decisão inteira está em `docs/decisoes/0055-relatorios-dos-paineis.md`.
 
@@ -92,7 +93,7 @@ A arrumação vai para a auditoria, com quem arrumou e o que ficou à vista.
 
 ## 6. O Legado do Helena
 
-**Suporte › Legado do Helena** é a tela de sempre dos chamados do LineChat (Hoje, Período e os 20
+O botão **Legado do Helena**, no alto dos Relatórios do Suporte, abre a tela de sempre dos chamados do LineChat (Hoje, Período e os 20
 relatórios), com os assuntos de lá, só para consulta. Veja [Chamados do LineChat](chamados-do-linechat.md).
 
 ## 7. O envio diário pelo WhatsApp (2.4.5)

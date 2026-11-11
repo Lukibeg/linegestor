@@ -41,6 +41,9 @@ async function guardar(db: Exec, quem: string | null, m: NovaMovimentacao | null
   });
 }
 
+/** Guardar uma movimentação pronta (o cancelamento e a reativação do link, 2.4.6: a frase sai do @gestor/shared). */
+export const guardarMovimentacao = guardar;
+
 // ---------------------------------------------------------------- os circuitos
 
 export async function aoCriarCircuito(db: Exec, quem: string | null, row: LinhaDoCircuito) {
@@ -92,8 +95,16 @@ export async function aoImportar(db: Exec, quem: string | null, f: { entidade: '
 export async function listar(db: Db, q: MovimentacoesDosCircuitosFiltro): Promise<PaginaDeMovimentacoes> {
   const conds: SQL[] = [];
   if (q.circuitId) conds.push(sql`${q.circuitId} = ANY(${circuitMovements.circuitIds})`);
-  // sem o interruptor, some a movimentação só de links de terceiros (decisão 0020)
-  else if (!q.incluirTerceiros) conds.push(sql`(cardinality(${circuitMovements.circuitIds}) = 0 or exists (select 1 from ${circuits} where ${circuits.id} = any(${circuitMovements.circuitIds}) and not ${circuits.thirdParty}))`);
+  else {
+    // sem o interruptor, some a movimentação só de links de terceiros (decisão 0020) e só de links cancelados (2.4.6): ela
+    // aparece se pelo menos um dos circuitos dela aparece
+    const escondido: SQL[] = [];
+    if (!q.incluirTerceiros) escondido.push(sql`${circuits.thirdParty}`);
+    if (!q.incluirCancelados) escondido.push(sql`${circuits.cancelledOn} is not null`);
+    if (escondido.length) {
+      conds.push(sql`(cardinality(${circuitMovements.circuitIds}) = 0 or exists (select 1 from ${circuits} where ${circuits.id} = any(${circuitMovements.circuitIds}) and not (${sql.join(escondido, sql` or `)})))`);
+    }
+  }
   const tipos = tiposDoFiltro(q.tipo);
   if (tipos) conds.push(inArray(circuitMovements.kind, tipos));
   if (q.userId) conds.push(eq(circuitMovements.userId, q.userId));

@@ -13,7 +13,7 @@
 import argon2 from 'argon2';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { calendarEvents, carriers, circuits, clientContacts, clients, contactRoles, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, salesSimulations, subscriptionModules, subscriptions, ticketEvents, tickets, users, type Db } from '@gestor/db';
-import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, textoDoPeriodo, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
+import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, lixeiraDoCalendario, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import { derrubarSessoesDaEquipe } from './portal.js';
 
@@ -301,7 +301,9 @@ export async function listTrash(db: Db) {
     db.select({ id: knowledgeArticles.id, numero: knowledgeArticles.number, titulo: knowledgeArticles.title, deletedAt: knowledgeArticles.deletedAt }).from(knowledgeArticles).where(isNotNull(knowledgeArticles.deletedAt)),
     db.select({ id: portalArticles.id, numero: portalArticles.number, titulo: portalArticles.title, deletedAt: portalArticles.deletedAt }).from(portalArticles).where(isNotNull(portalArticles.deletedAt)),
     db.select({ id: tickets.id, codigo: tickets.code, titulo: tickets.title, deletedAt: tickets.deletedAt }).from(tickets).where(isNotNull(tickets.deletedAt)),
-    db.select({ id: calendarEvents.id, titulo: calendarEvents.title, inicio: calendarEvents.startsOn, fim: calendarEvents.endsOn, deletedAt: calendarEvents.deletedAt }).from(calendarEvents).where(isNotNull(calendarEvents.deletedAt)),
+    db.select({ id: calendarEvents.id, titulo: calendarEvents.title, inicio: calendarEvents.startsOn, fim: calendarEvents.endsOn, serieId: calendarEvents.seriesId, deletedAt: calendarEvents.deletedAt }).from(calendarEvents)
+      // a data que saiu porque a regra da repetição mudou (2.4.6) não foi excluída por alguém: não entra na lixeira
+      .where(and(isNotNull(calendarEvents.deletedAt), eq(calendarEvents.droppedBySeries, false))),
     // as simulações do Comercial (2.0.2)
     db.select({ id: salesSimulations.id, label: salesSimulations.name, deletedAt: salesSimulations.deletedAt }).from(salesSimulations).where(isNotNull(salesSimulations.deletedAt)),
   ]);
@@ -316,7 +318,8 @@ export async function listTrash(db: Db) {
     ...ka.map((x) => ({ type: 'knowledgeArticle', id: x.id, label: `BC-${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...pa.map((x) => ({ type: 'portalArticle', id: x.id, label: `Tutorial ${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...tk.map((x) => ({ type: 'ticket', id: x.id, label: `${x.codigo} · ${x.titulo}`, deletedAt: x.deletedAt })),
-    ...ev.map((x) => ({ type: 'calendarEvent', id: x.id, label: `${textoDoPeriodo({ inicio: x.inicio, fim: x.fim })} · ${x.titulo}`, deletedAt: x.deletedAt })),
+    // as datas de uma repetição que foram juntas para a lixeira são uma linha só (2.4.6)
+    ...lixeiraDoCalendario(ev.map((x) => ({ ...x, deletedAt: x.deletedAt! }))).map((x) => ({ type: 'calendarEvent', ...x })),
     ...sm.map((x) => ({ type: 'salesSimulation', id: x.id, label: `Simulação · ${x.label}`, deletedAt: x.deletedAt })),
   ].sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
 }
