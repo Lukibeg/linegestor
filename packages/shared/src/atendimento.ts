@@ -409,7 +409,7 @@ export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   lista_varios: 'Uma ou mais das opções que você escrever.',
   caixinhas: 'Uma lista de tarefas: cada opção é uma caixinha, e a ficha mostra quem marcou e quando (a configuração, os testes).',
   modulos: 'Os módulos do produto escolhido abaixo (Administração › Produtos), para marcar os que o cliente vai usar. Na etapa que liga no cadastro, os marcados ficam ativos na ficha do cliente (o checklist, que segue outro campo de módulos, só confere o que foi ativado).',
-  documento: 'Um ou mais arquivos anexados (a planilha dos ramais, o desenho da URA): PDF, imagem, Word ou Excel, de até 10 MB. Conta como feito com o primeiro arquivo.',
+  documento: 'Um ou mais arquivos anexados (a planilha dos ramais, o desenho da URA): PDF, imagem, Word ou Excel, de até 30 MB. Conta como feito com o primeiro arquivo.',
 };
 /**
  * Os tipos que trocam entre si depois de criado (2.4, o Luan no campo Estrutura da URA: "aqui tem q ter o tipo, documento"):
@@ -1617,10 +1617,12 @@ export const AnotacaoSchema = z.object({
   texto: Texto(20_000).transform((s) => s.trim()),
   anexos: z.array(ArquivoQueChegaSchema).max(5).default([]),
 }).refine((a) => a.texto.length > 0 || a.anexos.length > 0, 'Escreva a anotação ou anexe um arquivo');
+/** O arquivo de um campo do card (2.4.7): até 30 MB (o base64 de 30 MB tem uns 42 milhões de letras), conferido no servidor. */
+const ArquivoDoCampoSchema = z.object({ fileName: z.string().trim().min(1).max(200), conteudo: z.string().min(1).max(42_000_000) });
 /** Anexar num campo do card (2.3): no campo todo ou numa caixinha (`opcaoId`); até 5 arquivos de uma vez. */
 export const AnexosDoCampoSchema = z.object({
   opcaoId: z.string().trim().max(60).nullish().transform((v) => v || null),
-  anexos: z.array(ArquivoQueChegaSchema).min(1, 'Escolha o arquivo').max(5, 'Até 5 arquivos de uma vez'),
+  anexos: z.array(ArquivoDoCampoSchema).min(1, 'Escolha o arquivo').max(5, 'Até 5 arquivos de uma vez'),
 });
 export const LigarChamadoSchema = z.object({ para: z.string().trim().min(1).max(40), tipo: z.enum(TIPOS_LIGACAO_CHAMADO) });
 export const PaiSchema = z.object({ pai: z.string().trim().max(40).nullable() });
@@ -2109,6 +2111,13 @@ export type AnexoChamado = { id: string; nome: string; tipo: string; tamanho: nu
 export type AnexoDoCampo = AnexoChamado & { campoId: string; opcaoId: string | null; por: PessoaCurta | null; em: string; podeTirar: boolean };
 /** Até quantos anexos cabem em cada campo (ou em cada caixinha). */
 export const MAX_ANEXOS_DO_CAMPO = 20;
+/**
+ * O tamanho de cada anexo de um campo do card (2.4.7, o Luan, com o contrato assinado de 15 MB: "Aumente esse limite n ta
+ * cabendo minhas propostas"): 30 MB, contra os 10 MB da anotação. Cada arquivo vai sozinho para o servidor, então o pedido
+ * fica em uns 40 MB (o base64 cresce um terço). A NIA continua lendo só até 10 MB por arquivo.
+ */
+export const MAX_MB_ANEXO_DO_CAMPO = 30;
+export const MAX_BYTES_ANEXO_DO_CAMPO = MAX_MB_ANEXO_DO_CAMPO * 1024 * 1024;
 export type AnotacaoChamado = {
   id: string; texto: string; por: PessoaCurta | null; porNome: string | null; em: string; anexos: AnexoChamado[]; podeApagar: boolean;
   /** quem a anotação citou com @ (e recebeu o aviso) */

@@ -232,8 +232,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => fichaDepois(req, await svc.apagarAnotacao(app, ator(req), req.params.id, req.params.notaId), 'delete'));
 
   // 2.3: os anexos dos campos do card e das caixinhas
+  // 2.4.7: até 30 MB por arquivo. A tela manda um de cada vez (uns 40 MB no pedido, com o base64); o padrão do app é 30 MB
   app.post('/chamados/:id/campos/:campoId/anexos', {
-    ...trabalhar, schema: { tags, summary: 'Anexar num campo do card ou numa caixinha (opcaoId): até 5 arquivos de 10 MB por vez, até 20 em cada', params: Id.extend({ campoId: z.string().min(1) }), body: AnexosDoCampoSchema },
+    ...trabalhar, bodyLimit: 45 * 1024 * 1024,
+    schema: { tags, summary: 'Anexar num campo do card ou numa caixinha (opcaoId): arquivos de até 30 MB (um por pedido, na tela), até 20 em cada', params: Id.extend({ campoId: z.string().min(1) }), body: AnexosDoCampoSchema },
   }, async (req) => fichaDepois(req, await svc.anexarNoCampo(app, ator(req), req.params.id, req.params.campoId, req.body)));
 
   app.delete('/chamados/:id/anexos/:anexoId', {

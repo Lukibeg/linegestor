@@ -761,7 +761,7 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
         {f.tipo !== 'documento' && <label className="flex items-start gap-2.5 text-sm cursor-pointer" id="campo-anexos">
           <Toggle checked={f.anexos} onChange={(v) => mudar({ anexos: v })} />
           <span>Recebe anexos
-            <span className="block text-[12.5px] text-muted">Na ficha, o Anexar do campo{f.tipo === 'caixinhas' || f.tipo === 'modulos' ? ' (nas caixinhas, o clipe de cada uma)' : ''}: imagens, PDF, Word e Excel, de até 10 MB. Desligado, o que já foi anexado continua lá.</span>
+            <span className="block text-[12.5px] text-muted">Na ficha, o Anexar do campo{f.tipo === 'caixinhas' || f.tipo === 'modulos' ? ' (nas caixinhas, o clipe de cada uma)' : ''}: imagens, PDF, Word e Excel, de até 30 MB. Desligado, o que já foi anexado continua lá.</span>
           </span>
         </label>}
 

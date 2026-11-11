@@ -451,12 +451,13 @@ export async function apagarComentario(db: Db, id: string, commentId: string, us
 }
 
 /** Lê o "data:<tipo>;base64,…" e devolve o tipo e o conteúdo, já conferindo o tamanho. */
-export function lerConteudo(conteudo: string) {
+export function lerConteudo(conteudo: string, limite = LIMITE_ANEXO_BYTES) {
   const m = /^data:([^;]+);base64,(.+)$/s.exec(conteudo);
   if (!m) throw new BadRequest('Não consegui ler esse arquivo');
   const dataBase64 = m[2]!;
   const sizeBytes = Math.floor((dataBase64.length * 3) / 4);
-  if (sizeBytes > LIMITE_ANEXO_BYTES) throw new BadRequest('Arquivo muito grande (máximo 10 MB)');
+  // o anexo do campo do card passa um limite maior (2.4.7: 30 MB); o resto continua com 10 MB
+  if (sizeBytes > limite) throw new BadRequest(`Arquivo muito grande (máximo ${Math.round(limite / 1024 / 1024)} MB)`);
   return { mimeType: m[1]!.toLowerCase(), dataBase64, sizeBytes };
 }
 

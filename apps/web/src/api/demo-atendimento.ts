@@ -21,7 +21,7 @@
  */
 import {
   AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AssuntoGravarSchema,
-  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, AnexosDoCampoSchema, DICA_DO_CAMPO_DO_HELENA, PARTE_DOS_CAMPOS_DO_HELENA, CaixinhasGravarSchema, CampoGravarSchema, MAX_ANEXOS_DO_CAMPO, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
+  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, AnexosDoCampoSchema, DICA_DO_CAMPO_DO_HELENA, PARTE_DOS_CAMPOS_DO_HELENA, CaixinhasGravarSchema, CampoGravarSchema, MAX_ANEXOS_DO_CAMPO, MAX_BYTES_ANEXO_DO_CAMPO, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
   ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
@@ -1924,11 +1924,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   // =====================================================================
 
   /** O anexo como fica guardado: o tipo de verdade da imagem; a imagem que não é imagem baixa como arquivo. */
-  function anexoParaGuardar(a: { fileName: string; conteudo: string }) {
+  function anexoParaGuardar(a: { fileName: string; conteudo: string }, limite = LIMITE_ANEXO_BYTES) {
     const m = /^data:([^;]+);base64,(.+)$/s.exec(a.conteudo);
     if (!m) throw bad('Não consegui ler esse arquivo');
     const b64 = m[2]!;
-    if (Math.floor((b64.length * 3) / 4) > LIMITE_ANEXO_BYTES) throw bad('Arquivo muito grande (máximo 10 MB)');
+    if (Math.floor((b64.length * 3) / 4) > limite) throw bad(`Arquivo muito grande (máximo ${Math.round(limite / 1024 / 1024)} MB)`);
     const mime = m[1]!.toLowerCase();
     const real = tipoDaImagem(b64);
     const tipo = real ?? (IMAGENS_NA_TELA.includes(mime) ? 'application/octet-stream' : mime);
@@ -1943,7 +1943,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const anexos = d.anexos ?? [];
     if (!texto && !anexos.length) throw bad('Escreva a anotação ou anexe um arquivo.');
     if (anexos.length > 5) throw bad('No máximo 5 anexos por anotação.');
-    const guardar = anexos.map(anexoParaGuardar);
+    const guardar = anexos.map((a) => anexoParaGuardar(a));
     const e = carregar(ator, ref, agora);
     const { t } = e;
     const pessoa = pessoaDoAtor(ator);
@@ -2011,7 +2011,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     exigirTrabalhar(ator);
     if (!d.anexos.length) throw bad('Escolha o arquivo.');
     if (d.anexos.length > 5) throw bad('Até 5 arquivos de uma vez.');
-    const guardar = d.anexos.map(anexoParaGuardar);
+    // 2.4.7: o anexo do campo vai até 30 MB (o da anotação continua com 10 MB), como no servidor
+    const guardar = d.anexos.map((a) => anexoParaGuardar(a, MAX_BYTES_ANEXO_DO_CAMPO));
     const e = carregar(ator, ref, agora);
     const { t } = e;
     const { c, opcao, nome } = campoParaAnexo(e, campoId, d.opcaoId);

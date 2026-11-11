@@ -2,7 +2,7 @@
  * Os anexos dos campos do card e das caixinhas (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs
  * que vão ter pré visualização"):
  *
- *  - o Anexar de cada campo (e o clipe de cada caixinha) escolhe um ou vários arquivos de até 10 MB; cada um vai sozinho
+ *  - o Anexar de cada campo (e o clipe de cada caixinha) escolhe um ou vários arquivos de até 30 MB (2.4.7; eram 10); cada um vai sozinho
  *    para o servidor (um que falha não derruba os outros);
  *  - a imagem aparece em miniatura e abre grande com um clique; o PDF abre no leitor do Gestor, sem baixar; o Word, o Excel
  *    e o resto aparecem com o nome e o ícone e baixam com um clique;
@@ -12,7 +12,7 @@
  */
 import { lazy, Suspense, useRef, useState } from 'react';
 import { Download, ExternalLink, FileSpreadsheet, FileText, Paperclip, X } from 'lucide-react';
-import type { AnexoDoCampo } from '@gestor/shared';
+import { MAX_BYTES_ANEXO_DO_CAMPO, MAX_MB_ANEXO_DO_CAMPO, type AnexoDoCampo } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Confirmar, Modal, Spinner } from '../../../components/ui/index.js';
 import { lerComoDataUrl, tamanhoDoArquivo } from '../../../lib/arquivos.js';
@@ -21,7 +21,6 @@ import { useAberta, useAcao } from './base.js';
 import { dataCompleta } from './Cabecalho.js';
 
 const LeitorDePdf = lazy(() => import('../../../components/LeitorDePdf.js'));
-const MAX_BYTES = 10 * 1024 * 1024;
 const ehPdf = (a: { tipo: string; nome: string }) => a.tipo === 'application/pdf' || /\.pdf$/i.test(a.nome);
 const ehPlanilha = (nome: string) => /\.(xlsx?|xlsm|csv|ods)$/i.test(nome);
 const ehDocumento = (nome: string) => /\.(docx?|odt|rtf|txt)$/i.test(nome);
@@ -51,7 +50,7 @@ export function BotaoAnexar({ campoId, opcaoId = null, rotulo, soIcone = false, 
     setIndo({ feitos: 0, total: arquivos.length });
     let feitos = 0;
     for (const a of arquivos) {
-      if (a.size > MAX_BYTES) { problemas.push(`"${a.name}" tem ${tamanhoDoArquivo(a.size)}: o limite é 10 MB por arquivo.`); continue; }
+      if (a.size > MAX_BYTES_ANEXO_DO_CAMPO) { problemas.push(`"${a.name}" tem ${tamanhoDoArquivo(a.size)}: o limite é ${MAX_MB_ANEXO_DO_CAMPO} MB por arquivo.`); continue; }
       if (a.size === 0) { problemas.push(`"${a.name}" está vazio.`); continue; }
       try {
         const conteudo = await lerComoDataUrl(a);
@@ -70,7 +69,7 @@ export function BotaoAnexar({ campoId, opcaoId = null, rotulo, soIcone = false, 
       <input ref={entrada} type="file" multiple className="hidden" aria-hidden tabIndex={-1}
         onChange={(e) => { const xs = [...(e.target.files ?? [])]; e.target.value = ''; void enviar(xs); }} />
       <button type="button" className={soIcone ? 'p-1 rounded-md text-muted hover:text-accent hover:bg-surface-2 disabled:opacity-40' : 'btn-ghost btn-sm -my-1'}
-        disabled={!!indo} onClick={() => entrada.current?.click()} aria-label={rotulo} title={`${rotulo} (imagens, PDF, Word, Excel… até 10 MB cada)`} data-anexar="">
+        disabled={!!indo} onClick={() => entrada.current?.click()} aria-label={rotulo} title={`${rotulo} (imagens, PDF, Word, Excel… até ${MAX_MB_ANEXO_DO_CAMPO} MB cada)`} data-anexar="">
         {indo ? <Spinner className="!w-3.5 !h-3.5" /> : <Paperclip size={soIcone ? 14 : 13} />}
         {!soIcone && <span>{indo && indo.total > 1 ? `Anexando ${indo.feitos + 1} de ${indo.total}…` : 'Anexar'}</span>}
       </button>

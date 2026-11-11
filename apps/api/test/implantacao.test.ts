@@ -511,4 +511,23 @@ describe('os anexos dos campos e das caixinhas (2.3)', () => {
     expect((await s.get(`/atendimento/anexos/${doBruno.id}`)).statusCode).toBe(404);
     expect((await s.del(`/atendimento/chamados/${card.id}/anexos/${doBruno.id}`)).statusCode).toBe(404);
   });
+
+  it('o arquivo vai até 30 MB (2.4.7: o contrato assinado de 15 MB não cabia nos 10 MB); o de 31 MB é recusado', async () => {
+    const pdfDe = (mb: number) => {
+      const b = Buffer.alloc(mb * 1024 * 1024, 0x20);
+      b.write('%PDF-1.4\n', 0);
+      return `data:application/pdf;base64,${b.toString('base64')}`;
+    };
+    const lista = campo('Lista de ramais', 'linepbx');
+    const r = await anexar(s, lista.id, null, 'PropostaContrato Assinado.pdf', pdfDe(15));
+    expect(r.statusCode, r.body.slice(0, 300)).toBe(200);
+    const a = (r.json() as FichaChamado).anexosDosCampos.find((x) => x.nome === 'PropostaContrato Assinado.pdf')!;
+    expect(a.tamanho).toBe(15 * 1024 * 1024);
+    const arquivo = await s.get(`/atendimento/anexos/${a.id}`);
+    expect(arquivo.statusCode).toBe(200);
+    expect(arquivo.rawPayload.length).toBe(15 * 1024 * 1024);
+    const grande = await anexar(s, lista.id, null, 'grande demais.pdf', pdfDe(31));
+    expect(grande.statusCode).toBe(400);
+    expect((await ficha(card.id)).anexosDosCampos.some((x) => x.nome === 'grande demais.pdf')).toBe(false);
+  });
 });
