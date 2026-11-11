@@ -18,7 +18,8 @@ import { ArrowRight, ChartColumn, Lock, Plus, Search, Settings2 } from 'lucide-r
 import { paraBusca, reaisInteiros, type Painel, type ResumoDoPainel } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, Chip, Vazio, mensagemErro } from '../../components/ui/index.js';
-import { CabecalhoAtendimento, useLerOQuadroAntes, useOpcoes, usePode } from './comum.js';
+import { CabecalhoAtendimento, useLerOQuadroAntes, useOpcoes, usePode, usePodeConfigurar } from './comum.js';
+import { JanelaConfigurarPainel } from './ajustes/Paineis.js';
 import { enderecoDoRelatorio } from './painel.js';
 
 /** O fundo e a letra do quadradinho da sigla, na cor do painel (as classes inteiras, para o Tailwind achar). */
@@ -33,6 +34,7 @@ const BUSCA_A_PARTIR_DE = 7;
 
 export function PaineisDeChamados() {
   const opcoes = useOpcoes();
+  const podeConfigurar = usePodeConfigurar();
   const pode = usePode();
   // o prazo anda com o relógio: os números se releem a cada minuto, como o quadro
   const resumo = useQuery({ queryKey: ['atendimento', 'paineis', 'resumo'], queryFn: () => api.atendimento.resumoDosPaineis(), refetchInterval: 60_000 });
@@ -68,7 +70,7 @@ export function PaineisDeChamados() {
           {resumo.isError && <p className="text-bad text-[13px] mb-2" role="alert">Não consegui ler os números dos painéis: {mensagemErro(resumo.error)}</p>}
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" id="paineis" aria-label="Painéis de chamados">
             {paineis.map((p) => (
-              <li key={p.id} className="min-w-0"><CartaoDoPainel p={p} r={porPainel.get(p.id)} carregando={resumo.isLoading} cuidar={pode.cuidar} /></li>
+              <li key={p.id} className="min-w-0"><CartaoDoPainel p={p} r={porPainel.get(p.id)} carregando={resumo.isLoading} cuidar={podeConfigurar(p)} /></li>
             ))}
             {pode.cuidar && !busca && (
               <li className="min-w-0">
@@ -95,6 +97,7 @@ export function PaineisDeChamados() {
 }
 
 function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPainel | undefined; carregando: boolean; cuidar: boolean }) {
+  const [configurando, setConfigurando] = useState(false);
   const nav = useNavigate();
   const quadro = `/atendimento/quadro?painel=${encodeURIComponent(p.id)}`;
   // o mouse parado no Abrir o quadro já lê o quadro (2.1.2)
@@ -113,7 +116,9 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
           <h2 className="font-display font-semibold text-[16px] leading-snug flex items-center gap-2 flex-wrap" id={`painel-${p.id}`}>
             <Link to={quadro} className="hover:text-accent">{p.nome}</Link>
             {!p.ativo && <Chip tone="muted">desativado</Chip>}
-            {p.acesso === 'escolhidos' && <Chip tone="neutral" title="Só as pessoas escolhidas (e quem cuida dos chamados) veem este painel"><Lock size={11} aria-hidden /> só os escolhidos</Chip>}
+            {p.donoId
+              ? <Chip tone="neutral" title="O seu painel pessoal: só você vê (2.4.7)"><Lock size={11} aria-hidden /> pessoal</Chip>
+              : p.acesso === 'escolhidos' && <Chip tone="neutral" title="Só as pessoas escolhidas (e quem cuida dos chamados) veem este painel"><Lock size={11} aria-hidden /> só os escolhidos</Chip>}
           </h2>
           {p.descricao && <p className="text-[12.5px] text-muted line-clamp-2 mt-0.5">{p.descricao}</p>}
         </div>
@@ -151,11 +156,13 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
               <ChartColumn size={15} aria-hidden /> Relatório
             </Link>
           )}
+          {/* 2.4.7: o Configurar abre a janela aqui mesmo (o painel, as etapas, os campos, os assuntos e as etiquetas) */}
           {cuidar && (
-            <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(p.id)}`} className="btn-ghost btn-sm" title="As etapas, as regras e quem vê este painel">
+            <button type="button" className="btn-ghost btn-sm" title="O painel, as etapas, os campos, os assuntos e as etiquetas" onClick={() => setConfigurando(true)} data-configurar={p.id}>
               <Settings2 size={15} aria-hidden /> Configurar
-            </Link>
+            </button>
           )}
+          {configurando && <JanelaConfigurarPainel painelId={p.id} onFechar={() => setConfigurando(false)} />}
           <Link to={quadro} className="btn-primary btn-sm" {...lerOQuadro(p.ativo ? p.id : null)}>Abrir o quadro <ArrowRight size={14} aria-hidden /></Link>
         </div>
       </footer>

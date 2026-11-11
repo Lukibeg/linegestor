@@ -202,6 +202,10 @@ export type Painel = {
   ativo: boolean;
   /** quantos chamados abertos (o número da aba) */
   abertos: number;
+  /**
+   * O painel pessoal (2.4.7): de quem é. Só o dono vê e configura (nem quem cuida dos chamados vê); nulo, um painel da equipe.
+   */
+  donoId: string | null;
 };
 
 /**
@@ -515,7 +519,24 @@ export type CampoPersonalizado = {
    * do campo (e o clipe de cada caixinha). Desligado, o campo não recebe; o que já foi anexado continua lá.
    */
   anexos?: boolean;
+  /**
+   * A largura no grupo do meio da ficha (2.4.7, o Luan: "escolher na hora de cadastrar um campo se ele vai ocupar metade do
+   * espaço como o de operadora doadora ou vai ser todo como esse da faixa numérica"): metade (dois lado a lado) ou a linha
+   * inteira. Nulo: pelo tipo, como antes (larguraDoCampo).
+   */
+  largura?: LarguraDoCampo | null;
 };
+export const LARGURAS_DO_CAMPO = ['metade', 'inteiro'] as const;
+export type LarguraDoCampo = (typeof LARGURAS_DO_CAMPO)[number];
+export const NOME_LARGURA_DO_CAMPO: Record<LarguraDoCampo, string> = { metade: 'Metade', inteiro: 'Linha inteira' };
+/**
+ * A largura que o campo ocupa no grupo do meio da ficha: a escolhida ou, sem escolha, a do tipo (o texto longo, o documento e as
+ * caixinhas, a linha inteira; o resto, metade, lado a lado com o vizinho).
+ */
+export function larguraDoCampo(c: Pick<CampoPersonalizado, 'tipo' | 'largura'>): LarguraDoCampo {
+  if (c.largura === 'metade' || c.largura === 'inteiro') return c.largura;
+  return c.tipo === 'texto_longo' || c.tipo === 'documento' || c.tipo === 'caixinhas' || c.tipo === 'modulos' ? 'inteiro' : 'metade';
+}
 /**
  * Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção. O valor do campo continua a lista das marcadas; isto
  * é o que a ficha escreve ao lado ("Luan, 28/10 14:32"). Desmarcar tira a marca.
@@ -1352,6 +1373,43 @@ export const ETAPAS_DO_PAINEL_NOVO: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'n
   { nome: 'Fechado', tipo: 'fechado', nivel: null, obrigatorios: [] },
 ];
 
+/**
+ * O PAINEL PESSOAL (2.4.7, o Luan: "quero que nativamente todos os usuários tenham um painel pessoal de atividades, ele vai vir
+ * seco e o usuário vai habilitando os campos que achar necessário, mais as etapas vão ser padrão: standby (parado), novos
+ * (início), em andamento, concluído, validado"). Nasce com estas etapas; o dono muda as dele depois.
+ */
+export const ETAPAS_DO_PAINEL_PESSOAL: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'>> = [
+  { nome: 'Stand By', tipo: 'andamento', nivel: null, obrigatorios: [] },
+  { nome: 'Novos', tipo: 'entrada', nivel: null, obrigatorios: [] },
+  { nome: 'Em andamento', tipo: 'andamento', nivel: null, obrigatorios: [] },
+  { nome: 'Concluído', tipo: 'resolvido', nivel: null, obrigatorios: [] },
+  { nome: 'Validado', tipo: 'fechado', nivel: null, obrigatorios: [] },
+];
+/** Seco: todos os campos do sistema desligados, sem prazo, sem fechar sozinho; o dono liga o que quiser no Configurar. */
+export const AJUSTES_DO_PAINEL_PESSOAL: AjustesDoPainel = {
+  ...AJUSTES_PAINEL_PADRAO, contaPrazo: false, fecharSozinhoDias: null, paiEsperaFilhos: false,
+  camposDesligados: [...camposDoSistemaDoTipo('gestao')],
+};
+/** "Marina Souza" → "Marina - Pessoal" (como o do Luan, que já existia: "Luan - Pessoal"). */
+export function nomeDoPainelPessoal(nomeDaPessoa: string): string {
+  const primeiro = nomeDaPessoa.trim().split(/\s+/)[0] || 'Meu';
+  return `${primeiro.slice(0, 29)} - Pessoal`;
+}
+/**
+ * As siglas que o painel pessoal tenta, na ordem (a primeira livre fica): as iniciais com P ("Marina Souza" → MSP), o começo do
+ * nome com P (MARP), as iniciais (MS)… Só letras de A a Z, de 2 a 5 (o servidor ainda acrescenta letras se todas estiverem em uso).
+ */
+export function siglasDoPainelPessoal(nomeDaPessoa: string): string[] {
+  const letras = (t: string) => t.normalize('NFD').replace(/[^A-Za-z]/g, '').toUpperCase();
+  const partes = nomeDaPessoa.trim().split(/\s+/).map(letras).filter(Boolean);
+  const iniciais = partes.map((x) => x[0]).join('').slice(0, 4);
+  const primeiro = partes[0] ?? 'EU';
+  const candidatas = [
+    `${iniciais}P`, `${primeiro.slice(0, 4)}P`, iniciais, `${primeiro.slice(0, 2)}${(partes[1] ?? '').slice(0, 2)}P`, primeiro.slice(0, 5),
+  ];
+  return [...new Set(candidatas.filter((s) => /^[A-Z]{2,5}$/.test(s)))];
+}
+
 export const AssuntoGravarSchema = z.object({
   paiId: z.string().nullish().transform((v) => v || null),
   nome: z.string().trim().min(1, 'Dê um nome ao assunto').max(80),
@@ -1404,6 +1462,8 @@ export const CampoGravarSchema = z.object({
   escolhidosEm: z.string().trim().max(60).nullish().transform((v) => v || null),
   /** recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha */
   anexos: z.boolean().default(false),
+  /** a largura no grupo do meio da ficha (2.4.7): metade ou a linha inteira; vazio, pelo tipo */
+  largura: z.enum(LARGURAS_DO_CAMPO).nullish().transform((v) => v ?? null),
 }).superRefine((c, ctx) => {
   if (c.tipo === 'modulos' && !c.produtoId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['produtoId'], message: 'Escolha o produto: os módulos são os dele' });
   if (c.escolhidosEm && c.tipo !== 'modulos') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['escolhidosEm'], message: 'Só os módulos do produto seguem outro campo' });

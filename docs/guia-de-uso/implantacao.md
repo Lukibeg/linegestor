@@ -107,3 +107,7 @@ viram documento sem perder o que foi escrito.
 
 E a opção **Recebe anexos**: com ela, o campo ganha o Anexar na ficha (nas caixinhas, o clipe de cada uma). No modelo
 Implantação, vem ligada nos campos da Curadoria.
+
+E, desde o 2.4.7, a **Largura na ficha** (num grupo do meio da ficha): **Metade** (lado a lado com o campo vizinho de metade,
+como a Operadora Doadora e a Conta operadora doadora) ou **Linha inteira** (como a Faixa Numérica). Sem escolher, vale a do
+tipo: o texto longo, o documento e as caixinhas ocupam a linha; o resto, metade.

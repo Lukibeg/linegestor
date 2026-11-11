@@ -76,6 +76,8 @@ export function painelDaLinha(p: LinhaPainel, etapas: LinhaEtapa[], abertos = 0)
     ajustes: ajustesDoPainelCompletos(p.settings as Partial<Painel['ajustes']>),
     etapas: etapas.filter((e) => e.panelId === p.id && !e.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(etapaDaLinha),
     ativo: p.active, abertos,
+    // o painel pessoal (2.4.7)
+    donoId: p.ownerId ?? null,
   };
 }
 
@@ -103,8 +105,10 @@ export async function carregarPaineis(db: Db): Promise<{ paineis: Painel[]; toda
  * "escolhidos", só as pessoas da lista; nos outros, quem vê chamados (os de Gestão) ou o Comercial (os de
  * Vendas). A integração (robô, n8n) vê todos.
  */
-export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>, a: Ator): boolean {
+export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'> & { donoId?: string | null }, a: Ator): boolean {
   if (a.tipo === 'integracao') return true;
+  // o painel pessoal (2.4.7): só o dono, nem quem cuida dos chamados
+  if (p.donoId) return a.id === p.donoId;
   const vendas = p.tipo === 'vendas';
   if (vendas && !podeVerVendas(a)) return false;
   if (podeCuidar(a)) return true;
@@ -113,10 +117,34 @@ export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>, a:
 }
 
 /**
+ * Quem configura o painel (os Ajustes dele: o painel, as etapas, os campos, os assuntos, as etiquetas): quem cuida dos chamados;
+ * o pessoal (2.4.7), só o dono — mesmo sem cuidar dos chamados ("o usuário vai habilitando os campos que achar necessário").
+ */
+export function podeConfigurarPainel(p: { donoId?: string | null }, a: Ator): boolean {
+  if (a.tipo !== 'pessoa') return false;
+  if (p.donoId) return a.id === p.donoId;
+  return podeCuidar(a);
+}
+/**
+ * A porta das rotas de Ajustes de um painel: o painel pessoal de outra pessoa nem existe para quem pede (404); o da equipe pede
+ * quem cuida dos chamados. Sem o painel (o id não existe), quem cuida segue — a rota responde o 404 dela.
+ */
+export async function exigirConfigurarPainel(db: Db, a: Ator, painelId: string | null | undefined): Promise<void> {
+  const [p] = painelId
+    ? await db.select({ donoId: ticketPanels.ownerId }).from(ticketPanels).where(and(eq(ticketPanels.id, painelId), isNull(ticketPanels.deletedAt))).limit(1)
+    : [];
+  if (p?.donoId) {
+    if (a.tipo === 'pessoa' && a.id === p.donoId) return;
+    throw new NotFound('Painel');
+  }
+  if (!podeCuidar(a)) throw new Forbidden('Esta ação exige a permissão "tickets.manage"');
+}
+
+/**
  * Quem pode ser citado com @ numa anotação do painel: as pessoas ativas que veem o painel (quem não vê
  * receberia um aviso que não abre). Em ordem de nome.
  */
-export async function quemVeOPainel(db: Db, p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>): Promise<PessoaCurta[]> {
+export async function quemVeOPainel(db: Db, p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'> & { donoId?: string | null }): Promise<PessoaCurta[]> {
   const us = await db.select({ id: users.id, name: users.name, permissions: roles.permissions }).from(users)
     .innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.active, true)).orderBy(asc(users.name));
   return us.filter((u) => podeVerPainel(p, atorDaPessoa(u))).map((u) => ({ id: u.id, nome: u.name }));
@@ -162,6 +190,8 @@ export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonal
     // o checklist dos módulos (2.3): só nos módulos
     escolhidosEm: c.kind === 'modulos' ? c.followsFieldId ?? null : null,
     anexos: c.acceptsAttachments,
+    // a largura no grupo do meio (2.4.7): a escolhida, ou nula (pelo tipo)
+    largura: c.width === 'metade' || c.width === 'inteiro' ? c.width : null,
   };
 }
 /**

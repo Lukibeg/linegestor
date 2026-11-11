@@ -1545,11 +1545,20 @@ export const ticketPanels = pgTable(
     /** As regras do painel (as opções de Tipo, se conta prazo, em quantos dias o Resolvido fecha, o que é obrigatório ao abrir, se o pai espera os filhos, os supervisores), em JSON */
     settings: jsonb('settings').notNull().default({}),
     active: boolean('active').notNull().default(true),
+    /**
+     * O painel pessoal (2.4.7): de quem é. Só o dono vê e configura; cada pessoa tem um (nasce quando ela entra nos Painéis).
+     * Nulo: um painel da equipe.
+     */
+    ownerId: text('owner_id').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
   },
-  (t) => [uniqueIndex('ticket_panels_key_uq').on(t.key)],
+  (t) => [
+    uniqueIndex('ticket_panels_key_uq').on(t.key),
+    // um painel pessoal por pessoa (o que saiu para a lixeira não conta)
+    uniqueIndex('ticket_panels_owner_uq').on(t.ownerId).where(sql`owner_id is not null and deleted_at is null`),
+  ],
 );
 
 /**
@@ -1659,6 +1668,8 @@ export const ticketFields = pgTable(
     followsFieldId: text('follows_field_id').references((): AnyPgColumn => ticketFields.id, { onDelete: 'set null' }),
     /** Recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha (os do modelo Implantação: os da Curadoria) */
     acceptsAttachments: boolean('accepts_attachments').notNull().default(false),
+    /** A largura no grupo do meio da ficha (2.4.7): metade ou inteiro; nulo, pelo tipo (o texto longo, a linha inteira; o curto, metade) */
+    width: text('width'),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     /**

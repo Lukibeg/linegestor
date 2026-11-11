@@ -22,6 +22,7 @@ import {
 import { BadRequest } from '../plugins/errors.js';
 import { incluirOpcao } from '../services/atendimento/ajustes.js';
 import { atorDaPessoa, carregarContexto, podeVerPainel } from '../services/atendimento/contexto.js';
+import { garantirPainelPessoal } from '../services/atendimento/ajustes.js';
 import * as svc from '../services/atendimento/chamados.js';
 import * as leitura from '../services/atendimento/leitura.js';
 import { relatorioDoPainelDeVendas } from '../services/atendimento/vendas.js';
@@ -65,7 +66,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   // ---------- ler ----------
 
   app.get('/opcoes', { ...ler, schema: { tags, summary: 'Os painéis que a pessoa vê, as pessoas, os assuntos, os produtos, as operadoras, as etiquetas e os prazos' } },
-    async (req) => leitura.opcoes(app, ator(req)));
+    async (req) => { await garantirPainelPessoal(app, ator(req)); return leitura.opcoes(app, ator(req)); });
 
   app.get('/quadro', { ...ler, schema: { tags, summary: 'O quadro de um painel: uma coluna por etapa (o Fechado mostra só os 30 mais recentes)', querystring: QuadroSchema } },
     async (req) => leitura.quadro(app, ator(req), req.query));
@@ -81,7 +82,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   app.get('/paineis/resumo', { ...ler, schema: { tags, summary: 'A tela inicial: os números de cada painel (em aberto, meus, sem dono, vencidos, perto, esperando e por etapa)' } },
-    async (req) => leitura.resumoDosPaineisVisiveis(app, ator(req)));
+    async (req) => { await garantirPainelPessoal(app, ator(req)); return leitura.resumoDosPaineisVisiveis(app, ator(req)); });
 
   app.get('/vendas', {
     ...ler,

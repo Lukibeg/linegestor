@@ -234,7 +234,7 @@ async function abrirAgora(app: FastifyInstance, ator: Ator, e: EntradaChamado): 
 
   const { paineis } = await carregarPaineis(app.db);
   const pedido = e.painel?.trim();
-  const painel = pedido ? paineis.find((p) => p.id === pedido) ?? paineis.find((p) => p.sigla === pedido.toUpperCase()) : paineis.find((p) => p.ativo);
+  const painel = pedido ? paineis.find((p) => p.id === pedido) ?? paineis.find((p) => p.sigla === pedido.toUpperCase()) : paineis.find((p) => p.ativo && !p.donoId);
   if (!painel) throw new BadRequest(pedido ? `Não achei o painel "${pedido}". Use a sigla (como SUP) ou o id do painel.` : 'Não há nenhum painel ativo para abrir o chamado.');
 
   const titulo = e.titulo && e.titulo.trim().length >= 3 ? e.titulo.trim()

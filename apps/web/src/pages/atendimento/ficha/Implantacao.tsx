@@ -9,7 +9,7 @@
  */
 import { useMemo, useState } from 'react';
 import { ChevronRight, ClipboardList, Rocket } from 'lucide-react';
-import { chaveDoCampo, ehCaixinhas, gruposNaLateral, paraBusca, partesDoChamado, type BlocoDaParte, type CampoPersonalizado, type ParteDoChamado } from '@gestor/shared';
+import { chaveDoCampo, ehCaixinhas, gruposNaLateral, larguraDoCampo, paraBusca, partesDoChamado, type BlocoDaParte, type CampoPersonalizado, type ParteDoChamado } from '@gestor/shared';
 import { ChipSituacao, CodigoChamado, painelDe } from '../comum.js';
 import { FaltaNaParte, Secao, useAberta } from './base.js';
 import { Caixinhas } from './Caixinhas.js';
@@ -125,11 +125,14 @@ export function GruposDaLateral() {
   );
 }
 
-/** Os campos do bloco em grupos: os curtos seguidos juntos (vão lado a lado); o texto longo e as caixinhas, um a um. */
+/**
+ * Os campos do bloco em grupos: os de metade seguidos juntos (vão lado a lado); os da linha inteira, um a um. A largura é a
+ * escolhida no campo (2.4.7) ou, sem escolha, a do tipo (larguraDoCampo).
+ */
 function gruposDoBloco(campos: readonly CampoPersonalizado[]): Array<{ curtos: boolean; campos: CampoPersonalizado[] }> {
   const grupos: Array<{ curtos: boolean; campos: CampoPersonalizado[] }> = [];
   for (const c of campos) {
-    const curto = c.tipo !== 'texto_longo' && c.tipo !== 'documento' && !ehCaixinhas(c.tipo);
+    const curto = larguraDoCampo(c) === 'metade';
     const ultimo = grupos[grupos.length - 1];
     if (curto && ultimo?.curtos) ultimo.campos.push(c);
     else grupos.push({ curtos: curto, campos: [c] });

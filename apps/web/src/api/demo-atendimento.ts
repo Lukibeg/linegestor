@@ -20,7 +20,7 @@
  * último evento e a IA monta a sugestão com as palavras do próprio chamado.
  */
 import {
-  AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AssuntoGravarSchema,
+  AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_DO_PAINEL_PESSOAL, ETAPAS_DO_PAINEL_PESSOAL, nomeDoPainelPessoal, siglasDoPainelPessoal, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AssuntoGravarSchema,
   AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, AnexosDoCampoSchema, DICA_DO_CAMPO_DO_HELENA, PARTE_DOS_CAMPOS_DO_HELENA, CaixinhasGravarSchema, CampoGravarSchema, MAX_ANEXOS_DO_CAMPO, MAX_BYTES_ANEXO_DO_CAMPO, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
   ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
@@ -159,6 +159,8 @@ type PainelRow = {
   ajustes: AjustesDoPainel; ativo: boolean; proximoNumero: number; deletedAt: string | null;
   /** Gestão ou Vendas (escolhido ao criar; não muda) */
   tipo: TipoDePainel;
+  /** o painel pessoal (2.4.7): de quem é */
+  donoId?: string | null;
 };
 type EtapaRow = {
   id: string; painelId: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; ordem: number; obrigatorios: Obrigatorio[]; avisar: string[]; deletedAt: string | null;
@@ -559,7 +561,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         motivosDePerda: [...(p.ajustes.motivosDePerda ?? [])], metaMensal: p.ajustes.metaMensal ?? null,
       },
       etapas: A.etapas.filter((e) => e.painelId === p.id && !e.deletedAt).sort((a, b) => a.ordem - b.ordem).map(etapaParaTela),
-      ativo: p.ativo, abertos, tipo: p.tipo,
+      ativo: p.ativo, abertos, tipo: p.tipo, donoId: p.donoId ?? null,
     };
   }
   /** Os painéis fora da lixeira, em ordem. */
@@ -567,8 +569,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const painelPorId = (id: string) => paineis().find((p) => p.id === id);
 
   /** Quem cuida dos chamados vê todos; num painel "escolhidos", só as pessoas da lista; a integração vê todos. */
-  function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>, a: Ator): boolean {
+  function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'> & { donoId?: string | null }, a: Ator): boolean {
     if (a.tipo === 'integracao') return true;
+    // o painel pessoal (2.4.7): só o dono, nem quem cuida dos chamados
+    if (p.donoId) return a.id === p.donoId;
     const vendas = p.tipo === 'vendas';
     if (vendas && !podeVerVendas(a)) return false;
     if (podeCuidar(a)) return true;
@@ -576,8 +580,41 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return p.acesso === 'todos' || p.pessoas.includes(a.id);
   }
   const visiveis = (a: Ator) => new Set(paineis().filter((p) => podeVerPainel(p, a)).map((p) => p.id));
+  /** Quem configura o painel (2.4.7): o da equipe, quem cuida dos chamados; o pessoal, só o dono (como o servidor). */
+  const podeConfigurarPainel = (p: { donoId?: string | null }, a: Ator) => (a.tipo !== 'pessoa' ? false : p.donoId ? a.id === p.donoId : podeCuidar(a));
+  function exigirConfigurar(painelId: string | null | undefined) {
+    const p = painelId ? A.paineis.find((x) => x.id === painelId && !x.deletedAt) : undefined;
+    const a = eu();
+    if (p?.donoId) { if (a.id !== p.donoId) throw naoAchado('Painel'); return; }
+    if (!podeCuidar(a)) throw proibido('Esta ação exige a permissão "tickets.manage"');
+  }
+  const painelDoCampo = (id: string) => A.campos.find((c) => c.id === id)?.painelId ?? A.excluidos.find((c) => c.id === id)?.painelId;
+
+  /**
+   * O painel pessoal (2.4.7), como no servidor (garantirPainelPessoal): quem vê chamados e ainda não tem ganha o seu, seco, com
+   * Stand By, Novos, Em andamento, Concluído e Validado; o painel "… Pessoal" que só ela vê passa a ser o dela, sem mudar nada.
+   */
+  function garantirPainelPessoal(a: Ator) {
+    // quem só lê (o Leitor) não abre chamado: não ganha painel
+    if (a.tipo !== 'pessoa' || !podeVerChamados(a) || !podeTrabalhar(a)) return;
+    if (A.paineis.some((p) => p.donoId === a.id && !p.deletedAt)) return;
+    const queJaUsava = A.paineis.filter((p) => !p.deletedAt && !p.donoId && p.tipo === 'gestao' && p.acesso === 'escolhidos'
+      && p.pessoas.length === 1 && p.pessoas[0] === a.id && paraBusca(p.nome).includes('pessoal'));
+    if (queJaUsava.length === 1) { queJaUsava[0]!.donoId = a.id; return; }
+    const nome = S.users.find((u) => u.id === a.id)?.name ?? a.nome;
+    const usadas = new Set(A.paineis.map((p) => p.sigla));
+    let sigla = siglasDoPainelPessoal(nome).find((x) => !usadas.has(x));
+    for (let i = 0; !sigla && i < 26; i++) { const x = `${(siglasDoPainelPessoal(nome)[0] ?? 'PE').slice(0, 3)}${String.fromCharCode(65 + i)}`; if (!usadas.has(x)) sigla = x; }
+    if (!sigla) return;
+    const dados = ler(PainelGravarSchema, {
+      nome: nomeDoPainelPessoal(nome), sigla, descricao: `As atividades de ${nome}`, cor: 'accent', tipo: 'gestao', acesso: 'escolhidos', pessoas: [a.id], ativo: true,
+      ajustes: { ...AJUSTES_DO_PAINEL_PESSOAL, camposDesligados: [...AJUSTES_DO_PAINEL_PESSOAL.camposDesligados] },
+      etapas: ETAPAS_DO_PAINEL_PESSOAL.map((e) => ({ ...e, avisar: [], resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false })),
+    });
+    gravarPainel(a, null, dados, agoraReal(), { dono: a.id });
+  }
   /** Quem pode ser citado com @ numa anotação do painel: as pessoas ativas que veem o painel (como o servidor). */
-  const quemVeOPainel = (p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>): PessoaCurta[] => S.users
+  const quemVeOPainel = (p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'> & { donoId?: string | null }): PessoaCurta[] => S.users
     .filter((u) => u.active && podeVerPainel(p, atorDaPessoa(u.id)))
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
     .map((u) => ({ id: u.id, nome: u.name }));
@@ -3157,8 +3194,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   /** Cria ou muda o painel; as etapas, quando vêm junto (a janela do painel), pelas regras de `salvarEtapas` e tudo de uma vez. */
-  function gravarPainel(ator: Ator, id: string | null, d: ReturnType<typeof PainelGravarSchema.parse>, agora: Date): { valor: Painel; resumo: string; antes?: unknown; depois?: unknown } {
+  function gravarPainel(ator: Ator, id: string | null, d: ReturnType<typeof PainelGravarSchema.parse>, agora: Date, opts: { dono?: string } = {}): { valor: Painel; resumo: string; antes?: unknown; depois?: unknown } {
     const atual = id ? linhaDoPainel(id) : null;
+    // o painel pessoal (2.4.7) é sempre só do dono (como no servidor)
+    const donoDoPainel = atual?.donoId ?? opts.dono ?? null;
+    if (donoDoPainel) d = { ...d, acesso: 'escolhidos', pessoas: [donoDoPainel], tipo: 'gestao', modelo: null };
     const sigla = d.sigla;
     if (atual && atual.sigla !== sigla && atual.proximoNumero > 1) throw bad(`A sigla ${atual.sigla} não muda mais: o painel já tem chamados (${atual.sigla}-1 em diante).`);
     const dono = A.paineis.find((p) => p.sigla === sigla);
@@ -3205,7 +3245,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const plano = planejarEtapas(novoPainel, etapas, {}, validos, tipo);
       const novo: PainelRow = {
         id: novoPainel, nome: d.nome, sigla, descricao: d.descricao ?? null, cor: d.cor, ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1,
-        acesso: d.acesso, pessoas, ajustes, ativo: d.ativo, proximoNumero: 1, deletedAt: null, tipo,
+        acesso: d.acesso, pessoas, ajustes, ativo: d.ativo, proximoNumero: 1, deletedAt: null, tipo, donoId: opts.dono ?? null,
       };
       A.paineis.push(novo);
       aplicarEtapas(ator, plano, agora);
@@ -3603,7 +3643,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const opcoes = conferirCampo(p, d, null);
     const c: CampoPersonalizado = {
       id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, incluirNaHora: d.tipo === 'lista' && d.incluirNaHora,
-      parte: d.parte, produtoId: d.produtoId, escolhidosEm: d.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos,
+      parte: d.parte, produtoId: d.produtoId, escolhidosEm: d.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos, largura: d.largura,
     };
     A.campos.push(c);
     sincronizarModulos();
@@ -3622,7 +3662,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const antes = campoParaTela(c);
     conferirProdutoDoCampo(d.produtoId);
     const opcoes = conferirCampo(p, d, antes);
-    Object.assign(c, { nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos });
+    Object.assign(c, { nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos, largura: d.largura });
     sincronizarModulos();
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
@@ -4392,7 +4432,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   };
 
   const api: Api['atendimento'] = {
-    async opcoes() { await ctx.wait(80); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return opcoes(eu()); },
+    async opcoes() { await ctx.wait(80); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); garantirPainelPessoal(eu()); return opcoes(eu()); },
     async quadro(q) { await ctx.wait(); const f = lerQuadro(q); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return quadro(eu(), f); },
     async lista(q) {
       await ctx.wait();
@@ -4408,6 +4448,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async resumoDosPaineis(): Promise<ResumoDoPainel[]> {
       await ctx.wait(); ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       const ator = eu();
+      garantirPainelPessoal(ator);
       // as mesmas contas do servidor (resumoDosPaineis do shared), sobre os chamados que a pessoa vê
       const agora = agoraReal();
       return resumoDosPaineis(paineis().filter((p) => podeVerPainel(p, ator)), cartoesVisiveis(ator, agora), ator.tipo === 'pessoa' ? ator.id : null, agora);
@@ -4700,7 +4741,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async salvarPainel(id, d) {
       await ctx.wait(200);
       const dados = ler(PainelGravarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      if (id) exigirConfigurar(id); else ctx.requirePerm('tickets.manage');
+      preparar();
       const r = gravarPainel(eu(), id, dados, agoraReal());
       auditar(id ? 'update' : 'create', 'ticket_panel', r.resumo, r.valor.id, { before: r.antes, after: r.depois });
       return r.valor;
@@ -4708,7 +4750,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async salvarEtapas(id, d) {
       await ctx.wait(200);
       const dados = ler(EtapasGravarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(id); preparar();
       const r = salvarEtapasDoPainel(eu(), id, dados, agoraReal());
       auditar('update', 'ticket_panel', r.resumo, id, { before: r.antes, after: r.depois });
       return r.valor;
@@ -4716,7 +4758,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async salvarAssunto(painelId, id, d) {
       await ctx.wait(150);
       const dados = ler(AssuntoGravarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelId); preparar();
       const r = id ? alterarAssunto(id, dados) : criarAssunto(painelId, dados);
       auditar(id ? 'update' : 'create', 'ticket_subject', r.resumo, r.valor.id, { before: 'antes' in r ? r.antes : undefined, after: r.depois });
       return r.valor;
@@ -4724,7 +4766,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async colarAssuntos(painelId, texto) {
       await ctx.wait(200);
       const dados = ler(AssuntosColarSchema, { texto });
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelId); preparar();
       const r = colarAssuntos(painelId, dados.texto);
       auditar('create', 'ticket_subject', r.resumo, null, { after: r.depois });
       return r.valor;
@@ -4732,7 +4774,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async salvarCamposDoSistema(painelId, d) {
       await ctx.wait(150);
       const dados = ler(CamposDoSistemaSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelId); preparar();
       const r = salvarCamposDoSistema(painelId, dados);
       auditar('update', 'ticket_panel', r.resumo, painelId, { before: r.antes, after: r.depois });
       return r.valor;
@@ -4740,7 +4782,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async salvarCampo(painelId, id, d) {
       await ctx.wait(150);
       const dados = ler(CampoGravarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelId); preparar();
       const r = id ? alterarCampo(id, dados) : criarCampo(painelId, dados);
       auditar(id ? 'update' : 'create', 'ticket_field', r.resumo, r.valor.id, { before: 'antes' in r ? r.antes : undefined, after: r.depois });
       return r.valor;
@@ -4748,7 +4790,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async salvarCaixinhas(campoId, d) {
       await ctx.wait(150);
       const dados = ler(CaixinhasGravarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelDoCampo(campoId)); preparar();
       const r = alterarCaixinhas(campoId, dados);
       auditar('update', 'ticket_field', r.resumo, r.valor.id, { before: r.antes, after: r.depois });
       return r.valor;
@@ -4764,20 +4806,20 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     },
     async excluirCampo(campoId) {
       await ctx.wait(150);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelDoCampo(campoId)); preparar();
       const r = excluirCampo(campoId, agoraReal());
       auditar('delete', 'ticket_field', r.resumo, campoId, { before: r.antes });
       return r.valor;
     },
     async camposExcluidos(painelId) {
       await ctx.wait(100);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelId); preparar();
       linhaDoPainel(painelId);
       return A.excluidos.filter((c) => c.painelId === painelId).map((c) => ({ ...campoParaTela(c), excluidoEm: c.excluidoEm })).sort((a, b) => b.excluidoEm.localeCompare(a.excluidoEm));
     },
     async restaurarCampo(campoId) {
       await ctx.wait(150);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelDoCampo(campoId)); preparar();
       const r = restaurarCampo(campoId);
       auditar('restore', 'ticket_field', r.resumo, campoId, { after: r.depois });
       return r.valor;
@@ -4785,7 +4827,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async salvarGrupos(painelId, d) {
       await ctx.wait(150);
       const dados = ler(GruposGravarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelId); preparar();
       const r = gravarGrupos(painelId, dados, agoraReal());
       auditar('update', 'ticket_panel', r.resumo, painelId, { before: r.antes, after: r.depois });
       return r.valor;
@@ -4793,7 +4835,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async ordenarCampos(painelId, ids) {
       await ctx.wait(120);
       const dados = ler(OrdemDosCamposSchema, { ids });
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelId); preparar();
       const r = ordenarCampos(painelId, dados.ids);
       auditar('update', 'ticket_panel', r.resumo, painelId);
       return r.valor;
@@ -4801,13 +4843,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // as etiquetas de cada painel, com a cor (Ajustes › Etiquetas): as mesmas regras e frases do servidor
     async etiquetas() {
       await ctx.wait(80);
-      ctx.requirePerm('tickets.manage'); preparar();
-      return A.etiquetas.map(etiquetaParaTela).sort(ordemDoNome);
+      preparar();
+      // 2.4.7: as dos painéis que a pessoa configura (o pessoal, só o dono)
+      const a = eu();
+      return A.etiquetas.filter((e) => { const p = A.paineis.find((x) => x.id === e.painelId); return !!p && podeConfigurarPainel(p, a); }).map(etiquetaParaTela).sort(ordemDoNome);
     },
     async criarEtiqueta(d) {
       await ctx.wait(150);
       const dados = ler(EtiquetaGravarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(dados.painelId); preparar();
       const painel = A.paineis.find((p) => p.id === dados.painelId);
       if (!painel) throw bad('Esse painel não existe.');
       const chave = chaveDaEtiqueta(dados.nome);
@@ -4822,18 +4866,18 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async editarEtiqueta(id, d) {
       await ctx.wait(140);
       const dados = ler(EtiquetaEditarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(A.etiquetas.find((x) => x.id === id)?.painelId); preparar();
       return editarEtiqueta(etiquetaPorId(id), dados);
     },
     async editarEtiquetaPeloNome(d) {
       await ctx.wait(140);
       const { de, painelId, ...dados } = ler(EtiquetaEditarPeloNomeSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(painelId); preparar();
       return editarEtiqueta({ painelId, nome: de }, dados);
     },
     async removerEtiqueta(id) {
       await ctx.wait(120);
-      ctx.requirePerm('tickets.manage'); preparar();
+      exigirConfigurar(A.etiquetas.find((x) => x.id === id)?.painelId); preparar();
       const e = etiquetaPorId(id);
       const n = usosDasEtiquetas(e.painelId).get(e.chave)?.chamados ?? 0;
       if (n) throw conflito(`A etiqueta ${e.nome} está em ${n} ${n === 1 ? 'chamado' : 'chamados'}: tire dos chamados antes.`);
@@ -5331,7 +5375,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       return { erros: [...A.erros], chamados: A.chamados.length, historico: A.chamados.filter((t) => A.historico.has(t.id)).map((t) => t.codigo) };
     },
     envio: {
-      paineis: () => { preparar(); return paineis().filter((p) => p.tipo !== 'vendas').map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, ativo: p.ativo })); },
+      paineis: () => { preparar(); return paineis().filter((p) => p.tipo !== 'vendas' && !p.donoId).map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, ativo: p.ativo })); },
       paraOEnvio: (painelId, comRelatorios) => {
         preparar();
         const achado = paineis().find((p) => p.id === painelId);
@@ -5401,7 +5445,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       destinos: () => {
         semear();
         // os de Vendas e (2.1.2) os de Gestão: o painel do Helena que não é de vendas vai para um de Gestão
-        return A.paineis.filter((p) => !p.deletedAt).sort((a, b) => a.ordem - b.ordem)
+        return A.paineis.filter((p) => !p.deletedAt && !p.donoId).sort((a, b) => a.ordem - b.ordem)
           .map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, tipo: p.tipo, negociacoes: A.chamados.filter((t) => t.painelId === p.id && !t.deletedAt).length }));
       },
       estado: estadoParaHelena,

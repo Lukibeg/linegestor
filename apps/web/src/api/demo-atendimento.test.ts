@@ -888,8 +888,8 @@ describe('as regras do servidor valem na prévia', () => {
     const cor = async (nome: string, painel = SUP) => (await api.opcoes()).etiquetas.find((e) => e.nome === nome && e.painelId === painel)?.cor;
     expect(await cor('Cliente VIP')).toBe('rosa');
     expect(await cor('urgente')).toBe('bad');
-    // Ajustes › Etiquetas é de quem cuida dos chamados
-    expect((await erroDe(api.etiquetas())).status).toBe(403);
+    // Ajustes › Etiquetas: quem não cuida dos chamados só vê as do painel pessoal dele (2.4.7), não as do Suporte
+    expect((await api.etiquetas()).some((e) => e.painelId === SUP)).toBe(false);
     await entrar('admin');
     const vip = (await api.etiquetas()).find((e) => e.nome === 'Cliente VIP')!;
     expect(vip).toMatchObject({ cor: 'rosa', chamados: 1 });

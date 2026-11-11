@@ -1095,7 +1095,8 @@ describe('quem vê o quê: o painel "escolhidos"', () => {
     expect((await tecnico.post('/atendimento/chamados', { painelId: DEV, titulo: 'Tentativa' })).statusCode).toBe(404);
     const lista = (await tecnico.get('/atendimento/chamados?situacao=todos&pageSize=1000')).json();
     expect(lista.items.some((c: any) => c.painelId === DEV)).toBe(false);
-    expect((await tecnico.get('/atendimento/opcoes')).json().paineis.map((p: any) => p.sigla)).toEqual(['SUP']);
+    // (o painel pessoal dele, 2.4.7, fica de fora da conta)
+    expect((await tecnico.get('/atendimento/opcoes')).json().paineis.filter((p: any) => !p.donoId).map((p: any) => p.sigla)).toEqual(['SUP']);
     // quem está na lista vê; quem cuida dos chamados vê todos
     expect((await operador.get('/atendimento/chamados/DEV-1')).statusCode).toBe(200);
     expect((await s.get('/atendimento/chamados/DEV-1')).statusCode).toBe(200);
@@ -1420,7 +1421,8 @@ describe('a lixeira', () => {
 describe('as opções da tela', () => {
   it('os painéis, as pessoas, os assuntos, as etiquetas usadas e o que a pessoa pode', async () => {
     const op = (await s.get('/atendimento/opcoes')).json();
-    expect(op.paineis.map((p: any) => [p.sigla, p.etapas.length])).toEqual([['SUP', 8], ['DEV', 6]]);
+    // o painel pessoal de quem pede (2.4.7) vem por último, à parte
+    expect(op.paineis.filter((p: any) => !p.donoId).map((p: any) => [p.sigla, p.etapas.length])).toEqual([['SUP', 8], ['DEV', 6]]);
     expect(op.paineis[0].abertos).toBeGreaterThan(0);
     expect(op.pessoas.map((p: any) => p.nome)).toEqual(expect.arrayContaining(['Marina Costa', 'Bruno Técnico', 'Rita Leitora']));
     expect(op.assuntos.filter((a: any) => a.painelId === SUP).map((a: any) => a.nome)).toEqual(['Ramal', 'Sem áudio']);
@@ -1464,7 +1466,8 @@ describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao c
   });
 
   it('Ajustes › Etiquetas: quem cuida cria (num painel), troca a cor (vale nos chamados do painel) e tira a que nenhum chamado usa', async () => {
-    expect((await operador.get('/atendimento/etiquetas')).statusCode).toBe(403);
+    // desde o 2.4.7, quem não cuida lê só as do painel pessoal dele (nenhuma aqui); criar num painel da equipe, não
+    expect((await operador.get('/atendimento/etiquetas')).json().some((e: any) => e.painelId === SUP)).toBe(false);
     expect((await operador.post('/atendimento/etiquetas', { painelId: SUP, nome: 'Teste', cor: 'ok' })).statusCode).toBe(403);
     const lista = (await s.get('/atendimento/etiquetas')).json();
     const vip = lista.find((e: any) => e.nome === 'Cliente VIP');

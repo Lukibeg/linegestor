@@ -122,6 +122,14 @@ export function usePode() {
   const { can } = useAuth();
   return { ver: can('support.read') || can('sales.read'), trabalhar: can('tickets.work'), cuidar: can('tickets.manage'), integrar: can('admin.manage') };
 }
+/**
+ * Quem configura um painel (2.4.7): os da equipe, quem cuida dos chamados; o pessoal, só o dono (mesmo sem cuidar dos chamados).
+ * A mesma regra do servidor (podeConfigurarPainel).
+ */
+export function usePodeConfigurar() {
+  const { can, user } = useAuth();
+  return (p: Pick<Painel, 'donoId'>) => (p.donoId ? p.donoId === user?.id : can('tickets.manage'));
+}
 
 // =====================================================================
 //  ABRIR O CHAMADO: NUMA JANELA GRANDE, POR CIMA DA TELA

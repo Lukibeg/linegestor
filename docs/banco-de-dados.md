@@ -1083,6 +1083,7 @@ Um PAINEL (o Kanban de uma equipe): Suporte, Desenvolvimento, e os que a adminis
 | `member_ids` | texto | As pessoas que veem e trabalham neste painel, quando o acesso é "escolhidos" | obrigatório · padrão: [] · lista |
 | `settings` | JSON | As regras do painel (as opções de Tipo, se conta prazo, em quantos dias o Resolvido fecha, o que é obrigatório ao abrir, se o pai espera os filhos, os supervisores), em JSON | obrigatório · padrão: {} |
 | `active` | sim/não | — | obrigatório · padrão: true |
+| `owner_id` | texto | O painel pessoal (2.4.7): de quem é. Só o dono vê e configura; cada pessoa tem um (nasce quando ela entra nos Painéis). Nulo: um painel da equipe. | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
@@ -1143,6 +1144,7 @@ Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, en
 | `product_id` | texto | Só aparece quando o chamado tem este produto (2.3: o bloco do LineChat, o do LinePBX); os módulos são os dele | liga com **products** |
 | `follows_field_id` | texto | O checklist dos módulos (2.3): o campo de módulos de onde vêm as opções — só os marcados lá (a Curadoria) aparecem aqui (a Configuração). Nulo: o campo é a escolha. | — |
 | `accepts_attachments` | sim/não | Recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha (os do modelo Implantação: os da Curadoria) | obrigatório · padrão: false |
+| `width` | texto | A largura no grupo do meio da ficha (2.4.7): metade ou inteiro; nulo, pelo tipo (o texto longo, a linha inteira; o curto, metade) | — |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `deleted_at` | data e hora | Excluído (2.4, o Luan: "eu quero poder excluir os campos e n só desativar"): some dos Ajustes, da ficha, do Abrir chamado e das regras, e o nome fica livre para outro campo. O que os chamados tinham fica guardado; volta com o Restaurar (Ajustes › Campos › Excluídos). Nulo: no painel. | — |

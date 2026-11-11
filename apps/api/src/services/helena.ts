@@ -71,8 +71,9 @@ export async function opcoes(db: Db, vault: SecretsVault): Promise<OpcoesDoTraze
 }
 
 async function destinosDoGestor(db: Db) {
+  // os painéis pessoais (2.4.7) não recebem o que vem do Helena
   const paineis = await db.select({ id: ticketPanels.id, nome: ticketPanels.name, sigla: ticketPanels.key, tipo: ticketPanels.kind }).from(ticketPanels)
-    .where(isNull(ticketPanels.deletedAt)).orderBy(asc(ticketPanels.sortOrder));
+    .where(and(isNull(ticketPanels.deletedAt), isNull(ticketPanels.ownerId))).orderBy(asc(ticketPanels.sortOrder));
   const contagem = paineis.length
     ? await db.select({ panelId: tickets.panelId, n: sql<number>`count(*)::int` }).from(tickets)
       .where(and(inArray(tickets.panelId, paineis.map((p) => p.id)), isNull(tickets.deletedAt))).groupBy(tickets.panelId)
