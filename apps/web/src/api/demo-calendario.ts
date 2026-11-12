@@ -22,7 +22,7 @@ import {
   NOME_SITUACAO_DO_EVENTO, quemRecebeOLembrete, SituacaoDoEventoSchema, TiposDoCalendarioSchema, diaDaSemana, diaEmBrasilia, eventoVisivel,
   hojeNoCalendario, paineisDepoisDaEdicao, somarDias, textoDoLembrete, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tiposDeFabrica,
   NOME_QUEM_RECEBE_O_LEMBRETE, quemRecebeAInclusao, textoDaInclusao,
-  datasDaRepeticao, diasEntre, limiteDaRepeticao, lixeiraDoCalendario, planoDosProximos, RemoverEventoSchema, textoDaRepeticao, HORIZONTE_DA_REPETICAO,
+  datasDaRepeticao, diasEntre, diasParaGuardar, limiteDaRepeticao, lixeiraDoCalendario, planoDosProximos, RemoverEventoSchema, textoDaRepeticao, HORIZONTE_DA_REPETICAO,
   type EscopoDaSerie, type FrequenciaDaRepeticao, type Repeticao,
   type CalendarioOpcoes, type EventoDoCalendario, type EventoGravar, type Painel, type QuemRecebeOLembrete, type SituacaoDoEvento, type TipoDeEvento,
 } from '@gestor/shared';
@@ -56,6 +56,8 @@ type EventoRow = {
 /** A série (a tabela `calendar_series`): a regra e o modelo das datas que ainda vão nascer. */
 type SerieRow = {
   id: string; frequencia: FrequenciaDaRepeticao; ancora: string; ate: string | null; geradoAte: string; molde: Molde; criadoPorId: string | null;
+  /** toda semana, em quais dias (2.4.7); nulo, só o da âncora */
+  dias?: number[] | null;
   /** o corte do "excluir este e os próximos" (o fim de antes), para a lixeira desfazer */
   corte?: { deletedAt: string; ate: string | null; geradoAte: string; cortadoEm: string } | null;
 };
@@ -111,7 +113,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       chamadoId: e.chamadoId, chamadoCodigo: e.chamadoId ? x().chamados().find((t) => t.id === e.chamadoId)?.codigo ?? null : null,
       inicio: e.inicio, fim: e.fim, diaInteiro: e.diaInteiro, horaInicio: e.horaInicio, horaFim: e.horaFim,
       local: e.local ?? '', observacao: e.observacao ?? '', situacao: e.situacao, lembretes: [...e.lembretes], lembrarQuem: e.lembrarQuem,
-      repeticao: (() => { const r = e.serieId ? C.series.find((x) => x.id === e.serieId) : undefined; return r ? { serieId: r.id, frequencia: r.frequencia, ate: r.ate, ancora: r.ancora } : null; })(),
+      repeticao: (() => { const r = e.serieId ? C.series.find((x) => x.id === e.serieId) : undefined; return r ? { serieId: r.id, frequencia: r.frequencia, ate: r.ate, ancora: r.ancora, dias: r.dias ?? null } : null; })(),
       criadoPor: nomeDaPessoa(e.criadoPorId), criadoEm: e.criadoEm, alteradoPor: nomeDaPessoa(e.alteradoPorId), alteradoEm: e.alteradoEm,
     };
   }
@@ -224,7 +226,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
     `, ${textoDaRepeticao(r, ancora).replace(/^./, (x) => x.toLocaleLowerCase('pt-BR'))}: ${n === 1 ? '1 data' : `${n} datas`} até ${ultimo.slice(8, 10)}/${ultimo.slice(5, 7)}/${ultimo.slice(0, 4)}`;
   function novaSerie(r: Repeticao, v: Valores, quem: string | null, quando: Date): string {
     const id = ctx.id();
-    C.series.push({ id, frequencia: r.frequencia, ancora: v.inicio, ate: r.ate, geradoAte: limiteDaRepeticao(r, v.inicio, hojeNoCalendario(quando)), molde: moldeDe(v), criadoPorId: quem });
+    C.series.push({ id, frequencia: r.frequencia, ancora: v.inicio, ate: r.ate, dias: diasParaGuardar(r, v.inicio), geradoAte: limiteDaRepeticao(r, v.inicio, hojeNoCalendario(quando)), molde: moldeDe(v), criadoPorId: quem });
     return id;
   }
   function inserirDatas(serieId: string, m: Molde, datas: readonly string[], quem: string | null, quando: Date) {
@@ -235,7 +237,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
   }
   function gerarAsDatas(serieId: string, r: Repeticao, v: Valores, quem: string | null, quando: Date): string {
     const limite = limiteDaRepeticao(r, v.inicio, hojeNoCalendario(quando));
-    const datas = datasDaRepeticao(v.inicio, r.frequencia, limite, v.inicio);
+    const datas = datasDaRepeticao(v.inicio, r, limite, v.inicio);
     inserirDatas(serieId, moldeDe(v), datas, quem, quando);
     return textoDaSerie(r, v.inicio, datas.length + 1, datas.at(-1) ?? v.inicio);
   }
@@ -246,7 +248,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       if (r.geradoAte >= somarDias(hoje, HORIZONTE_DA_REPETICAO) || (r.ate && r.ate <= r.geradoAte)) continue;
       const limite = limiteDaRepeticao({ ate: r.ate }, r.ancora, hoje);
       if (limite <= r.geradoAte) continue;
-      const datas = datasDaRepeticao(r.ancora, r.frequencia, limite, r.geradoAte);
+      const datas = datasDaRepeticao(r.ancora, r, limite, r.geradoAte);
       r.geradoAte = limite;
       inserirDatas(r.id, r.molde, datas, r.criadoPorId, quando);
     }
@@ -257,7 +259,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
     if (!serie) return '';
     const proximos = C.eventos.filter((x) => x.serieId === antes.serieId && !x.deletedAt && x.inicio > inicioAntes && x.id !== antes.id).sort((p, q) => p.inicio.localeCompare(q.inicio));
     const limite = r ? limiteDaRepeticao(r, d.inicio, hojeNoCalendario(quando)) : d.inicio;
-    const plano = planoDosProximos(proximos, { inicio: inicioAntes, frequencia: serie.frequencia, ate: serie.ate }, { inicio: d.inicio, repetir: r, limite });
+    const plano = planoDosProximos(proximos, { inicio: inicioAntes, frequencia: serie.frequencia, ate: serie.ate, dias: serie.dias }, { inicio: d.inicio, repetir: r, limite });
     const m = moldeDe(d);
     for (const x of plano.mudar) {
       const p = proximos.find((y) => y.id === x.id)!;
@@ -275,7 +277,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       const saiu = plano.descartar.length;
       return ` e parou de repetir${saiu ? ` (${saiu === 1 ? 'a data seguinte saiu' : `as ${saiu} datas seguintes saíram`})` : ''}`;
     }
-    Object.assign(serie, { frequencia: r.frequencia, ancora: d.inicio, ate: r.ate, geradoAte: limite, molde: m, corte: null });
+    Object.assign(serie, { frequencia: r.frequencia, ancora: d.inicio, ate: r.ate, dias: diasParaGuardar(r, d.inicio), geradoAte: limite, molde: m, corte: null });
     const datas = [d.inicio, ...plano.mudar.map((x) => x.inicio), ...plano.criar].sort();
     return ` e os próximos${textoDaSerie(r, d.inicio, datas.length, datas.at(-1)!)}`;
   }
@@ -377,13 +379,13 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       { titulo: 'Home office — Marina Costa', tipoId: 'home-office', paineis: ['painel-administrativo'], quem: ['marina'], inicio: util(2) },
       { titulo: 'Visita técnica — Hospital Vale Verde', tipoId: 'visita', paineis: ['painel-suporte'], quem: ['lucio', 'bruno'], inicio: util(3), diaInteiro: false, horaInicio: '09:00', horaFim: '12:00', clienteId: cliente('Hospital Vale Verde'), local: 'Av. Luís Viana Filho, 1500 — Salvador', observacao: 'Levar 4 aparelhos de reposição e conferir a central do 3º andar.' },
       // os que se repetem (2.4.6): o alinhamento toda semana, sem data para acabar; o fechamento todo mês
-      { titulo: 'Alinhamento da semana do suporte', tipoId: 'reuniao', paineis: ['painel-suporte'], quem: ['luan', 'lucio', 'marina', 'bruno'], inicio: somarDias(hoje, -diaDaSemana(hoje) - 7), diaInteiro: false, horaInicio: '09:00', horaFim: '09:30', local: 'Sala de reuniões', criadoHa: 9, repetir: { frequencia: 'semanal', ate: null } },
+      { titulo: 'Alinhamento da semana do suporte', tipoId: 'reuniao', paineis: ['painel-suporte'], quem: ['luan', 'lucio', 'marina', 'bruno'], inicio: somarDias(hoje, -diaDaSemana(hoje) - 7), diaInteiro: false, horaInicio: '09:00', horaFim: '09:30', local: 'Sala de reuniões', criadoHa: 9, repetir: { frequencia: 'semanal', ate: null, dias: null } },
       { titulo: 'Trocar os aparelhos da recepção — Distribuidora Norte', tipoId: 'acao-cliente', paineis: ['painel-suporte'], quem: ['lucio'], inicio: util(5), diaInteiro: false, horaInicio: '14:00', horaFim: '16:00', clienteId: cliente('Distribuidora Norte'), local: 'Av. Tancredo Neves, 620 — Salvador' },
       { titulo: 'Visita comercial — Construtora Horizonte', tipoId: 'visita', paineis: ['painel-comercial'], quem: ['diego', 'camila'], inicio: util(6), diaInteiro: false, horaInicio: '10:00', horaFim: '11:30', clienteId: cliente('Construtora Horizonte'), local: 'Rua Ewerton Visco, 290 — Salvador', observacao: 'Levar a proposta do LinePBX com 40 ramais.' },
       { titulo: 'Publicação do LineReports 3.4', tipoId: 'virada-sistema', paineis: ['painel-desenvolvimento'], quem: ['diego'], inicio: util(7), diaInteiro: false, horaInicio: '20:00', horaFim: '22:00', local: 'Remoto' },
       { titulo: 'Virada para nuvem — Supermercado Bom Preço', tipoId: 'virada-nuvem', paineis: ['painel-suporte', 'painel-desenvolvimento'], quem: ['lucio', 'diego'], inicio: util(8), fim: somarDias(util(8), 1), clienteId: cliente('Supermercado Bom Preço'), local: 'Loja da Pituba e remoto', observacao: 'Dia 1: subir o PABX novo e portar os ramais. Dia 2: acompanhar e desligar o servidor antigo.' },
       { titulo: 'Folga — Camila Duarte', tipoId: 'folga', paineis: ['painel-administrativo', 'painel-comercial'], quem: ['camila'], inicio: util(9), fim: util(10) },
-      { titulo: 'Fechamento do mês com o financeiro', tipoId: 'reuniao', paineis: ['painel-administrativo'], quem: ['marina', 'camila'], inicio: util(11), diaInteiro: false, horaInicio: '10:00', horaFim: '11:00', local: 'Sala de reuniões', repetir: { frequencia: 'mensal', ate: somarDias(util(11), 330) } },
+      { titulo: 'Fechamento do mês com o financeiro', tipoId: 'reuniao', paineis: ['painel-administrativo'], quem: ['marina', 'camila'], inicio: util(11), diaInteiro: false, horaInicio: '10:00', horaFim: '11:00', local: 'Sala de reuniões', repetir: { frequencia: 'mensal', ate: somarDias(util(11), 330), dias: null } },
       { titulo: 'Treinamento da recepção — Clínica Aurora', tipoId: 'visita', paineis: ['painel-suporte'], quem: ['marina'], inicio: util(12), diaInteiro: false, horaInicio: '08:30', horaFim: '10:00', clienteId: cliente('Clínica Aurora'), local: 'Av. Tancredo Neves, 1632 — Salvador' },
       // o lembrete que chega com a prévia aberta (2.0.2): daqui a pouco, com o Luan; o de 2 horas antes já saiu
       { titulo: 'Retorno — Clínica Aurora (o ramal da recepção)', tipoId: 'acao-cliente', paineis: ['painel-suporte'], quem: ['luan'], criadoHa: 2, ...daquiAPouco(),

@@ -10,7 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { ticketPanels } from '@gestor/db';
-import { AJUSTES_DO_PAINEL_PESSOAL, larguraDoCampo, nomeDoPainelPessoal, siglasDoPainelPessoal, type CampoPersonalizado, type OpcoesAtendimento, type Painel } from '@gestor/shared';
+import { AJUSTES_DO_PAINEL_PESSOAL, datasDaRepeticao, diaDaSemana, somarDias, larguraDoCampo, nomeDoPainelPessoal, siglasDoPainelPessoal, type CampoPersonalizado, type EventoDoCalendario, type OpcoesAtendimento, type Painel } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
 
@@ -170,5 +170,38 @@ describe('o painel pessoal (2.4.7)', () => {
     const tirar = await s.del(`/atendimento/paineis/${p.id}`);
     expect(tirar.statusCode).toBe(400);
     expect(tirar.body).toContain('painel pessoal');
+  });
+});
+
+describe('repetir em dias da semana no calendário (2.4.7: "toda terça e quinta")', () => {
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const terca = (() => { let d = somarDias(hoje, 1); while (diaDaSemana(d) !== 1) d = somarDias(d, 1); return d; })();
+  const ate = somarDias(terca, 16); // a terça, a quinta e mais duas semanas
+  const evento = { titulo: 'Ronda de terça e quinta', tipoId: 'reuniao', paineis: [SUP], pessoas: [], inicio: terca, fim: terca, diaInteiro: false, horaInicio: '09:00', horaFim: '09:30' };
+  const daSerie = async (serieId: string) => ((await s.get(`/calendario/eventos?de=${terca}&ate=${somarDias(terca, 60)}`)).json() as EventoDoCalendario[])
+    .filter((e) => e.repeticao?.serieId === serieId).sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+  it('a série cai em cada dia escolhido e guarda os dias; mais de um dia de duração é recusado', async () => {
+    const r = await s.post('/calendario/eventos', { ...evento, repetir: { frequencia: 'semanal', ate, dias: [1, 3] } });
+    expect(r.statusCode, r.body).toBe(201);
+    const e = r.json() as EventoDoCalendario;
+    expect(e.repeticao).toMatchObject({ frequencia: 'semanal', dias: [1, 3], ate, ancora: terca });
+    const datas = (await daSerie(e.repeticao!.serieId)).map((x) => x.inicio);
+    expect(datas).toEqual(datasDaRepeticao(terca, { frequencia: 'semanal', dias: [1, 3] }, ate));
+    expect(datas.map(diaDaSemana)).toEqual([1, 3, 1, 3, 1, 3]);
+    const longo = await s.post('/calendario/eventos', { ...evento, fim: somarDias(terca, 1), diaInteiro: true, horaInicio: null, horaFim: null, repetir: { frequencia: 'semanal', ate, dias: [1, 3] } });
+    expect(longo.statusCode).toBe(400);
+    expect(longo.body).toContain('mais de um dia da semana');
+  });
+
+  it('este e os próximos: tirar a quinta deixa só as terças daqui para frente', async () => {
+    const r = await s.post('/calendario/eventos', { ...evento, titulo: 'Plantão', repetir: { frequencia: 'semanal', ate, dias: [1, 3] } });
+    const serieId = (r.json() as EventoDoCalendario).repeticao!.serieId;
+    const terceira = (await daSerie(serieId))[2]!; // a segunda terça
+    const m = await s.put(`/calendario/eventos/${terceira.id}`, { ...evento, titulo: 'Plantão', inicio: terceira.inicio, fim: terceira.fim, escopo: 'proximos', repetir: { frequencia: 'semanal', ate, dias: [1] } });
+    expect(m.statusCode, m.body).toBe(200);
+    const agora = await daSerie(serieId);
+    expect(agora.map((x) => diaDaSemana(x.inicio))).toEqual([1, 3, 1, 1]);
+    expect(agora.at(-1)!.repeticao!.dias ?? null).toBeNull();
   });
 });

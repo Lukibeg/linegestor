@@ -2135,6 +2135,11 @@ export const calendarSeries = pgTable('calendar_series', {
   anchorOn: text('anchor_on').notNull(),
   /** O último dia em que pode cair (nulo = sem data para acabar) */
   untilOn: text('until_on'),
+  /**
+   * Toda semana, em quais dias (2.4.7: "toda terça e quinta"): 0 = segunda … 6 = domingo, com o dia da âncora. Nulo: só o dia da
+   * âncora (como antes).
+   */
+  weekdays: integer('weekdays').array(),
   /** Até que dia as datas já foram geradas (o relógio continua daqui) */
   generatedUntil: text('generated_until').notNull(),
   /**

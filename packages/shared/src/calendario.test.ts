@@ -5,7 +5,7 @@ import {
   quemRecebeOLembrete, textoDoAntes, textoDoHorario, textoDoLembrete, textoDoMes, textoDoPeriodo, textoDosLembretes, TIPOS_DE_EVENTO_PADRAO,
   tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, tituloSugerido, EventosDoPeriodoSchema, quandoDoEvento, quemRecebeAInclusao, textoDaInclusao,
   arrumarNoDia, diasDaSemanaDoDia, minutosAgoraEmBrasilia, minutosDaHora, naFaixaDoDiaInteiro, numeroDaSemana, textoDaSemana,
-  datasDaRepeticao, limiteDaRepeticao, lixeiraDoCalendario, planoDosProximos, problemaDaRepeticao, textoDaRepeticao, umaDataPorSerie,
+  datasDaRepeticao, diasParaGuardar, limiteDaRepeticao, lixeiraDoCalendario, planoDosProximos, problemaDaRepeticao, RepeticaoSchema, textoDaRepeticao, umaDataPorSerie,
   type EventoDoCalendario,
 } from './calendario.js';
 
@@ -418,3 +418,52 @@ describe('repetir: o "este e os próximos" e a lista curta (2.4.6)', () => {
   });
 });
 
+
+describe('repetir em dias da semana (2.4.7: "toda terça e quinta")', () => {
+  it('as datas caem em cada dia escolhido, a partir do primeiro; o dia do evento entra sempre', () => {
+    // 2026-11-10 é uma terça (1); quinta é 3
+    expect(datasDaRepeticao('2026-11-10', { frequencia: 'semanal', dias: [1, 3] }, '2026-11-26'))
+      .toEqual(['2026-11-10', '2026-11-12', '2026-11-17', '2026-11-19', '2026-11-24', '2026-11-26']);
+    // só a quinta escolhida, com o evento na terça: a terça entra assim mesmo
+    expect(datasDaRepeticao('2026-11-10', { frequencia: 'semanal', dias: [3] }, '2026-11-19'))
+      .toEqual(['2026-11-10', '2026-11-12', '2026-11-17', '2026-11-19']);
+    // estender (depois de um dia)
+    expect(datasDaRepeticao('2026-11-10', { frequencia: 'semanal', dias: [1, 3] }, '2026-11-26', '2026-11-19')).toEqual(['2026-11-24', '2026-11-26']);
+    // sem dias, ou só o do evento: como antes
+    expect(datasDaRepeticao('2026-11-10', { frequencia: 'semanal', dias: [1] }, '2026-11-24')).toEqual(datasDaRepeticao('2026-11-10', 'semanal', '2026-11-24'));
+    // os dias não valem fora do Toda semana
+    expect(datasDaRepeticao('2026-11-10', { frequencia: 'mensal', dias: [1, 3] }, '2027-01-10')).toEqual(['2026-11-10', '2026-12-10', '2027-01-10']);
+  });
+  it('o schema guarda os dias em ordem, sem repetir; vazio é nulo; fora de 0 a 6 é recusado', () => {
+    expect(RepeticaoSchema.parse({ frequencia: 'semanal', ate: null, dias: [3, 1, 3] }).dias).toEqual([1, 3]);
+    expect(RepeticaoSchema.parse({ frequencia: 'semanal', ate: null, dias: [] }).dias).toBeNull();
+    expect(RepeticaoSchema.parse({ frequencia: 'semanal', ate: null }).dias).toBeNull();
+    expect(RepeticaoSchema.safeParse({ frequencia: 'semanal', ate: null, dias: [7] }).success).toBe(false);
+  });
+  it('guarda os dias só quando há mais de um (com o do evento)', () => {
+    expect(diasParaGuardar({ frequencia: 'semanal', dias: [3] }, '2026-11-10')).toEqual([1, 3]);
+    expect(diasParaGuardar({ frequencia: 'semanal', dias: [1] }, '2026-11-10')).toBeNull();
+    expect(diasParaGuardar({ frequencia: 'semanal', dias: null }, '2026-11-10')).toBeNull();
+    expect(diasParaGuardar({ frequencia: 'diaria', dias: [1, 3] }, '2026-11-10')).toBeNull();
+  });
+  it('o texto: "Toda terça e quinta", "Todo sábado e domingo", "Toda semana: …" com os dois tipos', () => {
+    expect(textoDaRepeticao({ frequencia: 'semanal', ate: null, dias: [1, 3] }, '2026-11-10')).toBe('Toda terça e quinta, sem data para acabar');
+    expect(textoDaRepeticao({ frequencia: 'semanal', ate: '2027-03-31', dias: [0, 2, 4] }, '2026-11-09')).toBe('Toda segunda, quarta e sexta, até 31/03/2027');
+    expect(textoDaRepeticao({ frequencia: 'semanal', ate: null, dias: [5, 6] }, '2026-11-14')).toBe('Todo sábado e domingo, sem data para acabar');
+    expect(textoDaRepeticao({ frequencia: 'semanal', ate: null, dias: [1, 5] }, '2026-11-10')).toBe('Toda semana: terça e sábado, sem data para acabar');
+    expect(textoDaRepeticao({ frequencia: 'semanal', ate: null, dias: [1] }, '2026-11-10')).toBe('Toda terça, sem data para acabar');
+  });
+  it('em mais de um dia da semana, o evento dura um dia só', () => {
+    expect(problemaDaRepeticao({ frequencia: 'semanal', ate: null, dias: [1, 3] }, '2026-11-10', '2026-11-11')).toBe('O evento que se repete em mais de um dia da semana dura um dia só.');
+    expect(problemaDaRepeticao({ frequencia: 'semanal', ate: null, dias: [1, 3] }, '2026-11-10', '2026-11-10')).toBeNull();
+  });
+  it('este e os próximos: trocar os dias é outra regra; os mesmos dias, a mesma', () => {
+    const proximos = [{ id: 'a', inicio: '2026-11-17', situacao: 'agendado' as const }, { id: 'b', inicio: '2026-11-24', situacao: 'agendado' as const }];
+    const antes = { inicio: '2026-11-10', frequencia: 'semanal' as const, ate: '2026-11-26', dias: null };
+    expect(planoDosProximos(proximos, antes, { inicio: '2026-11-10', repetir: { frequencia: 'semanal', ate: '2026-11-26', dias: [1] }, limite: '2026-11-26' }).mesmaRegra).toBe(true);
+    const p = planoDosProximos(proximos, antes, { inicio: '2026-11-10', repetir: { frequencia: 'semanal', ate: '2026-11-26', dias: [1, 3] }, limite: '2026-11-26' });
+    expect(p.mesmaRegra).toBe(false);
+    expect(p.mudar.map((x) => x.inicio)).toEqual(['2026-11-12', '2026-11-17']);
+    expect(p.criar).toEqual(['2026-11-19', '2026-11-24', '2026-11-26']);
+  });
+});

@@ -1444,6 +1444,7 @@ Uma SÉRIE do calendário (2.4.6): o evento que se repete (todo dia, todo dia ú
 | `frequency` | texto | diaria | dias_uteis | semanal | mensal | obrigatório |
 | `anchor_on` | texto | O dia de onde as datas saem (AAAA-MM-DD): o primeiro evento, ou o que mudou "este e os próximos" | obrigatório |
 | `until_on` | texto | O último dia em que pode cair (nulo = sem data para acabar) | — |
+| `weekdays` | número inteiro | Toda semana, em quais dias (2.4.7: "toda terça e quinta"): 0 = segunda … 6 = domingo, com o dia da âncora. Nulo: só o dia da âncora (como antes). | lista |
 | `generated_until` | texto | Até que dia as datas já foram geradas (o relógio continua daqui) | obrigatório |
 | `template` | JSON | O modelo das datas novas: os campos do evento (o título, o tipo, os painéis, as pessoas, as horas, os lembretes…) e quantos dias ele dura. Muda quando alguém muda "este e os próximos". | obrigatório |
 | `undo` | JSON | O corte do "excluir este e os próximos": o fim de antes ({ deletedAt, untilOn, generatedUntil }). Restaurar da lixeira as datas que foram juntas devolve a repetição como estava (se ninguém mudou a regra no meio). | — |

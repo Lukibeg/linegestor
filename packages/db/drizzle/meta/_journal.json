@@ -250,8 +250,8 @@
     {
       "idx": 35,
       "version": "7",
-      "when": 1794426215885,
-      "tag": "0035_largura_do_campo_e_painel_pessoal",
+      "when": 1794493287349,
+      "tag": "0035_largura_painel_pessoal_e_dias_da_semana",
       "breakpoints": true
     }
   ]

@@ -25,7 +25,7 @@ import {
 import {
   diaPorExtenso, diasEntre, fimQueAcompanha, EventoGravarSchema, lerCodigo, NOME_QUEM_RECEBE_O_LEMBRETE, NOME_SITUACAO_DO_EVENTO, pessoasPossiveis, QUEM_RECEBE_O_LEMBRETE,
   SITUACOES_DO_EVENTO, somarDias, textoDoHorario, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tituloSugerido,
-  ESCOPOS_DA_SERIE, FREQUENCIAS_DA_REPETICAO, NOME_DA_FREQUENCIA, NOME_DO_ESCOPO, textoDaRepeticao,
+  ESCOPOS_DA_SERIE, FREQUENCIAS_DA_REPETICAO, NOME_DA_FREQUENCIA, NOME_DO_ESCOPO, textoDaRepeticao, DIAS_DA_SEMANA_DA_REPETICAO, diaDaSemana, diaValido,
   type EscopoDaSerie, type Repeticao,
   type CalendarioOpcoes, type CorPainel, type EventoDoCalendario, type EventoGravarEntrada, type QuemRecebeOLembrete, type SituacaoDoEvento,
 } from '@gestor/shared';
@@ -68,7 +68,7 @@ function doEvento(e: EventoDoCalendario): Rascunho {
     local: e.local, observacao: e.observacao, situacao: e.situacao,
     lembretes: [...e.lembretes], lembretesMexidos: true, lembrarQuem: e.lembrarQuem,
     avisar: false, avisarQuem: 'pessoas',
-    repetir: e.repeticao ? { frequencia: e.repeticao.frequencia, ate: e.repeticao.ate } : null, daSerie: !!e.repeticao, escopo: 'este',
+    repetir: e.repeticao ? { frequencia: e.repeticao.frequencia, ate: e.repeticao.ate, dias: e.repeticao.dias ?? null } : null, daSerie: !!e.repeticao, escopo: 'este',
   };
 }
 
@@ -599,7 +599,7 @@ function Repetir({ r, mudar }: { r: Rascunho; mudar: (m: Partial<Rascunho>) => v
           const ativo = (rep?.frequencia ?? null) === f;
           return (
             <button key={f ?? 'nao'} type="button" role="radio" aria-checked={ativo} data-frequencia={f ?? 'nao'}
-              onClick={() => mudar({ repetir: f ? { frequencia: f, ate: rep?.ate ?? null } : null })}
+              onClick={() => mudar({ repetir: f ? { frequencia: f, ate: rep?.ate ?? null, dias: f === 'semanal' ? rep?.dias ?? null : null } : null })}
               className={`px-2.5 py-1 rounded-md text-[12.5px] font-semibold ${ativo ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}>
               {f ? NOME_DA_FREQUENCIA[f] : 'Não repete'}
             </button>
@@ -608,6 +608,25 @@ function Repetir({ r, mudar }: { r: Rascunho; mudar: (m: Partial<Rascunho>) => v
       </div>
       {rep && (
         <div className="mt-2 flex flex-col gap-1.5">
+          {/* 2.4.7, o Luan: "quero ter a opção de repetir por dia da semana, por exemplo, toda terça e quinta". O dia do evento entra
+              sempre (é o primeiro): fica marcado e preso; os outros, à escolha */}
+          {rep.frequencia === 'semanal' && (
+            <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Os dias da semana" id="evento-repetir-dias">
+              <span className="text-[12.5px] text-muted mr-1">Nos dias</span>
+              {DIAS_DA_SEMANA_DA_REPETICAO.map((nome, d) => {
+                const doEvento = diaValido(r.inicio) && diaDaSemana(r.inicio) === d;
+                const marcado = doEvento || (rep.dias ?? []).includes(d);
+                return (
+                  <button key={d} type="button" aria-pressed={marcado} data-dia={d} disabled={doEvento}
+                    title={doEvento ? 'O dia do evento: entra sempre (para tirar, mude a data do evento)' : marcado ? `Tirar ${nome}` : `Repetir também ${nome}`}
+                    onClick={() => mudar({ repetir: { ...rep, dias: marcado ? (rep.dias ?? []).filter((x) => x !== d) : [...(rep.dias ?? []), d].sort((a, b) => a - b) } })}
+                    className={`w-11 py-1 rounded-lg border text-[12.5px] font-semibold ${marcado ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line bg-surface text-muted hover:text-ink'} ${doEvento ? 'cursor-default' : ''}`}>
+                    {nome}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
             <label className="inline-flex items-center gap-2 cursor-pointer select-none">
               <input type="radio" name="evento-repetir-fim" className="w-4 h-4 accent-[var(--accent)]" checked={!rep.ate} onChange={() => mudar({ repetir: { ...rep, ate: null } })} id="evento-repetir-sem-fim" />

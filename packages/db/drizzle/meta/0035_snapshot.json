@@ -1,5 +1,5 @@
 {
-  "id": "296396ea-1414-4cb1-8705-af7e342bfb72",
+  "id": "5177c358-ed29-478b-b5fc-73d9868549ad",
   "prevId": "62e8df63-f71e-4150-a1e7-ff9a4da24694",
   "version": "7",
   "dialect": "postgresql",
@@ -471,6 +471,12 @@
         "until_on": {
           "name": "until_on",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weekdays": {
+          "name": "weekdays",
+          "type": "integer[]",
           "primaryKey": false,
           "notNull": false
         },

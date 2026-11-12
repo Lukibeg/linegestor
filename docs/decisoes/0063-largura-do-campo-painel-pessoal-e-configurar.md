@@ -1,6 +1,6 @@
-# 0063 — A largura do campo, o painel pessoal de cada pessoa, o Configurar numa janela e os anexos de 30 MB
+# 0063 — A largura do campo, o painel pessoal de cada pessoa, o Configurar numa janela, os anexos de 30 MB e repetir em dias da semana
 
-**Data:** 11/11/2026 · **Patch:** 2.4.7 · **Situação:** aceita · **Revê:** a 0047 (os chamados: quem configura um painel era só quem cuida dos chamados; quem cuida via todos os painéis) e a 0058 (os grupos de campos: a largura de cada campo era decidida pelo tipo)
+**Data:** 11/11/2026 · **Patch:** 2.4.7 · **Situação:** aceita · **Revê:** a 0047 (os chamados: quem configura um painel era só quem cuida dos chamados; quem cuida via todos os painéis), a 0058 (os grupos de campos: a largura de cada campo era decidida pelo tipo) e a 0062 (repetir no calendário: a Toda semana era só no dia do evento)
 
 ## Os pedidos
 
@@ -73,3 +73,17 @@ propostas"*. E, num documento com dois prints:
   Painel e etapas fica montada por baixo, e o que foi mexido nela não se perde ao trocar de aba (o rodapé avisa).
 - As telas são as mesmas de Ajustes, presas ao painel (`painelFixo`): nada foi copiado.
 - Painéis › Ajustes continua como era, para quem cuida dos chamados.
+
+## 5. Repetir em dias da semana
+
+O Luan, 12/11, com o print do Repetir: *"quero ter a opção de repetir por dia da semana, por exemplo, toda terça e quinta"*.
+
+- A **Toda semana** ganhou os botões **Nos dias** (Seg a Dom). O dia do evento vem marcado e preso: é a primeira data da série
+  (a regra do 2.4.6, "o primeiro dia sempre entra"); para trocá-lo, muda-se a data do evento. Os outros dias, à escolha.
+- As datas caem em cada dia escolhido, a partir do primeiro (`datasDaRepeticao` com a regra `{ frequencia, dias }`). Um dia só (o
+  do evento) é a Toda semana de antes; a série guarda os dias só quando há mais de um (`calendar_series.weekdays`, na migração
+  0035; nulo nas séries de antes).
+- Em mais de um dia da semana, o evento dura um dia só (senão uma data cai em cima da outra).
+- O texto: "Toda terça e quinta", "Toda segunda, quarta e sexta", "Todo sábado e domingo"; com dia de semana e fim de semana
+  juntos, "Toda semana: terça e sábado".
+- "Este e os próximos" com outros dias é outra regra: as datas agendadas andam para os dias novos, como na troca de frequência.
