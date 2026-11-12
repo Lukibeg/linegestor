@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EtapaPainel, Painel } from '@gestor/shared';
 import { NAV, eDoLegado, eDoSuporte, parteDoPainel, parteDoSuporte } from './AppShell.js';
-import { PAINEL_DO_DESENVOLVIMENTO, painelDaImplantacao, painelDoDesenvolvimento } from '../../pages/atendimento/Suporte.js';
+import { PAINEL_DO_DESENVOLVIMENTO, meuPainel, painelDaImplantacao, painelDoDesenvolvimento } from '../../pages/atendimento/Suporte.js';
 
 describe('o grupo Técnico (2.0.2)', () => {
   it('os Circuitos e DIDs e o Inventário moram nele, logo acima do Suporte ("quero q o técnico fique acima de suporte"), e não mais no alto', () => {
@@ -24,6 +24,7 @@ describe('os Relatórios e o Legado do Helena (2.1)', () => {
   it('o Suporte tem os Relatórios novos (os do painel); o Legado do Helena saiu do menu no 2.4.6 (abre pelo botão dos Relatórios)', () => {
     const suporte = NAV.find((x) => 'grupo' in x && x.grupo === 'suporte');
     expect(suporte && 'itens' in suporte ? suporte.itens.map((i) => [i.label, i.to]) : null).toEqual([
+      ['Meu painel', '/suporte/meu-painel'],
       ['Painel do Suporte', '/suporte'], ['Painel da Implantação', '/suporte/implantacao'], ['Painel do Dev', '/suporte/desenvolvimento'],
       ['Meu dia', '/atendimento/meu-dia'], ['Relatórios', '/suporte/relatorios'],
     ]);
@@ -105,5 +106,22 @@ describe('o Painel do Dev no menu Suporte (2.4.6): o atalho para o painel Desenv
     expect(parteDoPainel('/atendimento/quadro', '?painel=painel-suporte', dev)).toBeNull();
     // antes de as opções chegarem (sem a sigla), o endereço com o id já marca
     expect(parteDoPainel('/atendimento/quadro', '?painel=painel-desenvolvimento', { id: PAINEL_DO_DESENVOLVIMENTO, sigla: null })).toBe('painel');
+  });
+});
+
+describe('o Meu painel no menu Suporte (2.4.7): o atalho para o painel pessoal de quem está logado', () => {
+  const painel = (id: string, donoId: string | null, ativo = true) => ({ id, donoId, ativo }) as unknown as Painel;
+  it('é o primeiro do Suporte, de quem trabalha nos chamados', () => {
+    const suporte = NAV.find((x) => 'grupo' in x && x.grupo === 'suporte');
+    const primeiro = suporte && 'itens' in suporte ? suporte.itens[0] : null;
+    expect(primeiro).toMatchObject({ label: 'Meu painel', to: '/suporte/meu-painel', perm: 'tickets.work' });
+  });
+  it('acha o pessoal de quem está logado, e não o dos outros (o administrador vê todos)', () => {
+    const paineis = [painel('painel-suporte', null), painel('p-marina', 'marina'), painel('p-luan', 'luan')];
+    expect(meuPainel(paineis, 'luan')?.id).toBe('p-luan');
+    expect(meuPainel(paineis, 'marina')?.id).toBe('p-marina');
+    expect(meuPainel(paineis, 'paulo')).toBeNull();
+    expect(meuPainel(paineis, null)).toBeNull();
+    expect(meuPainel([painel('p-luan', 'luan', false)], 'luan')).toBeNull();
   });
 });

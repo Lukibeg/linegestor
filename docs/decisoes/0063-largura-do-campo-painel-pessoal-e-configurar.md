@@ -58,7 +58,11 @@ propostas"*. E, num documento com dois prints:
    `tickets.manage`; o pessoal, ser o dono ou administrador; senão, 404). **Quem vê não muda** pela janela (o servidor grava
    sempre só o dono nas pessoas), e o painel pessoal não sai para a lixeira (400; dá para desativar).
    - Escolha minha (a pergunta ficou sem resposta): as etapas nascem as cinco, e cada um muda as do seu — o dele já tinha 9.
-6. Fica de fora: o envio automático (as origens), o Trazer do Helena (os destinos) e o painel em que o robô abre sem dizer qual.
+6. **O Meu painel no menu** (o Luan, 12/11: *"quero que apareça ali acima de painel de suporte, dentro da aba suporte - meu
+   painel e cada um já vai ter acesso por ali"*): o primeiro item do Suporte, de quem trabalha nos chamados, abre o quadro do
+   painel pessoal de quem está logado (`/suporte/meu-painel`; o administrador abre o dele, e os dos outros pela tela Painéis).
+   Na tela do painel, o menu marca o Meu painel.
+7. Fica de fora: o envio automático (as origens), o Trazer do Helena (os destinos) e o painel em que o robô abre sem dizer qual.
 
 ## 4. O Configurar numa janela
 

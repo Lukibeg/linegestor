@@ -24,7 +24,7 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
   **Novo painel** cria outro.
 - **O painel pessoal** (2.4.7): cada pessoa que trabalha nos chamados tem o seu (*Marina - Pessoal*), que só ela e quem
   tem o perfil de administrador veem (os administradores acham os da equipe em **Os painéis pessoais da equipe**, embaixo
-  dos outros; fecha e abre). Nasce seco, com as etapas Stand By, Novos, Em andamento, Concluído e Validado; no
+  dos outros; fecha e abre). Abre pelo menu, em **Suporte › Meu painel**. Nasce seco, com as etapas Stand By, Novos, Em andamento, Concluído e Validado; no
   **Configurar** dele, ela liga os campos, muda as etapas, cria assuntos e etiquetas. Quem já tinha um painel
   *… - Pessoal* só para si continua com o mesmo, sem mudar nada.
 - **Quadro**: o de um painel, uma coluna por etapa, lado a lado (as que não cabem, rolando para o lado). **Arraste** o

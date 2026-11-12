@@ -23,7 +23,7 @@ import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, CodeXml, Handshake, Headset, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
-  Menu, Moon, Rocket, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
+  Menu, Moon, Rocket, Settings, Sparkles, SquareKanban, SquareUserRound, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
@@ -33,7 +33,7 @@ import { fundoDaJanela, useLerOQuadroAntes } from '../../pages/atendimento/comum
 import { AvisosQueChegam } from '../../pages/atendimento/AvisosQueChegam.js';
 import { useAuth } from '../../lib/auth.js';
 import { lembrarPainelDoComercial, painelLembradoDoComercial } from '../../lib/comercial.js';
-import { PAINEL_DO_DESENVOLVIMENTO, PAINEL_DO_SUPORTE, painelDaImplantacao } from '../../pages/atendimento/Suporte.js';
+import { PAINEL_DO_DESENVOLVIMENTO, PAINEL_DO_SUPORTE, meuPainel, painelDaImplantacao } from '../../pages/atendimento/Suporte.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
 
@@ -77,6 +77,9 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   // dos Relatórios do Suporte, e nas telas dele o menu marca os Relatórios. Os Projetos foram para o Técnico.
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
+      // 2.4.7, o Luan: "quero que apareça ali acima de painel de suporte, dentro da aba suporte - meu painel e cada um já vai ter
+      // acesso por ali": o painel pessoal de quem está logado (quem trabalha nos chamados tem um)
+      { to: '/suporte/meu-painel', label: 'Meu painel', icon: SquareUserRound, perm: 'tickets.work' },
       { to: '/suporte', label: 'Painel do Suporte', icon: Kanban, perm: 'support.read' },
       // 2.3, o Luan: "eu quero q o painel de implantação tenha um botão dentro do menu suporte como o painel do suporte"
       { to: '/suporte/implantacao', label: 'Painel da Implantação', icon: Rocket, perm: 'support.read' },
@@ -247,6 +250,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const siglaDoDesenvolvimento = opcoes.data?.paineis.find((p) => p.id === PAINEL_DO_DESENVOLVIMENTO)?.sigla ?? null;
   const doDesenvolvimento = suporte && !doComercial && !doSuporte && !doImplantacao
     ? parteDoPainel(pathname, search, { id: PAINEL_DO_DESENVOLVIMENTO, sigla: siglaDoDesenvolvimento }) : null;
+  // o painel pessoal (2.4.7): na tela dele, o menu marca o Meu painel (o de outra pessoa, que o administrador abre, fica em Painéis)
+  const meu = useMemo(() => meuPainel(opcoes.data?.paineis ?? [], user?.id), [opcoes.data, user?.id]);
+  const doMeuPainel = suporte && !doComercial && !doSuporte && !doImplantacao && !doDesenvolvimento && meu
+    ? parteDoPainel(pathname, search, { id: meu.id, sigla: meu.sigla }) : null;
   // o painel de Vendas aberto fica lembrado: o Painel do Comercial e o Relatórios do menu voltam para ele
   useEffect(() => { if (doComercial) lembrarPainelDoComercial(doComercial.painelId); }, [doComercial?.painelId]);
   const ativo = useCallback<Ativo>((i) => {
@@ -256,10 +263,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (i.to === '/suporte/relatorios') return doSuporte === 'relatorios' || eDoLegado(pathname);
     if (i.to === '/suporte/implantacao') return !!doImplantacao;
     if (i.to === '/suporte/desenvolvimento') return !!doDesenvolvimento;
+    if (i.to === '/suporte/meu-painel') return !!doMeuPainel || pathname === '/suporte/meu-painel';
     // o Meu dia mora dentro de /atendimento: lá, o item marcado é o dele, e não Painéis
-    if (i.to === '/atendimento') return !doComercial && !doSuporte && !doImplantacao && !doDesenvolvimento && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
+    if (i.to === '/atendimento') return !doComercial && !doSuporte && !doImplantacao && !doDesenvolvimento && !doMeuPainel && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
     return ehAtivo(i, pathname);
-  }, [doComercial?.parte, doSuporte, doImplantacao, doDesenvolvimento, pathname]);
+  }, [doComercial?.parte, doSuporte, doImplantacao, doDesenvolvimento, doMeuPainel, pathname]);
   const { abertos, alternar } = useGruposAbertos(items.filter(ehGrupo), ativo);
   const sair = async () => { await logout(); nav('/entrar'); };
   // nos chamados, a tela usa a largura toda e a margem é menor: o quadro e a ficha precisam de lugar
@@ -339,12 +347,17 @@ type Contagem = (i: ItemDoMenu) => { n: number; tom: 'accent' | 'signal'; titulo
 /**
  * O Painel do Suporte e o Painel do Comercial do menu (2.1.2): o mouse parado em cima já lê o quadro, que abre pronto.
  * O do Comercial é o painel de Vendas lembrado (ou o primeiro, pelas opções já lidas); desde o 2.4.6, o do Desenvolvimento
- * também; os outros itens, nada.
+ * também, e desde o 2.4.7 o Meu painel (pelas opções já lidas); os outros itens, nada.
  */
 function useQuadroDoAtalho(to: string) {
   const qc = useQueryClient();
   const lerOQuadro = useLerOQuadroAntes();
+  const { user } = useAuth();
   if (to === '/suporte') return lerOQuadro(PAINEL_DO_SUPORTE);
+  if (to === '/suporte/meu-painel') {
+    const id = qc.getQueryData<{ paineis: Array<{ id: string; donoId: string | null; ativo: boolean }> }>(['atendimento', 'opcoes'])?.paineis.find((p) => p.donoId === user?.id && p.ativo)?.id;
+    return id ? lerOQuadro(id) : {};
+  }
   if (to === '/suporte/desenvolvimento') return lerOQuadro(PAINEL_DO_DESENVOLVIMENTO);
   if (to !== '/comercial') return {};
   const vendas = qc.getQueryData<{ paineis: Array<{ id: string; tipo: string; ativo: boolean }> }>(['atendimento', 'opcoes'])?.paineis.filter((p) => p.tipo === 'vendas' && p.ativo) ?? [];

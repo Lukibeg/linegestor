@@ -12,10 +12,14 @@
  *
  * O Painel do Dev (2.4.6, o Luan: "faça um botão dentro do inglinegestao para o painel do dev, dentro do menu suporte
  * mesmo"): o mesmo atalho, para o quadro do painel Desenvolvimento.
+ *
+ * O Meu painel (2.4.7, o Luan: "quero que apareça ali acima de painel de suporte, dentro da aba suporte - meu painel e cada um
+ * já vai ter acesso por ali"): o mesmo atalho, para o quadro do painel pessoal de quem está logado.
  */
 import { Link, Navigate } from 'react-router-dom';
 import type { Painel } from '@gestor/shared';
 import { Carregando, Vazio, mensagemErro } from '../../components/ui/index.js';
+import { useAuth } from '../../lib/auth.js';
 import { useOpcoes } from './comum.js';
 import { enderecoDoRelatorio } from './painel.js';
 
@@ -77,6 +81,27 @@ export function IrParaODesenvolvimento() {
     return (
       <Vazio titulo="O painel do Desenvolvimento não está aberto para você"
         texto="Ou ele está desativado (quem cuida dos chamados liga de novo em Painéis › Ajustes › Painéis e etapas), ou você não está entre quem vê o painel."
+        acao={<Link className="btn-secondary btn-sm" to="/atendimento">Ir para os Painéis</Link>} />
+    );
+  }
+  return <Navigate replace to={`/atendimento/quadro?painel=${encodeURIComponent(painel.id)}`} />;
+}
+
+/** O painel pessoal de quem está logado (2.4.7): o de Gestão que é dele (o donoId), ativo. O administrador vê os dos outros, mas o "meu" é o dele. */
+export function meuPainel(paineis: readonly Painel[], eu: string | null | undefined): Painel | null {
+  return eu ? paineis.find((p) => p.donoId === eu && p.ativo) ?? null : null;
+}
+
+export function IrParaOMeuPainel() {
+  const opcoes = useOpcoes();
+  const { user } = useAuth();
+  if (opcoes.isLoading) return <Carregando />;
+  if (opcoes.isError) return <div className="text-bad text-sm">{mensagemErro(opcoes.error)}</div>;
+  const painel = meuPainel(opcoes.data?.paineis ?? [], user?.id);
+  if (!painel) {
+    return (
+      <Vazio titulo="O seu painel pessoal não está aberto"
+        texto="Ou ele está desativado (ligue de novo em Painéis: o Configurar dele, Painel ativo), ou o seu perfil não trabalha nos chamados."
         acao={<Link className="btn-secondary btn-sm" to="/atendimento">Ir para os Painéis</Link>} />
     );
   }
