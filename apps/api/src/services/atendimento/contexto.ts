@@ -40,6 +40,8 @@ export const podeVerChamados = (a: Ator) => a.tipo === 'integracao' || a.permiss
 export const podeVerVendas = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('sales.read');
 export const podeTrabalhar = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('tickets.work');
 export const podeCuidar = (a: Ator) => a.tipo === 'pessoa' && a.permissoes.includes('tickets.manage');
+/** O perfil de administrador (admin.manage): vê e configura também os painéis pessoais de todos (2.4.7). */
+export const ehAdministrador = (a: Ator) => a.tipo === 'pessoa' && a.permissoes.includes('admin.manage');
 /** O id da pessoa (para as colunas `user_id`); a integração não tem. */
 export const pessoaDoAtor = (a: Ator) => (a.tipo === 'pessoa' ? a.id : null);
 /** O nome da integração (para as colunas `actor_name`); a pessoa tem o id. */
@@ -107,8 +109,9 @@ export async function carregarPaineis(db: Db): Promise<{ paineis: Painel[]; toda
  */
 export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'> & { donoId?: string | null }, a: Ator): boolean {
   if (a.tipo === 'integracao') return true;
-  // o painel pessoal (2.4.7): só o dono, nem quem cuida dos chamados
-  if (p.donoId) return a.id === p.donoId;
+  // o painel pessoal (2.4.7): o dono e quem tem o perfil de administrador (o Luan, 12/11: "quem tem perfil de administrador
+  // tem q ver todos"); quem só cuida dos chamados, não
+  if (p.donoId) return a.id === p.donoId || ehAdministrador(a);
   const vendas = p.tipo === 'vendas';
   if (vendas && !podeVerVendas(a)) return false;
   if (podeCuidar(a)) return true;
@@ -118,23 +121,24 @@ export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'> & {
 
 /**
  * Quem configura o painel (os Ajustes dele: o painel, as etapas, os campos, os assuntos, as etiquetas): quem cuida dos chamados;
- * o pessoal (2.4.7), só o dono — mesmo sem cuidar dos chamados ("o usuário vai habilitando os campos que achar necessário").
+ * o pessoal (2.4.7), o dono — mesmo sem cuidar dos chamados ("o usuário vai habilitando os campos que achar necessário") — e
+ * quem tem o perfil de administrador, que vê todos.
  */
 export function podeConfigurarPainel(p: { donoId?: string | null }, a: Ator): boolean {
   if (a.tipo !== 'pessoa') return false;
-  if (p.donoId) return a.id === p.donoId;
+  if (p.donoId) return a.id === p.donoId || ehAdministrador(a);
   return podeCuidar(a);
 }
 /**
- * A porta das rotas de Ajustes de um painel: o painel pessoal de outra pessoa nem existe para quem pede (404); o da equipe pede
- * quem cuida dos chamados. Sem o painel (o id não existe), quem cuida segue — a rota responde o 404 dela.
+ * A porta das rotas de Ajustes de um painel: o painel pessoal de outra pessoa nem existe para quem pede (404), menos para o
+ * administrador; o da equipe pede quem cuida dos chamados. Sem o painel (o id não existe), quem cuida segue — a rota responde o 404 dela.
  */
 export async function exigirConfigurarPainel(db: Db, a: Ator, painelId: string | null | undefined): Promise<void> {
   const [p] = painelId
     ? await db.select({ donoId: ticketPanels.ownerId }).from(ticketPanels).where(and(eq(ticketPanels.id, painelId), isNull(ticketPanels.deletedAt))).limit(1)
     : [];
   if (p?.donoId) {
-    if (a.tipo === 'pessoa' && a.id === p.donoId) return;
+    if (a.tipo === 'pessoa' && (a.id === p.donoId || ehAdministrador(a))) return;
     throw new NotFound('Painel');
   }
   if (!podeCuidar(a)) throw new Forbidden('Esta ação exige a permissão "tickets.manage"');

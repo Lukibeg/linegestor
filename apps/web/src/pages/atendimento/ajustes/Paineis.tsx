@@ -37,6 +37,7 @@ import {
 import { api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
 import { Abas, Carregando, Chip, Confirmar, EscolherComBusca, Modal, Spinner, Toggle, mensagemErro, type OpcaoBusca } from '../../../components/ui/index.js';
+import { useAuth } from '../../../lib/auth.js';
 import { AjustesAssuntos } from './Assuntos.js';
 import { AjustesCampos } from './Campos.js';
 import { AjustesEtiquetas } from './Etiquetas.js';
@@ -163,7 +164,7 @@ function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: Pe
   const vendas = p.tipo === 'vendas';
   const usados = [...camposDoSistemaDoTipo(p.tipo).filter((c) => !a.camposDesligados.includes(c)).map((c) => NOME_CAMPO_DO_SISTEMA[c]), ...campos.filter((c) => c.ativo).map((c) => c.nome)];
   const paraAbrir = limparObrigatorios(a.obrigatoriosAoAbrir, obrigatoriosDoPainel(a, campos, p.tipo)).map((k) => nomeDoObrigatorio(k, campos));
-  const quemVe = p.donoId ? `Só ${nomeDaPessoa(pessoas, p.donoId)} (o painel pessoal)` : p.acesso === 'todos'
+  const quemVe = p.donoId ? `${nomeDaPessoa(pessoas, p.donoId)} e os administradores (o painel pessoal)` : p.acesso === 'todos'
     ? 'Todos que veem chamados'
     : p.pessoas.length ? `Só ${listaDeNomes(p.pessoas.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Só quem cuida dos chamados (ninguém escolhido)';
   const regras = vendas ? [
@@ -331,6 +332,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   completa?: boolean;
 }) {
   const depois = useDepoisDeMudar();
+  const eu = useAuth().user?.id;
   const [aba, setAba] = useState<AbaDoConfigurar>('painel');
   const comAbas = completa && !!painel;
   const [inicio] = useState(() => ({ form: formDoPainel(painel), etapas: painel ? painel.etapas.map(daEtapa) : etapasDoModelo(undefined) }));
@@ -562,7 +564,9 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
           {/* o painel pessoal (2.4.7): só o dono vê, e isso não muda */}
           {painel?.donoId ? (
             <CampoRotulo rotulo="Quem vê" id="painel-acesso" grupo>
-              <p className="text-[13px] text-ink-2" id="painel-pessoal">Só você: é o seu painel pessoal. Nem quem cuida dos chamados vê.</p>
+              <p className="text-[13px] text-ink-2" id="painel-pessoal">
+                {painel.donoId === eu ? 'Você' : nomeDaPessoa(todasAsPessoas, painel.donoId)} e quem tem o perfil de administrador: é um painel pessoal.
+              </p>
             </CampoRotulo>
           ) : <CampoRotulo rotulo="Quem vê" id="painel-acesso" grupo dica="Quem cuida dos chamados vê todos os painéis, mesmo os de pessoas escolhidas. Para os outros, o chamado de um painel que não veem não existe.">
             <div className="flex flex-col gap-2" role="radiogroup" aria-label="Quem vê" id="painel-acesso">

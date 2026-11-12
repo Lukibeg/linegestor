@@ -261,8 +261,8 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
 export async function removerPainel(app: FastifyInstance, id: string): Promise<Gravado<{ ok: true }>> {
   const db = app.db;
   const p = await linhaDoPainel(db, id);
-  // o pessoal (2.4.7) é de uma pessoa: quem cuida dos chamados nem o vê
-  if (p.ownerId) throw new NotFound('Painel');
+  // o pessoal (2.4.7) é de uma pessoa e volta sozinho: não sai (o administrador, que o vê, pode desativar)
+  if (p.ownerId) throw new BadRequest('O painel pessoal não sai: ele é de uma pessoa (dá para desativar na janela dele).');
   const [abertos] = await db.select({ n: sql<number>`count(*)::int` }).from(tickets)
     .innerJoin(ticketStages, eq(ticketStages.id, tickets.stageId))
     .where(and(eq(tickets.panelId, id), isNull(tickets.deletedAt), inArray(ticketStages.kind, ['entrada', 'andamento', 'resolvido'])));

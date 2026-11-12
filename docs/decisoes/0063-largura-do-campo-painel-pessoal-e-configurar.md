@@ -47,13 +47,16 @@ propostas"*. E, num documento com dois prints:
 3. **O painel que a pessoa já usava fica sendo o dela, sem mudar nada**: um painel ativo de Gestão, com "Pessoal" no nome, que
    só ela vê. Só ganha o dono (`ticket_panels.owner_id`); o nome, as etapas, os campos e os chamados ficam como estão. É o caso
    do *Luan - Pessoal*, com as 9 etapas.
-4. **Só o dono vê** — nem quem cuida dos chamados (antes, o "escolhidos" deixava quem cuida ver todos). Os chamados do painel
-   pessoal também não existem para os outros (404).
-   - Escolha minha (a pergunta ficou sem resposta): "pessoal" é da pessoa; o outro caminho era o dono e quem cuida.
-5. **O dono configura o dele**, mesmo sem cuidar dos chamados: o painel, as etapas, os campos, os assuntos e as etiquetas (as
-   rotas de Ajustes de um painel passam pela `exigirConfigurarPainel`: o da equipe pede `tickets.manage`; o pessoal, ser o dono;
-   o pessoal de outra pessoa dá 404). **Quem vê não muda** pela janela (o servidor grava sempre só o dono), e o painel pessoal
-   não sai para a lixeira.
+4. **Veem o dono e quem tem o perfil de administrador** (`admin.manage`). Na primeira versão, só o dono (escolha minha, com a
+   pergunta sem resposta); o Luan, 12/11: *"quem tem perfil de administrador tem q ver todos"*. Quem só cuida dos chamados
+   (`tickets.manage` sem `admin.manage`) e os colegas não veem: o painel e os chamados dele dão 404. Antes, o "escolhidos"
+   deixava quem cuida dos chamados ver todos.
+   - Na tela Painéis, os pessoais dos outros ficam numa parte à parte, embaixo (**Os painéis pessoais da equipe**), que o
+     administrador fecha e abre (fica lembrado no navegador): com uma equipe grande, eles não empurram os painéis de trabalho.
+5. **O dono configura o dele**, mesmo sem cuidar dos chamados, e o administrador também: o painel, as etapas, os campos, os
+   assuntos e as etiquetas (as rotas de Ajustes de um painel passam pela `exigirConfigurarPainel`: o da equipe pede
+   `tickets.manage`; o pessoal, ser o dono ou administrador; senão, 404). **Quem vê não muda** pela janela (o servidor grava
+   sempre só o dono nas pessoas), e o painel pessoal não sai para a lixeira (400; dá para desativar).
    - Escolha minha (a pergunta ficou sem resposta): as etapas nascem as cinco, e cada um muda as do seu — o dele já tinha 9.
 6. Fica de fora: o envio automático (as origens), o Trazer do Helena (os destinos) e o painel em que o robô abre sem dizer qual.
 

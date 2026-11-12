@@ -3,8 +3,9 @@
  *  - a largura do campo no grupo do meio da ficha: metade ou a linha inteira ("escolher na hora de cadastrar um campo se ele vai
  *    ocupar metade do espaço como o de operadora doadora ou vai ser todo como esse da faixa numérica");
  *  - o painel pessoal de cada pessoa ("quero que nativamente todos os usuários tenham um painel pessoal de atividades, ele vai vir
- *    seco e o usuário vai habilitando os campos"): nasce sozinho, só o dono vê e configura; o "… - Pessoal" que a pessoa já usava
- *    passa a ser o dela, sem mudar nada ("eu já tenho um pessoal e n quero que altere nada nele").
+ *    seco e o usuário vai habilitando os campos"): nasce sozinho; o dono e o administrador veem e configuram ("quem tem perfil de
+ *    administrador tem q ver todos", 12/11), quem só cuida dos chamados não; o "… - Pessoal" que a pessoa já usava passa a ser o
+ *    dela, sem mudar nada ("eu já tenho um pessoal e n quero que altere nada nele").
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -17,6 +18,7 @@ let app: App;
 let s: Session;       // o administrador: cuida dos chamados
 let marina: Session;  // operadora: trabalha nos chamados, não cuida
 let carla: Session;   // operadora que já tinha o "Carla - Pessoal"
+let paulo: Session;   // cuida dos chamados, mas não tem o perfil de administrador
 let adminId = '';
 let marinaId = '';
 let carlaId = '';
@@ -52,6 +54,10 @@ beforeAll(async () => {
   });
   expect(r.statusCode, r.body).toBe(201);
   antigoDaCarla = r.json().id;
+  const supervisor = (await s.post('/admin/roles', { name: 'Supervisor 2.4.7', description: 'cuida dos chamados, sem administrar',
+    permissions: ['records.read', 'support.read', 'tickets.work', 'tickets.manage'] })).json().id;
+  await s.post('/admin/users', { name: 'Paulo Lima', email: 'paulo247@gestor.local', password: 'SenhaDeTeste!123', roleId: supervisor });
+  paulo = new Session(app); await paulo.login('paulo247@gestor.local', 'SenhaDeTeste!123');
   marina = new Session(app); await marina.login('marina247@gestor.local', 'SenhaDeTeste!123');
   carla = new Session(app); await carla.login('carla247@gestor.local', 'SenhaDeTeste!123');
 });
@@ -107,18 +113,24 @@ describe('o painel pessoal (2.4.7)', () => {
     expect((await app.db.select().from(ticketPanels).where(eq(ticketPanels.ownerId, carlaId))).length).toBe(1);
   });
 
-  it('só o dono vê: nem quem cuida dos chamados; os chamados do pessoal também não', async () => {
+  it('o dono e o administrador veem; quem só cuida dos chamados e os colegas, não; os chamados do pessoal também', async () => {
     const doAdmin = await opcoes(s);
-    const meu = pessoalDe(doAdmin, adminId)!;
-    expect(meu).toBeTruthy();
-    expect(doAdmin.paineis.some((p) => p.donoId === marinaId || p.id === antigoDaCarla)).toBe(false);
+    expect(pessoalDe(doAdmin, adminId)).toBeTruthy();
+    // o administrador vê os de todos (12/11)
+    expect(pessoalDe(doAdmin, marinaId)).toBeTruthy();
+    expect(doAdmin.paineis.some((p) => p.id === antigoDaCarla)).toBe(true);
+    // a colega não vê o dos outros; quem cuida dos chamados sem o perfil de administrador também não
     expect((await opcoes(marina)).paineis.some((p) => p.donoId && p.donoId !== marinaId)).toBe(false);
+    const doPaulo = await opcoes(paulo);
+    expect(doPaulo.paineis.filter((p) => p.donoId).map((p) => p.nome)).toEqual(['Paulo - Pessoal']);
     const daMarina = pessoalDe(await opcoes(marina), marinaId)!;
     const aberto = await marina.post('/atendimento/chamados', { painelId: daMarina.id, titulo: 'Revisar a planilha de DIDs' });
     expect(aberto.statusCode, aberto.body).toBe(201);
     const { id } = aberto.json() as { id: string };
-    expect((await s.get(`/atendimento/chamados/${id}`)).statusCode).toBe(404);
     expect((await marina.get(`/atendimento/chamados/${id}`)).statusCode).toBe(200);
+    expect((await s.get(`/atendimento/chamados/${id}`)).statusCode).toBe(200);
+    expect((await paulo.get(`/atendimento/chamados/${id}`)).statusCode).toBe(404);
+    expect((await carla.get(`/atendimento/chamados/${id}`)).statusCode).toBe(404);
     // o envio automático não lista os pessoais
     expect(((await s.get('/envio/ajustes')).json() as { origens: Array<{ id: string }> }).origens.some((x) => x.id === daMarina.id)).toBe(false);
   });
@@ -143,11 +155,20 @@ describe('o painel pessoal (2.4.7)', () => {
     expect((await marina.post(`/atendimento/paineis/${SUP}/campos`, { nome: 'Não pode', tipo: 'texto' })).statusCode).toBe(403);
   });
 
-  it('o pessoal de outra pessoa não existe para quem cuida dos chamados (404), nem para tirar', async () => {
+  it('o pessoal de outra pessoa não existe para quem só cuida dos chamados (404); o administrador configura, mas não tira', async () => {
     const p = pessoalDe(await opcoes(marina), marinaId)!;
-    expect((await s.put(`/atendimento/paineis/${p.id}`, gravavel(p, { nome: 'Do admin' }))).statusCode).toBe(404);
-    expect((await s.post(`/atendimento/paineis/${p.id}/campos`, { nome: 'Do admin', tipo: 'texto' })).statusCode).toBe(404);
-    expect((await s.del(`/atendimento/paineis/${p.id}`)).statusCode).toBe(404);
-    expect((await s.get('/atendimento/etiquetas')).json().some((e: { painelId: string }) => e.painelId === p.id)).toBe(false);
+    expect((await paulo.put(`/atendimento/paineis/${p.id}`, gravavel(p, { nome: 'Do Paulo' }))).statusCode).toBe(404);
+    expect((await paulo.post(`/atendimento/paineis/${p.id}/campos`, { nome: 'Do Paulo', tipo: 'texto' })).statusCode).toBe(404);
+    expect((await paulo.get('/atendimento/etiquetas')).json().some((e: { painelId: string }) => e.painelId === p.id)).toBe(false);
+    // o administrador: configura (quem vê continua o dono)
+    const r = await s.put(`/atendimento/paineis/${p.id}`, gravavel(p, { nome: 'Marina - Atividades' }));
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({ nome: 'Marina - Atividades', pessoas: [marinaId], donoId: marinaId });
+    expect((await s.post(`/atendimento/paineis/${p.id}/campos`, { nome: 'Do admin', tipo: 'texto' })).statusCode).toBe(201);
+    expect((await s.get('/atendimento/etiquetas')).json().some((e: { painelId: string }) => e.painelId === p.id)).toBe(true);
+    // e não tira: o painel é da pessoa
+    const tirar = await s.del(`/atendimento/paineis/${p.id}`);
+    expect(tirar.statusCode).toBe(400);
+    expect(tirar.body).toContain('painel pessoal');
   });
 });

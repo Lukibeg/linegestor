@@ -14,9 +14,10 @@
 import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, ChartColumn, Lock, Plus, Search, Settings2 } from 'lucide-react';
+import { ArrowRight, ChartColumn, ChevronDown, ChevronRight, Lock, Plus, Search, Settings2 } from 'lucide-react';
 import { paraBusca, reaisInteiros, type Painel, type ResumoDoPainel } from '@gestor/shared';
 import { api } from '../../api/index.js';
+import { useAuth } from '../../lib/auth.js';
 import { Carregando, Chip, Vazio, mensagemErro } from '../../components/ui/index.js';
 import { CabecalhoAtendimento, useLerOQuadroAntes, useOpcoes, usePode, usePodeConfigurar } from './comum.js';
 import { JanelaConfigurarPainel } from './ajustes/Paineis.js';
@@ -39,6 +40,13 @@ export function PaineisDeChamados() {
   // o prazo anda com o relógio: os números se releem a cada minuto, como o quadro
   const resumo = useQuery({ queryKey: ['atendimento', 'paineis', 'resumo'], queryFn: () => api.atendimento.resumoDosPaineis(), refetchInterval: 60_000 });
   const [busca, setBusca] = useState('');
+  const { user } = useAuth();
+  // os pessoais dos outros (2.4.7: o administrador vê todos) ficam numa parte à parte, embaixo; esconder fica lembrado
+  const [semOsPessoais, setSemOsPessoais] = useState(() => { try { return localStorage.getItem('paineis-sem-os-pessoais') === '1'; } catch { return false; } });
+  const mudarOsPessoais = (esconder: boolean) => {
+    setSemOsPessoais(esconder);
+    try { localStorage.setItem('paineis-sem-os-pessoais', esconder ? '1' : '0'); } catch { /* sem o navegador guardar, vale só agora */ }
+  };
 
   const paineis = useMemo(() => {
     const todos = opcoes.data?.paineis ?? [];
@@ -51,6 +59,9 @@ export function PaineisDeChamados() {
   const desativados = (opcoes.data?.paineis ?? []).filter((p) => !p.ativo).length;
   const porPainel = useMemo(() => new Map((resumo.data ?? []).map((r) => [r.painelId, r])), [resumo.data]);
   const quantos = (opcoes.data?.paineis ?? []).filter((p) => p.ativo).length;
+  const dosOutros = (p: Painel) => !!p.donoId && p.donoId !== user?.id;
+  const daEquipe = paineis.filter((p) => !dosOutros(p));
+  const pessoaisDosOutros = paineis.filter(dosOutros);
 
   return (
     <div>
@@ -69,8 +80,8 @@ export function PaineisDeChamados() {
           )}
           {resumo.isError && <p className="text-bad text-[13px] mb-2" role="alert">Não consegui ler os números dos painéis: {mensagemErro(resumo.error)}</p>}
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" id="paineis" aria-label="Painéis de chamados">
-            {paineis.map((p) => (
-              <li key={p.id} className="min-w-0"><CartaoDoPainel p={p} r={porPainel.get(p.id)} carregando={resumo.isLoading} cuidar={podeConfigurar(p)} /></li>
+            {daEquipe.map((p) => (
+              <li key={p.id} className="min-w-0"><CartaoDoPainel p={p} r={porPainel.get(p.id)} carregando={resumo.isLoading} cuidar={podeConfigurar(p)} meu={p.donoId === user?.id} /></li>
             ))}
             {pode.cuidar && !busca && (
               <li className="min-w-0">
@@ -83,6 +94,23 @@ export function PaineisDeChamados() {
               </li>
             )}
           </ul>
+          {pessoaisDosOutros.length > 0 && (
+            <section className="mt-6" id="paineis-pessoais" aria-labelledby="paineis-pessoais-titulo">
+              <button type="button" className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 hover:text-ink mb-2" id="paineis-pessoais-titulo"
+                aria-expanded={!semOsPessoais} onClick={() => mudarOsPessoais(!semOsPessoais)}>
+                {semOsPessoais ? <ChevronRight size={15} aria-hidden /> : <ChevronDown size={15} aria-hidden />}
+                Os painéis pessoais da equipe ({pessoaisDosOutros.length})
+                <span className="font-normal text-muted">· você vê porque é administrador</span>
+              </button>
+              {!semOsPessoais && (
+                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="Os painéis pessoais da equipe">
+                  {pessoaisDosOutros.map((p) => (
+                    <li key={p.id} className="min-w-0"><CartaoDoPainel p={p} r={porPainel.get(p.id)} carregando={resumo.isLoading} cuidar={podeConfigurar(p)} meu={false} /></li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
           {busca && !paineis.length && <p className="text-[13px] text-muted mt-2">Nenhum painel com “{busca}”.</p>}
           {pode.cuidar && desativados > 0 && (
             <p className="text-[12.5px] text-muted mt-3" id="paineis-desativados">
@@ -96,7 +124,7 @@ export function PaineisDeChamados() {
   );
 }
 
-function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPainel | undefined; carregando: boolean; cuidar: boolean }) {
+function CartaoDoPainel({ p, r, carregando, cuidar, meu }: { p: Painel; r: ResumoDoPainel | undefined; carregando: boolean; cuidar: boolean; meu: boolean }) {
   const [configurando, setConfigurando] = useState(false);
   const nav = useNavigate();
   const quadro = `/atendimento/quadro?painel=${encodeURIComponent(p.id)}`;
@@ -117,7 +145,7 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
             <Link to={quadro} className="hover:text-accent">{p.nome}</Link>
             {!p.ativo && <Chip tone="muted">desativado</Chip>}
             {p.donoId
-              ? <Chip tone="neutral" title="O seu painel pessoal: só você vê (2.4.7)"><Lock size={11} aria-hidden /> pessoal</Chip>
+              ? <Chip tone="neutral" title={meu ? 'O seu painel pessoal: só você e os administradores veem' : 'Um painel pessoal: só o dono e os administradores veem'}><Lock size={11} aria-hidden /> pessoal</Chip>
               : p.acesso === 'escolhidos' && <Chip tone="neutral" title="Só as pessoas escolhidas (e quem cuida dos chamados) veem este painel"><Lock size={11} aria-hidden /> só os escolhidos</Chip>}
           </h2>
           {p.descricao && <p className="text-[12.5px] text-muted line-clamp-2 mt-0.5">{p.descricao}</p>}

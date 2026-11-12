@@ -528,6 +528,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const podeVerVendas = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('sales.read');
   const podeTrabalhar = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('tickets.work');
   const podeCuidar = (a: Ator) => a.tipo === 'pessoa' && a.permissoes.includes('tickets.manage');
+  /** O perfil de administrador (admin.manage): vê e configura também os painéis pessoais de todos (2.4.7), como no servidor. */
+  const ehAdministrador = (a: Ator) => a.tipo === 'pessoa' && a.permissoes.includes('admin.manage');
   const pessoaDoAtor = (a: Ator | null) => (a?.tipo === 'pessoa' ? a.id : null);
   const integracaoDoAtor = (a: Ator | null) => (a?.tipo === 'integracao' ? a.nome : null);
   function exigirTrabalhar(a: Ator) {
@@ -571,8 +573,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Quem cuida dos chamados vê todos; num painel "escolhidos", só as pessoas da lista; a integração vê todos. */
   function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'> & { donoId?: string | null }, a: Ator): boolean {
     if (a.tipo === 'integracao') return true;
-    // o painel pessoal (2.4.7): só o dono, nem quem cuida dos chamados
-    if (p.donoId) return a.id === p.donoId;
+    // o painel pessoal (2.4.7): o dono e quem tem o perfil de administrador (como no servidor)
+    if (p.donoId) return a.id === p.donoId || ehAdministrador(a);
     const vendas = p.tipo === 'vendas';
     if (vendas && !podeVerVendas(a)) return false;
     if (podeCuidar(a)) return true;
@@ -580,12 +582,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return p.acesso === 'todos' || p.pessoas.includes(a.id);
   }
   const visiveis = (a: Ator) => new Set(paineis().filter((p) => podeVerPainel(p, a)).map((p) => p.id));
-  /** Quem configura o painel (2.4.7): o da equipe, quem cuida dos chamados; o pessoal, só o dono (como o servidor). */
-  const podeConfigurarPainel = (p: { donoId?: string | null }, a: Ator) => (a.tipo !== 'pessoa' ? false : p.donoId ? a.id === p.donoId : podeCuidar(a));
+  /** Quem configura o painel (2.4.7): o da equipe, quem cuida dos chamados; o pessoal, o dono e o administrador (como o servidor). */
+  const podeConfigurarPainel = (p: { donoId?: string | null }, a: Ator) => (a.tipo !== 'pessoa' ? false : p.donoId ? a.id === p.donoId || ehAdministrador(a) : podeCuidar(a));
   function exigirConfigurar(painelId: string | null | undefined) {
     const p = painelId ? A.paineis.find((x) => x.id === painelId && !x.deletedAt) : undefined;
     const a = eu();
-    if (p?.donoId) { if (a.id !== p.donoId) throw naoAchado('Painel'); return; }
+    if (p?.donoId) { if (a.id !== p.donoId && !ehAdministrador(a)) throw naoAchado('Painel'); return; }
     if (!podeCuidar(a)) throw proibido('Esta ação exige a permissão "tickets.manage"');
   }
   const painelDoCampo = (id: string) => A.campos.find((c) => c.id === id)?.painelId ?? A.excluidos.find((c) => c.id === id)?.painelId;
@@ -612,6 +614,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       etapas: ETAPAS_DO_PAINEL_PESSOAL.map((e) => ({ ...e, avisar: [], resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false })),
     });
     gravarPainel(a, null, dados, agoraReal(), { dono: a.id });
+  }
+  /**
+   * Na prévia, as pessoas de exemplo não entram sozinhas: os pessoais de todas nascem junto, para o administrador ver os da
+   * equipe (no servidor, cada um nasce quando a pessoa entra nos Painéis).
+   */
+  function garantirOsPessoaisDaPrevia() {
+    garantirPainelPessoal(eu());
+    for (const u of S.users) if (u.active && u.id !== S.me?.id) garantirPainelPessoal(atorDaPessoa(u.id));
   }
   /** Quem pode ser citado com @ numa anotação do painel: as pessoas ativas que veem o painel (como o servidor). */
   const quemVeOPainel = (p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'> & { donoId?: string | null }): PessoaCurta[] => S.users
@@ -4432,7 +4442,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   };
 
   const api: Api['atendimento'] = {
-    async opcoes() { await ctx.wait(80); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); garantirPainelPessoal(eu()); return opcoes(eu()); },
+    async opcoes() { await ctx.wait(80); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); garantirOsPessoaisDaPrevia(); return opcoes(eu()); },
     async quadro(q) { await ctx.wait(); const f = lerQuadro(q); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return quadro(eu(), f); },
     async lista(q) {
       await ctx.wait();
@@ -4448,7 +4458,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async resumoDosPaineis(): Promise<ResumoDoPainel[]> {
       await ctx.wait(); ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       const ator = eu();
-      garantirPainelPessoal(ator);
+      garantirOsPessoaisDaPrevia();
       // as mesmas contas do servidor (resumoDosPaineis do shared), sobre os chamados que a pessoa vê
       const agora = agoraReal();
       return resumoDosPaineis(paineis().filter((p) => podeVerPainel(p, ator)), cartoesVisiveis(ator, agora), ator.tipo === 'pessoa' ? ator.id : null, agora);
