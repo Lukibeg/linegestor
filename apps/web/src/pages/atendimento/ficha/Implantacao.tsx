@@ -13,6 +13,7 @@ import { chaveDoCampo, ehCaixinhas, gruposNaLateral, larguraDoCampo, paraBusca, 
 import { ChipSituacao, CodigoChamado, painelDe } from '../comum.js';
 import { FaltaNaParte, Secao, useAberta } from './base.js';
 import { Caixinhas } from './Caixinhas.js';
+import { ChecklistDoCard } from './ChecklistDoCard.js';
 import { CampoNaFicha } from './Classificacao.js';
 import { BlocoDoCampo } from './Textos.js';
 
@@ -23,8 +24,8 @@ export function PartesDoChamado() {
   const grupos = painel?.ajustes.partes;
   // o campo com um arquivo anexado conta como feito (2.4.4: "um documento tem q contar como preenchido o campo")
   const comAnexo = useMemo(() => (f.anexosDosCampos ?? []).filter((a) => !a.opcaoId).map((a) => a.campoId), [f.anexosDosCampos]);
-  const partes = useMemo(() => partesDoChamado(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, f.campos, grupos ?? [], comAnexo),
-    [opcoes.campos, f.painelId, produtos, f.campos, grupos, comAnexo]);
+  const partes = useMemo(() => partesDoChamado(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, f.campos, grupos ?? [], comAnexo, f.listas),
+    [opcoes.campos, f.painelId, produtos, f.campos, grupos, comAnexo, f.listas]);
   if (!partes.length) return null;
   const daEtapa = etapa ? partes.find((p) => paraBusca(p.nome) === paraBusca(etapa.nome)) : undefined;
   // fora das etapas com o nome de uma parte (o Stand By, o Concluído, o Implantado), todas abertas; o que a próxima etapa pede, também
@@ -142,6 +143,7 @@ function gruposDoBloco(campos: readonly CampoPersonalizado[]): Array<{ curtos: b
 
 function CampoDaParte({ c }: { c: CampoPersonalizado }) {
   if (ehCaixinhas(c.tipo)) return <Caixinhas c={c} />;
+  if (c.tipo === 'checklist') return <ChecklistDoCard c={c} />;
   if (c.tipo === 'texto_longo') return <BlocoDoCampo c={c} />;
   return <CampoNaFicha c={c} />;
 }

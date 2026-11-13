@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type Obrigatorio } from './atendimento.js';
+import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, larguraDoCampo, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type Obrigatorio } from './atendimento.js';
 import {
-  ehPainelDaImplantacao, etapaDoFimDaImplantacao, partesNoCartao,
+  ehPainelDaImplantacao, etapaDoFimDaImplantacao, linhasDaLista, listaDepois, partesNoCartao,
   gruposDoPainel, gruposNaLateral, mesmoGrupo,
   MODELO_DA_IMPLANTACAO, opcaoDoModelo, modulosDoChecklist, modulosSemMarcar, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
   planoDaImplantacao, planoDoCadastro, progressoDasPartes, tituloDaImplantacao,
@@ -454,5 +454,87 @@ describe('o anexo conta como preenchido no que a etapa pede (2.4.4)', () => {
     const etapa = { tipo: 'andamento' as const, obrigatorios: ['campo:chatbot' as Obrigatorio] };
     expect(faltaParaEtapa(dados, etapa)).toEqual(['campo:chatbot']);
     expect(faltaParaEtapa({ ...dados, camposComAnexo: ['chatbot'] }, etapa)).toEqual([]);
+  });
+});
+
+// 2.4.8: o checklist do card — cada card monta a sua lista (o Luan: "uma lista de ramais que tenho que configurar no telefone e
+// outra no soft phone isso varia ent n pode ser um check list fixo")
+describe('o checklist do card (2.4.8)', () => {
+  const item = (id: string, texto: string, feito = false) => ({ id, texto, feito, porId: feito ? 'u1' : null, em: feito ? '2026-11-13T12:00:00.000Z' : null, doAssunto: false });
+  const telefone = campo('tel', { nome: 'Ramais no telefone', tipo: 'checklist', parte: 'Configuração', produtoId: 'pbx' });
+  let n = 0;
+  const novoId = () => `i${++n}`;
+
+  it('cada linha colada vira um item, sem a marca de lista e sem as linhas em branco', () => {
+    expect(linhasDaLista('200 Recepção\n\n- 201 Reservas\r\n• 202 Governança\n  [ ] 203   Cozinha  \n1. 204 Bar\n[x] 205')).toEqual(['200 Recepção', '201 Reservas', '202 Governança', '203 Cozinha', '204 Bar', '205']);
+    expect(linhasDaLista(['a', 'b\nc'])).toEqual(['a', 'b', 'c']);
+    expect(linhasDaLista('x'.repeat(300))[0]).toHaveLength(200);
+  });
+
+  it('incluir: os que já estão na lista não entram de novo; o histórico diz o campo', () => {
+    const r = listaDepois([item('a', '200 Recepção')], telefone, { acao: 'incluir', textos: ['200 recepcao\n201 Reservas\n202 Governança'] }, 'u1', 'agora', novoId);
+    expect(r.ok && r.lista.map((i) => i.texto)).toEqual(['200 Recepção', '201 Reservas', '202 Governança']);
+    expect(r.ok && r.resumo).toBe('Incluiu 2 itens em Ramais no telefone');
+    expect(r.ok && textoDoEvento('checklist', r.evento)).toBe('incluiu em Ramais no telefone: 201 Reservas, 202 Governança');
+    expect(listaDepois([item('a', '200')], telefone, { acao: 'incluir', textos: ['200'] }, 'u1', 'agora', novoId)).toEqual({ ok: false, erro: 'Esses itens já estão na lista.' });
+    expect(listaDepois([], telefone, { acao: 'incluir', textos: ['  \n '] }, 'u1', 'agora', novoId)).toEqual({ ok: false, erro: 'Escreva o item.' });
+    const cheia = Array.from({ length: 199 }, (_, k) => item(`x${k}`, `ramal ${k}`));
+    expect(listaDepois(cheia, telefone, { acao: 'incluir', textos: ['novo 1\nnovo 2'] }, 'u1', 'agora', novoId)).toEqual({ ok: false, erro: 'A lista vai até 200 itens (já tem 199).' });
+  });
+
+  it('marcar guarda quem e quando; desmarcar tira; o mesmo clique duas vezes não muda nada', () => {
+    const r = listaDepois([item('a', '201')], telefone, { acao: 'marcar', itemId: 'a', feito: true }, 'u2', '2026-11-13T15:00:00.000Z', novoId);
+    expect(r.ok && r.lista[0]).toMatchObject({ feito: true, porId: 'u2', em: '2026-11-13T15:00:00.000Z' });
+    expect(r.ok && textoDoEvento('checklist', r.evento)).toBe('marcou em Ramais no telefone: 201');
+    const de = listaDepois(r.ok ? r.lista : [], telefone, { acao: 'marcar', itemId: 'a', feito: false }, 'u2', 'depois', novoId);
+    expect(de.ok && de.lista[0]).toMatchObject({ feito: false, porId: null, em: null });
+    expect(listaDepois([item('a', '201', true)], telefone, { acao: 'marcar', itemId: 'a', feito: true }, 'u2', 'x', novoId)).toMatchObject({ ok: true, mudou: false });
+    expect(listaDepois([], telefone, { acao: 'marcar', itemId: 'sumiu', feito: true }, 'u2', 'x', novoId).ok).toBe(false);
+  });
+
+  it('corrigir o texto (sem repetir outro item) e tirar', () => {
+    const lista = [item('a', '201'), item('b', '202', true)];
+    const r = listaDepois(lista, telefone, { acao: 'editar', itemId: 'b', texto: '202 Governança' }, 'u1', 'x', novoId);
+    expect(r.ok && r.lista[1]).toMatchObject({ texto: '202 Governança', feito: true, porId: 'u1' });
+    expect(r.ok && textoDoEvento('checklist', r.evento)).toBe('corrigiu em Ramais no telefone: "202" para "202 Governança"');
+    expect(listaDepois(lista, telefone, { acao: 'editar', itemId: 'b', texto: '201' }, 'u1', 'x', novoId)).toEqual({ ok: false, erro: '"201" já está na lista.' });
+    const t = listaDepois(lista, telefone, { acao: 'tirar', itemId: 'a' }, 'u1', 'x', novoId);
+    expect(t.ok && t.lista.map((i) => i.id)).toEqual(['b']);
+    expect(t.ok && textoDoEvento('checklist', t.evento)).toBe('tirou de Ramais no telefone: 201');
+    // o checklist do chamado continua como sempre
+    expect(textoDoEvento('checklist', { acao: 'incluiu', item: 'Testar' })).toBe('incluiu no checklist: Testar');
+    expect(textoDoEvento('checklist', { acao: 'tirou', item: 'Testar' })).toBe('tirou do checklist: Testar');
+  });
+
+  it('conta na parte: cada item; sem nenhum, um que falta', () => {
+    expect(contaDoCampo(telefone, null, null, null, [])).toEqual({ feitos: 0, total: 1 });
+    expect(contaDoCampo(telefone, null, null, null, [item('a', '1', true), item('b', '2')])).toEqual({ feitos: 1, total: 2 });
+    const campos = [...CAMPOS, telefone];
+    const [, conf] = progressoDasPartes(campos, ['pbx'], { 'conf-pbx': ['x', 'y'] }, [], [], { tel: [item('a', '1', true), item('b', '2'), item('c', '3', true)] });
+    expect(conf).toEqual({ parte: 'Configuração', feitos: 4, total: 5 });
+    // a bolinha do que falta: o checklist com item por marcar
+    const partes = partesDoChamado(campos, ['pbx'], { 'conf-pbx': ['x', 'y'] }, [], [], { tel: [item('a', '1')] });
+    expect(partes[1]!.faltam).toEqual(['tel']);
+  });
+
+  it('pedido numa etapa: só está feito com itens, todos marcados', () => {
+    const dados = {
+      tipoChamado: 'chamado' as const, clienteId: null, contatoNome: null, contatoTelefone: null, relato: null, descricao: null, assuntoId: null, tipo: null,
+      gravidade: null, alcance: null, prioridade: null, produtos: [], operadoras: [], responsavelId: 'u1', solucao: null, causa: null, validacao: null,
+      checklist: [], tempoMinutos: 0, campos: {},
+    };
+    const etapa = { tipo: 'andamento' as const, obrigatorios: ['campo:tel' as Obrigatorio] };
+    expect(faltaParaEtapa(dados, etapa)).toEqual(['campo:tel']);
+    expect(faltaParaEtapa({ ...dados, listas: { tel: [] } }, etapa)).toEqual(['campo:tel']);
+    expect(faltaParaEtapa({ ...dados, listas: { tel: [item('a', '1', true), item('b', '2')] } }, etapa)).toEqual(['campo:tel']);
+    expect(faltaParaEtapa({ ...dados, listas: { tel: [item('a', '1', true)] } }, etapa)).toEqual([]);
+  });
+
+  it('o campo: sem opções, sem incluir na hora, nunca pedido na abertura; o valor não entra pelo "alterar"', () => {
+    const c = CampoGravarSchema.parse({ nome: 'Ramais no softphone', tipo: 'checklist', opcoes: [{ nome: 'x', ativa: true }], incluirNaHora: true });
+    expect(c).toMatchObject({ opcoes: [], incluirNaHora: false });
+    expect(CampoGravarSchema.safeParse({ nome: 'Ramais', tipo: 'checklist', obrigatorioAoAbrir: true }).success).toBe(false);
+    expect(normalizarValorDoCampo(telefone, ['201'])).toEqual({ ok: false, erro: 'Ramais no telefone: inclua os itens pela ficha (o checklist do card)' });
+    expect(larguraDoCampo(telefone)).toBe('inteiro');
   });
 });

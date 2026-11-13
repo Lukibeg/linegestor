@@ -17,7 +17,7 @@ import {
   valoresVisiveis,
   type AjustesDaNia, type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
   type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type PessoaCurta, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
-  type Prioridade, type TipoChamado, type ValoresDosCampos,
+  type Prioridade, type TipoChamado, type ValoresDosCampos, type ListasDosCampos,
 } from '@gestor/shared';
 import { NotFound, Forbidden } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
@@ -339,7 +339,7 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     ordemNoQuadro: t.boardPosition ?? null,
     // as partes da ficha (2.3, a implantação), com a conta de cada uma: só dos campos do produto que o chamado tem
     partes: progressoDasPartes(camposDoPainel(ctx, t.panelId, true), usa('produtos') ? t.productIds : [], t.customFields as ValoresDosCampos | null, painel?.ajustes.partes,
-      par.camposComAnexo?.get(t.id) ?? []),
+      par.camposComAnexo?.get(t.id) ?? [], t.fieldLists as ListasDosCampos | null),
   };
 }
 

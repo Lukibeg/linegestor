@@ -55,6 +55,11 @@ Voltar a negociação e mover de novo não abre outro card.
   com a conta. Quem cuida dos chamados muda ali mesmo: **Editar as caixinhas** › Nova pasta, Incluir caixinha, as setas
   (levam a caixinha de uma pasta para a outra), a lixeira (desde o 2.4, exclui de verdade: some de todos os cards, mesmo
   dos que a marcaram; o campo pode ficar sem nenhuma) › Salvar. Vale para todos os cards do painel.
+- **O checklist do card (2.4.8).** O que muda de cliente para cliente (os ramais a configurar no telefone, os do
+  softphone) vai num campo do tipo **Checklist do card**: cada card monta a sua lista na ficha. Escreva um item e Enter, ou
+  **cole a lista** (cada linha vira um item; o botão diz **Incluir 3**). Marque conforme faz (cada item mostra quem marcou e
+  quando); o lápis corrige o texto e o × tira. A lista vazia conta como uma coisa por fazer na parte; cada item conta como
+  um. Pedido numa etapa, o campo só está feito com itens, todos marcados.
 - **Todos os produtos.** Cada parte mostra um bloco para cada produto do card; o que ainda não tem campo naquela parte
   (o VoiceNet, por exemplo) aparece vazio, com o aviso.
 - **Os anexos.** Cada campo da Curadoria tem o **Anexar**: imagens, PDF, Word, Excel, até 30 MB cada. A Configuração e os
@@ -108,7 +113,9 @@ E dois tipos novos: **Caixinhas** (o que já foi feito, com quem marcou e quando
 janela do campo) e **Módulos do produto** (os módulos do catálogo; o produto não muda depois de criado). Num campo de
 módulos, **Os módulos que aparecem** › **Só os marcados em …** faz dele o checklist de outro campo de módulos do mesmo
 produto. E, desde o 2.4, o tipo **Documento**: o arquivo anexado (conta como feito com o primeiro); o texto curto e o longo
-viram documento sem perder o que foi escrito.
+viram documento sem perder o que foi escrito. Desde o 2.4.8, o **Checklist do card**: a lista de tarefas que cada card monta
+(as caixinhas são as mesmas em todos os cards do painel; o checklist do card, não). Ele não pode ser pedido para abrir o
+chamado (a lista nasce depois), só para entrar nas etapas.
 
 E a opção **Recebe anexos**: com ela, o campo ganha o Anexar na ficha (nas caixinhas, o clipe de cada uma). No modelo
 Implantação, vem ligada nos campos da Curadoria.

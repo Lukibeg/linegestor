@@ -35,7 +35,7 @@ import {
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
   ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, modulosSemMarcar, AoMoverSchema,
-  GruposGravarSchema, gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO,
+  GruposGravarSchema, gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO, ListaDoCampoSchema, listaDepois, type AcaoNaLista, type ListasDosCampos,
   mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES, CondicoesDaNegociacaoSchema, mesDeHoje, type CondicoesDaNegociacao,
   type AssinaturaNoCadastro, type MarcasDosCampos, type NegociacaoNoFim, type OQueAEtapaFaz, type PlanoDaImplantacao, type PlanoDoCadastro, type PedidoDoCliente,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
@@ -182,6 +182,8 @@ type ChamadoRow = {
   origem: Origem; responsavelId: string | null; assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null;
   prioridade: Prioridade | null; motivoPrioridade: string | null; produtos: string[]; operadoras: string[]; etiquetas: string[];
   paiId: string | null; problemaId: string | null; checklist: ItemChecklist[];
+  /** os itens dos campos Checklist do card (2.4.8), pelo id do campo (como o `field_lists` do servidor) */
+  listas?: ListasDosCampos;
   /** os valores dos campos do painel (pelo id do campo; o de um campo desativado fica guardado) */
   campos: ValoresDosCampos;
   solucao: string | null; causa: string | null; contorno: string | null; validacao: string | null;
@@ -711,7 +713,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       // o lugar que a equipe escolheu arrastando (2.1: só vale onde a ordem é à mão)
       ordemNoQuadro: t.ordemNoQuadro ?? null,
       // as partes da ficha (2.3, a implantação), com a conta de cada uma (como o servidor)
-      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos, p?.ajustes.partes ?? [], camposComAnexo(t.id)),
+      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos, p?.ajustes.partes ?? [], camposComAnexo(t.id), t.listas ?? {}),
     };
   }
 
@@ -877,6 +879,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
       solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id), campos: t.campos,
       camposComAnexo: camposComAnexo(t.id),
+      listas: t.listas ?? {},
       valor: t.valor, ativacao: t.ativacao, empresa: t.empresa, motivoPerda: t.motivoPerda,
     };
   }
@@ -2257,6 +2260,26 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return { ...nada(t), resumo };
   }
 
+  /** O checklist do card (2.4.8): como o servidor (`mexerNaListaDoCampo`), pelas mesmas regras (`listaDepois`). */
+  function mexerNaListaDoCampo(ator: Ator, ref: string, campoId: string, d: AcaoNaLista, agora: Date = agoraReal()): Feito {
+    exigirTrabalhar(ator);
+    const e = carregar(ator, ref, agora);
+    const { t } = e;
+    const c = camposDoPainel(t.painelId, true).find((x) => x.id === campoId);
+    if (!c) throw naoAchado('Campo do painel');
+    if (c.tipo !== 'checklist') throw bad(`${c.nome} não é um checklist do card.`);
+    const nome = nomeCompletoDoCampo(c, S.products.filter((x) => !x.deletedAt).map((x) => ({ id: x.id, nome: x.name })));
+    const r = listaDepois(t.listas?.[c.id], { nome }, d, pessoaDoAtor(ator), iso(agora), novoId);
+    if (!r.ok) throw bad(r.erro);
+    if (!r.mudou) return nada(t);
+    const novas: ListasDosCampos = { ...(t.listas ?? {}) };
+    if (r.lista.length) novas[c.id] = r.lista; else delete novas[c.id];
+    t.listas = novas; tocar(t, agora);
+    registrarEvento(t.id, 'checklist', ator, r.evento, e.quando());
+    camposAosObservadores(ator, t, [nome], agora);
+    return { ...nada(t), resumo: `${r.resumo} (${t.codigo})` };
+  }
+
   function registrarTempo(ator: Ator, ref: string, d: { minutos: number; nota?: string | null; dia?: string | null }, agora: Date = agoraReal()): Feito {
     exigirTrabalhar(ator);
     const e = carregar(ator, ref, agora);
@@ -3052,6 +3075,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       outrosContatos: campoLigado(painel.ajustes, 'cliente') ? t.outrosContatos ?? [] : [],
       outrasConversas: (t.outrasSessoes ?? []).map((sessaoId) => ({ sessaoId, url: linkDaConversa(A.integ.linkConversa, sessaoId) })),
       checklist: t.checklist.map((i) => ({ ...i })),
+      listas: Object.fromEntries(Object.entries(t.listas ?? {}).map(([k, v]) => [k, v.map((i) => ({ ...i }))])),
       observadores: t.observadores.map((id) => pessoaCurta(id)!),
       citaveis: quemVeOPainel(painel),
       criadoPor: pessoaCurta(t.criadoPorId),
@@ -4022,6 +4046,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         deletedAt: null, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro,
       }));
       camposDeFabricaDoPainel(PAINEL_DA_IMPLANTACAO, 'gestao', true);
+      // o checklist do card (2.4.8): os ramais de cada cliente, no telefone e no softphone — cada card monta a sua lista. Só na
+      // prévia (o modelo não traz: cada equipe cria os seus em Configurar › Campos)
+      const pbx = S.products.find((x) => x.code === 'linepbx' && !x.deletedAt)?.id ?? null;
+      const depois = Math.max(-1, ...A.campos.filter((c) => c.painelId === PAINEL_DA_IMPLANTACAO).map((c) => c.ordem)) + 1;
+      if (pbx) ['Ramais no telefone', 'Ramais no softphone'].forEach((nome, k) => A.campos.push({
+        id: novoId(), painelId: PAINEL_DA_IMPLANTACAO, nome, tipo: 'checklist', dica: null, opcoes: [], ativo: true, ordem: depois + k, incluirNaHora: false,
+        parte: 'Configuração', produtoId: pbx, escolhidosEm: null, anexos: false,
+      }));
     }
 
     // ---- os assuntos: a lista da equipe (colada) e o que já foi preenchido em alguns ----
@@ -4390,6 +4422,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
             }
             alterar(ator, card.id, { campos }, quando);
           }
+          // o checklist do card (2.4.8): a lista colada e o que foi marcado
+          for (const l of p.listas ?? []) {
+            const c = A.campos.find((y) => y.painelId === PAINEL_DA_IMPLANTACAO && y.nome === l.nome && y.tipo === 'checklist');
+            if (!c) throw new Error(`o campo ${l.nome} não é da Implantação`);
+            if (l.incluir) mexerNaListaDoCampo(ator, card.id, c.id, { acao: 'incluir', textos: [l.incluir] }, quando);
+            for (const [k, texto] of (l.marcar ?? []).entries()) {
+              const item = card.listas?.[c.id]?.find((i) => i.texto === texto);
+              if (!item) throw new Error(`o item ${texto} não está em ${l.nome}`);
+              mexerNaListaDoCampo(ator, card.id, c.id, { acao: 'marcar', itemId: item.id, feito: true }, new Date(quando.getTime() + (k + 1) * MINUTO));
+            }
+          }
           if (p.para) {
             mover(ator, card.id, { etapaId: etapaDaImplantacao(p.para), ...(p.responsavel ? { responsavelId: idDa(p.responsavel) } : {}) }, new Date(quando.getTime() + 5 * MINUTO));
           }
@@ -4560,6 +4603,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async definirPai(id, pai) { await ctx.wait(150); const dados = ler(PaiSchema, { pai }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(definirPai(eu(), id, dados.pai)); },
     async definirProblema(id, problema) { await ctx.wait(150); const dados = ler(ProblemaSchema, { problema }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(definirProblema(eu(), id, dados.problema)); },
     async checklist(id, d) { await ctx.wait(120); const dados = ler(ChecklistSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(mexerNoChecklist(eu(), id, dados)); },
+    async listaDoCampo(id, campoId, d) { await ctx.wait(120); const dados = ler(ListaDoCampoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(mexerNaListaDoCampo(eu(), id, campoId, dados)); },
     async registrarTempo(id, d) { await ctx.wait(150); const dados = ler(TempoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(registrarTempo(eu(), id, dados)); },
     async apagarTempo(id, itemId) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(apagarTempo(eu(), id, itemId), 'delete'); },
     async abrirNaOperadora(id, d) { await ctx.wait(150); const dados = ler(OperadoraCasoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(abrirNaOperadora(eu(), id, dados)); },

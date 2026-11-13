@@ -38,6 +38,7 @@ import {
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO, MAX_BYTES_ANEXO_DO_CAMPO,
   type CampoPersonalizado, condicoesGuardadas, mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES,
+  listaDepois, type AcaoNaLista, type ListasDosCampos,
 } from '@gestor/shared';
 import type { Tx } from './ajustes.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
@@ -1642,6 +1643,32 @@ export async function mexerNoChecklist(app: FastifyInstance, ator: Ator, ref: st
   });
   await camposAosObservadores(app, ator, t, ['Checklist']);
   return { ...nada(t), resumo };
+}
+
+/**
+ * O checklist do card (2.4.8): incluir (cada linha colada vira um item), marcar, corrigir e tirar os itens de um campo
+ * Checklist do card. Cada card tem a sua lista; o histórico diz o campo ("incluiu em Ramais no telefone: 201, 202").
+ */
+export async function mexerNaListaDoCampo(app: FastifyInstance, ator: Ator, ref: string, campoId: string, d: AcaoNaLista): Promise<Feito> {
+  exigirTrabalhar(ator);
+  const e = await carregar(app, ator, ref);
+  const { t, ctx, agora } = e;
+  const c = camposDoPainel(ctx, t.panelId, true).find((x) => x.id === campoId);
+  if (!c) throw new NotFound('Campo do painel');
+  if (c.tipo !== 'checklist') throw new BadRequest(`${c.nome} não é um checklist do card.`);
+  const nome = nomeCompletoDoCampo(c, ctx.produtos);
+  const listas = (t.fieldLists as ListasDosCampos | null) ?? {};
+  const r = listaDepois(listas[c.id], { nome }, d, pessoaDoAtor(ator), agora.toISOString(), newId);
+  if (!r.ok) throw new BadRequest(r.erro);
+  if (!r.mudou) return nada(t);
+  const novas: ListasDosCampos = { ...listas };
+  if (r.lista.length) novas[c.id] = r.lista; else delete novas[c.id];
+  await app.db.transaction(async (tx) => {
+    await tx.update(tickets).set({ fieldLists: novas, updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+    await registrarEvento(tx, t.id, 'checklist', ator, r.evento, e.quando());
+  });
+  await camposAosObservadores(app, ator, t, [nome]);
+  return { ...nada(t), resumo: `${r.resumo} (${t.code})` };
 }
 
 /** O tempo de trabalho (o dia é o de Brasília, se não vier). */

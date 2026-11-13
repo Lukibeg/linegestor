@@ -14,7 +14,7 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AnexosDoCampoSchema, AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
+  AnexosDoCampoSchema, AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, ListaDoCampoSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
   FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, LigarChamadoSchema,
   AoMoverSchema, ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PosicaoNoQuadroSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
@@ -257,6 +257,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/chamados/:id/checklist', { ...trabalhar, schema: { tags, summary: 'Marcar, incluir ou tirar um item do checklist', params: Id, body: ChecklistSchema } },
     async (req) => fichaDepois(req, await svc.mexerNoChecklist(app, ator(req), req.params.id, req.body)));
+
+  app.post('/chamados/:id/campos/:campoId/lista', { ...trabalhar, schema: { tags, summary: 'O checklist do card (2.4.8): incluir, marcar, corrigir ou tirar um item de um campo Checklist do card', params: Id.extend({ campoId: z.string().min(1).max(60) }), body: ListaDoCampoSchema } },
+    async (req) => fichaDepois(req, await svc.mexerNaListaDoCampo(app, ator(req), req.params.id, req.params.campoId, req.body)));
 
   app.post('/chamados/:id/tempo', { ...trabalhar, schema: { tags, summary: 'Registrar o tempo de trabalho', params: Id, body: TempoSchema } },
     async (req) => fichaDepois(req, await svc.registrarTempo(app, ator(req), req.params.id, req.body)));

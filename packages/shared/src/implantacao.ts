@@ -18,8 +18,8 @@
  */
 import { cnpjLimpo, paraBusca } from './formatos.js';
 import {
-  valorPreenchido,
-  type AjustesDoPainel, type CampoPersonalizado, type CorPainel, type EtapaPainel, type GrupoDeCampos, type LugarDoGrupo, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
+  valorPreenchido, MAX_ITENS_DA_LISTA, MAX_LETRAS_DO_ITEM,
+  type AjustesDoPainel, type ItemChecklist, type ListasDosCampos, type CampoPersonalizado, type CorPainel, type EtapaPainel, type GrupoDeCampos, type LugarDoGrupo, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
   type OpcaoDoCampo, type Painel, type TipoCampo, type ValorDoCampo, type ValoresDosCampos, AJUSTES_PAINEL_PADRAO,
 } from './atendimento.js';
 
@@ -69,11 +69,18 @@ export function modulosDoChecklist(c: Pick<CampoPersonalizado, 'opcoes' | 'escol
  * ficou marcada conta como feita); os módulos do produto não contam (é a escolha do que o cliente vai usar, e não uma
  * tarefa), menos o checklist dos módulos (os escolhidos na Curadoria: cada um, feito quando marcado); o resto, um item,
  * feito quando preenchido — ou quando tem um arquivo anexado (2.4.4: `anexos`, os campos com anexo).
+ *
+ * O checklist do card (2.4.8): cada item conta, feito quando marcado; sem nenhum item, conta um, que falta (alguém ainda
+ * precisa montar a lista — o campo pedido numa etapa também só fica feito com itens, todos marcados).
  */
 export function contaDoCampo(
   c: Pick<CampoPersonalizado, 'tipo' | 'opcoes'> & Partial<Pick<CampoPersonalizado, 'id' | 'escolhidosEm'>>, v: ValorDoCampo | null | undefined,
-  valores?: ValoresDosCampos | null, anexos?: CamposComAnexo | null,
+  valores?: ValoresDosCampos | null, anexos?: CamposComAnexo | null, itens?: readonly ItemChecklist[] | null,
 ): { feitos: number; total: number } {
+  if (c.tipo === 'checklist') {
+    const lista = itens ?? [];
+    return lista.length ? { feitos: lista.filter((i) => i.feito).length, total: lista.length } : { feitos: 0, total: 1 };
+  }
   if (c.tipo === 'modulos' && c.escolhidosEm && c.id) {
     const marcadas = new Set(Array.isArray(v) ? v : []);
     const { opcoes, foraDaEscolha } = modulosDoChecklist({ id: c.id, opcoes: c.opcoes, escolhidosEm: c.escolhidosEm }, valores);
@@ -101,7 +108,7 @@ export function contaDoCampo(
  */
 export function partesDoChamado(
   campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined,
-  grupos: readonly GrupoDeCampos[] = [], anexos: CamposComAnexo = [],
+  grupos: readonly GrupoDeCampos[] = [], anexos: CamposComAnexo = [], listas: ListasDosCampos | null = {},
 ): ParteDoChamado[] {
   const partes: ParteDoChamado[] = [];
   const porChave = new Map<string, ParteDoChamado>();
@@ -122,7 +129,7 @@ export function partesDoChamado(
     let b = p.blocos.find((x) => x.produtoId === c.produtoId);
     if (!b) { b = { produtoId: c.produtoId, campos: [] }; p.blocos.push(b); }
     b.campos.push(c);
-    const conta = contaDoCampo(c, valores?.[c.id], valores, anexos);
+    const conta = contaDoCampo(c, valores?.[c.id], valores, anexos, listas?.[c.id]);
     p.feitos += conta.feitos;
     p.total += conta.total;
     if (conta.feitos < conta.total) p.faltam.push(c.id);
@@ -183,9 +190,9 @@ export const mesmoGrupo = (a: string | null | undefined, b: string | null | unde
 /** Só a conta de cada parte (o cartão do quadro e a lista). */
 export function progressoDasPartes(
   campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined, grupos: readonly GrupoDeCampos[] = [],
-  anexos: CamposComAnexo = [],
+  anexos: CamposComAnexo = [], listas: ListasDosCampos | null = {},
 ): ProgressoDaParte[] {
-  return partesDoChamado(campos, produtosDoChamado, valores, grupos, anexos).map((p) => ({ parte: p.nome, feitos: p.feitos, total: p.total }));
+  return partesDoChamado(campos, produtosDoChamado, valores, grupos, anexos, listas).map((p) => ({ parte: p.nome, feitos: p.feitos, total: p.total }));
 }
 
 /**
@@ -267,6 +274,78 @@ export function nomeCompletoDoCampo(c: Pick<CampoPersonalizado, 'nome' | 'produt
   if (!c.produtoId) return c.nome;
   const nome = 'get' in produtos ? (produtos as ReadonlyMap<string, { nome: string }>).get(c.produtoId)?.nome : (produtos as ReadonlyArray<{ id: string; nome: string }>).find((p) => p.id === c.produtoId)?.nome;
   return nome ? `${c.nome} (${nome})` : c.nome;
+}
+
+// =====================================================================
+//  O CHECKLIST DO CARD (2.4.8)
+// =====================================================================
+
+/**
+ * Os itens de um texto colado: cada linha vira um item (a lista de ramais colada da planilha), sem a marca de lista do começo
+ * ("- ", "• ", "* ", "[ ] ", "1. ") e sem as linhas em branco. O que passa do tamanho do item é cortado.
+ */
+export function linhasDaLista(texto: string | readonly string[]): string[] {
+  const linhas = (typeof texto === 'string' ? [texto] : texto).flatMap((t) => t.split(/\r?\n/));
+  return linhas
+    .map((l) => l.replace(/^\s*(?:[-•*·–]\s+|\[\s?[xX]?\s?\]\s*|\d{1,3}[.)]\s+)/, '').replace(/\s+/g, ' ').trim().slice(0, MAX_LETRAS_DO_ITEM).trim())
+    .filter(Boolean);
+}
+
+/** O que mexer no checklist do card faz (o mesmo no servidor e na prévia). */
+export type AcaoNaLista =
+  | { acao: 'incluir'; textos: string[] } | { acao: 'marcar'; itemId: string; feito: boolean }
+  | { acao: 'editar'; itemId: string; texto: string } | { acao: 'tirar'; itemId: string };
+export type ListaDepois =
+  | { ok: true; mudou: boolean; lista: ItemChecklist[]; evento: Record<string, unknown>; resumo: string }
+  | { ok: false; erro: string };
+
+/**
+ * A lista do campo depois de uma ação: incluir (os que já estão na lista, sem ligar para maiúscula e acento, não entram de
+ * novo), marcar (com quem e quando; desmarcar tira), corrigir o texto e tirar. `evento`: o que vai para o histórico ("incluiu
+ * em Ramais no telefone: 201, 202"). Marcar o que já está marcado (o clique duplo) não muda nada.
+ */
+export function listaDepois(
+  atual: readonly ItemChecklist[] | null | undefined, campo: { nome: string }, d: AcaoNaLista, quem: string | null, em: string, novoId: () => string,
+): ListaDepois {
+  const lista = [...(atual ?? [])];
+  const achar = (id: string) => lista.findIndex((i) => i.id === id);
+  if (d.acao === 'incluir') {
+    const ja = new Set(lista.map((i) => paraBusca(i.texto)));
+    const novos: string[] = [];
+    for (const t of linhasDaLista(d.textos)) {
+      const k = paraBusca(t);
+      if (ja.has(k)) continue;
+      ja.add(k); novos.push(t);
+    }
+    if (!novos.length) return linhasDaLista(d.textos).length ? { ok: false, erro: 'Esses itens já estão na lista.' } : { ok: false, erro: 'Escreva o item.' };
+    if (lista.length + novos.length > MAX_ITENS_DA_LISTA) return { ok: false, erro: `A lista vai até ${MAX_ITENS_DA_LISTA} itens (já tem ${lista.length}).` };
+    for (const t of novos) lista.push({ id: novoId(), texto: t, feito: false, porId: null, em: null, doAssunto: false });
+    return {
+      ok: true, mudou: true, lista, evento: { acao: 'incluiu', campo: campo.nome, itens: novos },
+      resumo: novos.length === 1 ? `Incluiu "${novos[0]}" em ${campo.nome}` : `Incluiu ${novos.length} itens em ${campo.nome}`,
+    };
+  }
+  const i = achar(d.itemId);
+  if (i < 0) return { ok: false, erro: 'Esse item não está mais na lista (alguém tirou?). Atualize a ficha.' };
+  const item = lista[i]!;
+  if (d.acao === 'tirar') {
+    lista.splice(i, 1);
+    return { ok: true, mudou: true, lista, evento: { acao: 'tirou', campo: campo.nome, item: item.texto }, resumo: `Tirou "${item.texto}" de ${campo.nome}` };
+  }
+  if (d.acao === 'editar') {
+    const texto = linhasDaLista(d.texto).join(' ').slice(0, MAX_LETRAS_DO_ITEM).trim();
+    if (!texto) return { ok: false, erro: 'Escreva o item.' };
+    if (texto === item.texto) return { ok: true, mudou: false, lista, evento: {}, resumo: '' };
+    if (lista.some((x, k) => k !== i && paraBusca(x.texto) === paraBusca(texto))) return { ok: false, erro: `"${texto}" já está na lista.` };
+    lista[i] = { ...item, texto };
+    return { ok: true, mudou: true, lista, evento: { acao: 'editou', campo: campo.nome, de: item.texto, item: texto }, resumo: `Corrigiu "${item.texto}" para "${texto}" em ${campo.nome}` };
+  }
+  if (item.feito === d.feito) return { ok: true, mudou: false, lista, evento: {}, resumo: '' };
+  lista[i] = { ...item, feito: d.feito, porId: d.feito ? quem : null, em: d.feito ? em : null };
+  return {
+    ok: true, mudou: true, lista, evento: { acao: 'marcou', campo: campo.nome, item: item.texto, feito: d.feito },
+    resumo: `${d.feito ? 'Marcou' : 'Desmarcou'} "${item.texto}" em ${campo.nome}`,
+  };
 }
 
 // =====================================================================

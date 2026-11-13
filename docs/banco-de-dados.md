@@ -1211,6 +1211,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `external_ref` | texto | De onde veio, quando veio de outro sistema (2.0.3, decisão 0054): "helena:<id do card>" — o Trazer do Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único. | — |
 | `board_position` | número inteiro | O lugar na coluna do quadro que a equipe escolheu arrastando (2.1, nas etapas abertas do painel de Vendas): 1 é o primeiro. Nulo: ninguém arrumou depois que o chamado chegou na etapa (mudar de etapa apaga), e ele vai pela regra de sempre, antes dos arrumados. | — |
 | `field_marks` | JSON | Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção: {campo: {opção: {porId, porNome, em}}}. O valor do campo (as marcadas) continua em `custom_fields`; desmarcar tira a marca. | obrigatório · padrão: {} |
+| `field_lists` | JSON | Os itens dos campos Checklist do card (2.4.8), pelo id do campo: {campo: [{id, texto, feito, porId, em, doAssunto}]}. Cada card monta a sua lista (os ramais do telefone mudam de cliente para cliente), ao contrário das caixinhas, que são as mesmas em todos os cards do painel. O valor do campo em `custom_fields` fica vazio. | obrigatório · padrão: {} |
 | `source_ticket_id` | texto | A negociação que abriu este card na implantação (2.3, a etapa que abre a implantação no painel de Vendas). Uma negociação abre um card só (fora da lixeira). | — |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |

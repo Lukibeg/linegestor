@@ -672,7 +672,7 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
       anexos: f.anexos,
       largura: f.largura || null,
       opcoes: f.tipo === 'caixinhas' ? caixinhasParaGravar(pastas) : lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
-      obrigatorioAoAbrir: f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
+      obrigatorioAoAbrir: f.tipo !== 'checklist' && f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
     };
     setSalvando(true); setErro('');
     try {
@@ -804,12 +804,13 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
 
         <fieldset className={`flex flex-col gap-2.5 rounded-lg border border-line p-3 ${f.ativo ? '' : 'opacity-60'}`} disabled={!f.ativo}>
           <legend className="label px-1 mb-0">Quando é obrigatório</legend>
-          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+          {/* o checklist do card (2.4.8) é montado depois de aberto: não dá para pedir na abertura */}
+          {f.tipo !== 'checklist' && <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <Toggle checked={f.obrigatorioAoAbrir} onChange={(v) => mudar({ obrigatorioAoAbrir: v })} />
             <span>Para abrir o chamado
               <span className="block text-[12.5px] text-muted">Quem abre pela tela não abre sem ele. O robô e o agendado abrem mesmo assim: o que faltar é pedido para o chamado andar.</span>
             </span>
-          </label>
+          </label>}
           <div>
             <div className="text-[13px] text-ink mb-1">Para entrar nas etapas</div>
             <div className="grid grid-cols-1 gap-x-4 gap-y-1 min-[480px]:grid-cols-2" id="campo-etapas">
@@ -821,7 +822,9 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
                 </label>
               ))}
             </div>
-            <p className="text-[12.5px] text-muted mt-1">Sem ele, o chamado não entra na etapa: a ficha diz o que falta.</p>
+            <p className="text-[12.5px] text-muted mt-1">{f.tipo === 'checklist'
+              ? 'O chamado só entra na etapa com itens na lista, todos marcados: a ficha diz o que falta.'
+              : 'Sem ele, o chamado não entra na etapa: a ficha diz o que falta.'}</p>
           </div>
         </fieldset>
 

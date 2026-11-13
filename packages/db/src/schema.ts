@@ -1812,6 +1812,12 @@ export const tickets = pgTable(
      */
     fieldMarks: jsonb('field_marks').$type<Record<string, Record<string, { porId: string | null; porNome: string | null; em: string }>>>().notNull().default({}),
     /**
+     * Os itens dos campos Checklist do card (2.4.8), pelo id do campo: {campo: [{id, texto, feito, porId, em, doAssunto}]}. Cada
+     * card monta a sua lista (os ramais do telefone mudam de cliente para cliente), ao contrário das caixinhas, que são as mesmas
+     * em todos os cards do painel. O valor do campo em `custom_fields` fica vazio.
+     */
+    fieldLists: jsonb('field_lists').$type<Record<string, Array<{ id: string; texto: string; feito: boolean; porId: string | null; em: string | null; doAssunto: boolean }>>>().notNull().default({}),
+    /**
      * A negociação que abriu este card na implantação (2.3, a etapa que abre a implantação no painel de Vendas). Uma
      * negociação abre um card só (fora da lixeira).
      */

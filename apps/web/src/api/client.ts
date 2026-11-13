@@ -339,6 +339,7 @@ export const realApi: Api = {
     definirPai: (id, pai) => http('POST', `/atendimento/chamados/${id}/pai`, { pai }),
     definirProblema: (id, problema) => http('POST', `/atendimento/chamados/${id}/problema`, { problema }),
     checklist: (id, d) => http('POST', `/atendimento/chamados/${id}/checklist`, d),
+    listaDoCampo: (id, campoId, d) => http('POST', `/atendimento/chamados/${id}/campos/${encodeURIComponent(campoId)}/lista`, d),
     registrarTempo: (id, d) => http('POST', `/atendimento/chamados/${id}/tempo`, d),
     apagarTempo: (id, itemId) => http('DELETE', `/atendimento/chamados/${id}/tempo/${itemId}`),
     abrirNaOperadora: (id, d) => http('POST', `/atendimento/chamados/${id}/operadora`, d),

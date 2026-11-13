@@ -253,6 +253,13 @@
       "when": 1794493287349,
       "tag": "0035_largura_painel_pessoal_e_dias_da_semana",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794597802618,
+      "tag": "0036_checklist_do_card",
+      "breakpoints": true
     }
   ]
 }

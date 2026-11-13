@@ -366,6 +366,8 @@ export type Api = {
     /** o problema de que este chamado é incidente, pelo código (null tira) */
     definirProblema(id: string, problema: string | null): Promise<T.FichaChamado>;
     checklist(id: string, d: T.ChecklistEntrada): Promise<T.FichaChamado>;
+    /** o checklist do card (2.4.8): incluir, marcar, corrigir ou tirar um item de um campo Checklist do card */
+    listaDoCampo(id: string, campoId: string, d: T.ListaDoCampoEntrada): Promise<T.FichaChamado>;
     registrarTempo(id: string, d: T.TempoEntrada): Promise<T.FichaChamado>;
     apagarTempo(id: string, itemId: string): Promise<T.FichaChamado>;
     abrirNaOperadora(id: string, d: T.OperadoraCasoEntrada): Promise<T.FichaChamado>;
