@@ -35,8 +35,8 @@ import { ArrowDown, ArrowUp, ChevronRight, FolderPlus, ListTree, Pencil, Plus, R
 import {
   camposDoSistemaDoTipo, DICA_CAMPO_DO_SISTEMA, DICA_TIPO_CAMPO, MAX_CAMPOS_DO_PAINEL, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO,
   NOME_LUGAR_DO_GRUPO, OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, TIPOS_QUE_TROCAM, chaveDoCampo, etiquetasUnicas, gruposDoPainel, mesmoGrupo, nomeDoSistemaIgual, paraBusca,
-  temOpcoesEscritas, tipoTroca,
-  type CampoDoSistema, type CampoGravarEntrada, type CampoPersonalizado, type GrupoDoPainel, type GruposGravarEntrada, type LugarDoGrupo, type Painel, type TipoCampo,
+  temOpcoesEscritas, tipoTroca, LARGURAS_DO_CAMPO, NOME_LARGURA_DO_CAMPO, larguraDoCampo,
+  type LarguraDoCampo, type CampoDoSistema, type CampoGravarEntrada, type CampoPersonalizado, type GrupoDoPainel, type GruposGravarEntrada, type LugarDoGrupo, type Painel, type TipoCampo,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Carregando, Chip, Confirmar, Modal, Spinner, Toggle, Vazio, mensagemErro } from '../../../components/ui/index.js';
@@ -78,7 +78,11 @@ export function EscolhaDoPainel({ paineis, atual, onEscolher, id, rotulo }: { pa
   );
 }
 
-export function AjustesCampos() {
+/**
+ * A aba Campos. Na janela do Configurar do painel (2.4.7), `painelFixo` prende a um painel (sem a escolha do painel) e
+ * `onAssuntos` leva à aba Assuntos da janela.
+ */
+export function AjustesCampos({ painelFixo, onAssuntos }: { painelFixo?: string; onAssuntos?: () => void } = {}) {
   const opcoes = useOpcoes();
   const [sp, setSp] = useSearchParams();
   const [janela, setJanela] = useState<CampoPersonalizado | { parte: string | null; produtoId: string | null } | null>(null);
@@ -88,7 +92,7 @@ export function AjustesCampos() {
   if (opcoes.isError || !opcoes.data) return <p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p>;
   const { paineis } = opcoes.data;
   // o painel fica no endereço (?painel=), o mesmo da aba Painéis e etapas; sem ele, o primeiro ativo
-  const painel = paineis.find((p) => p.id === sp.get('painel')) ?? paineis.find((p) => p.ativo) ?? paineis[0];
+  const painel = painelFixo ? paineis.find((p) => p.id === painelFixo) : paineis.find((p) => p.id === sp.get('painel')) ?? paineis.find((p) => p.ativo) ?? paineis[0];
   if (!painel) return <Vazio titulo="Nenhum painel" texto="Crie um painel em Painéis e etapas: os campos são de cada painel." />;
 
   const mudar = (o: Record<string, string | null>) => setSp((s) => {
@@ -97,16 +101,16 @@ export function AjustesCampos() {
     return n;
   }, { replace: true });
   // a árvore de assuntos abre aqui mesmo (?ver=assuntos): é a configuração do campo Assunto deste painel
-  if (sp.get('ver') === 'assuntos') return <AjustesAssuntos painel={painel} onVoltar={() => mudar({ ver: null })} />;
+  if (!painelFixo && sp.get('ver') === 'assuntos') return <AjustesAssuntos painel={painel} onVoltar={() => mudar({ ver: null })} />;
 
   const campos = opcoes.data.campos.filter((c) => c.painelId === painel.id);
   const nAssuntos = opcoes.data.assuntos.filter((a) => a.painelId === painel.id).length;
 
   return (
     <div className="flex flex-col gap-4">
-      <EscolhaDoPainel paineis={paineis} atual={painel} onEscolher={(id) => mudar({ painel: id })} id="campos-painel" rotulo="O painel dos campos" />
+      {!painelFixo && <EscolhaDoPainel paineis={paineis} atual={painel} onEscolher={(id) => mudar({ painel: id })} id="campos-painel" rotulo="O painel dos campos" />}
 
-      <CamposDoSistema painel={painel} nAssuntos={nAssuntos} onAssuntos={() => mudar({ ver: 'assuntos' })} onTipos={() => setTipos(true)} />
+      <CamposDoSistema painel={painel} nAssuntos={nAssuntos} onAssuntos={onAssuntos ?? (() => mudar({ ver: 'assuntos' }))} onTipos={() => setTipos(true)} />
       <GruposDeCampos key={painel.id} painel={painel} campos={campos} />
       <CamposDoPainel painel={painel} campos={campos} onNovo={(parte, produtoId) => setJanela({ parte, produtoId })} onEditar={setJanela} />
       <CamposExcluidos painel={painel} />
@@ -603,6 +607,8 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
     produtoId: campo?.produtoId ?? inicial?.produtoId ?? '',
     escolhidosEm: campo?.escolhidosEm ?? '',
     anexos: campo?.anexos ?? false,
+    // 2.4.7: vazio = pelo tipo (o que a ficha fazia antes)
+    largura: (campo?.largura ?? '') as LarguraDoCampo | '',
   }));
   // as caixinhas, em pastas (2.3)
   const [pastas, setPastas] = useState<PastaRascunho[]>(() => pastasDoEditor(campo?.opcoes ?? []));
@@ -616,6 +622,8 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
     mudar({ tipo });
   };
   const lista_ = temOpcoesEscritas(f.tipo);
+  // a largura (2.4.7) só vale no grupo do meio da ficha
+  const grupoDoMeio = grupos.find((g) => mesmoGrupo(g.nome, f.parte))?.lugar === 'meio';
   // os módulos são os do produto: o produto não muda depois de criado
   const produtoTravado = !!campo && campo.tipo === 'modulos';
   // o checklist dos módulos (2.3) segue um campo de módulos do mesmo produto, que seja a escolha
@@ -662,6 +670,7 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
       nome, tipo: f.tipo, dica: f.dica.trim() || null, ativo: f.ativo, parte: f.parte.trim() || null, produtoId: f.produtoId || null,
       escolhidosEm: f.tipo === 'modulos' && fontes.some((c) => c.id === f.escolhidosEm) ? f.escolhidosEm : null,
       anexos: f.anexos,
+      largura: f.largura || null,
       opcoes: f.tipo === 'caixinhas' ? caixinhasParaGravar(pastas) : lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
       obrigatorioAoAbrir: f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
     };
@@ -743,6 +752,34 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
           </Rotulo>
         </div>
 
+        {/* 2.4.7, o Luan: "escolher … se ele vai ocupar metade do espaço como o de operadora doadora ou vai ser todo como esse da
+            faixa numérica" — só no grupo do meio da ficha (na lateral, cada campo já ocupa a linha) */}
+        {grupoDoMeio && (
+          <div id="campo-largura">
+            <div className="label">Largura na ficha</div>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Largura na ficha">
+              {LARGURAS_DO_CAMPO.map((l) => {
+                const marcada = (f.largura || larguraDoCampo({ tipo: f.tipo, largura: null })) === l;
+                return (
+                  <button key={l} type="button" role="radio" aria-checked={marcada} data-largura={l}
+                    className={`btn-sm ${marcada ? 'btn-primary' : 'btn-secondary'}`} onClick={() => mudar({ largura: l })}>
+                    <span aria-hidden className={`inline-flex gap-0.5 mr-1`}>
+                      {l === 'metade' ? <><span className="w-2.5 h-3 rounded-sm bg-current opacity-90" /><span className="w-2.5 h-3 rounded-sm bg-current opacity-30" /></> : <span className="w-[22px] h-3 rounded-sm bg-current opacity-90" />}
+                    </span>
+                    {NOME_LARGURA_DO_CAMPO[l]}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[12.5px] text-muted mt-1">
+              {(f.largura || larguraDoCampo({ tipo: f.tipo, largura: null })) === 'metade'
+                ? 'Divide a linha com o campo vizinho de metade (como a Operadora Doadora e a Conta operadora doadora).'
+                : 'Ocupa a linha toda do grupo (como a Faixa Numérica).'}
+              {!f.largura && ' Sem escolher, vale a do tipo.'}
+            </p>
+          </div>
+        )}
+
         {f.tipo === 'modulos' && f.produtoId && !seguido && (
           <Rotulo rotulo="Os módulos que aparecem" id="campo-escolhidos-em"
             dica="Com um campo escolhido, este vira o checklist: só os módulos marcados lá aparecem aqui e entram na conta da parte. Ex.: a Ativação dos módulos (Configuração) segue o Módulos a ativar (Curadoria).">
@@ -761,7 +798,7 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
         {f.tipo !== 'documento' && <label className="flex items-start gap-2.5 text-sm cursor-pointer" id="campo-anexos">
           <Toggle checked={f.anexos} onChange={(v) => mudar({ anexos: v })} />
           <span>Recebe anexos
-            <span className="block text-[12.5px] text-muted">Na ficha, o Anexar do campo{f.tipo === 'caixinhas' || f.tipo === 'modulos' ? ' (nas caixinhas, o clipe de cada uma)' : ''}: imagens, PDF, Word e Excel, de até 10 MB. Desligado, o que já foi anexado continua lá.</span>
+            <span className="block text-[12.5px] text-muted">Na ficha, o Anexar do campo{f.tipo === 'caixinhas' || f.tipo === 'modulos' ? ' (nas caixinhas, o clipe de cada uma)' : ''}: imagens, PDF, Word e Excel, de até 30 MB. Desligado, o que já foi anexado continua lá.</span>
           </span>
         </label>}
 

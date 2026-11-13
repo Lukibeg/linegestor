@@ -190,7 +190,7 @@ export function quandoDoEvento(e: { inicio: string; fim?: string | null; diaInte
  */
 export function textoDaInclusao(
   quem: string,
-  e: { titulo: string; inicio: string; fim?: string | null; diaInteiro: boolean; horaInicio: string | null; repeticao?: { frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string } | null },
+  e: { titulo: string; inicio: string; fim?: string | null; diaInteiro: boolean; horaInicio: string | null; repeticao?: { frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string; dias?: readonly number[] | null } | null },
   agora: Date,
 ): string {
   const repete = e.repeticao ? ` (${textoDaRepeticao(e.repeticao, e.repeticao.ancora).replace(/^./, (x) => x.toLocaleLowerCase('pt-BR'))})` : '';
@@ -227,7 +227,7 @@ export function valoresDoLembrete(
 
 /** As variáveis do aviso de que o evento entrou (as do lembrete, com quem pôs e o período inteiro). */
 export function valoresDaInclusao(
-  e: { titulo: string; inicio: string; fim: string; diaInteiro: boolean; horaInicio: string | null; local: string | null; observacao: string | null; repeticao?: { frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string } | null },
+  e: { titulo: string; inicio: string; fim: string; diaInteiro: boolean; horaInicio: string | null; local: string | null; observacao: string | null; repeticao?: { frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string; dias?: readonly number[] | null } | null },
   nomes: { tipo: string; cliente: string | null; chamado: string | null; pessoas: string[]; paineis: string[]; link: string },
   agora: Date,
   quem: string,
@@ -355,8 +355,37 @@ export const RepeticaoSchema = z.object({
   frequencia: z.enum(FREQUENCIAS_DA_REPETICAO, { errorMap: () => ({ message: 'Escolha de quanto em quanto tempo o evento se repete.' }) }),
   /** o último dia em que pode cair (nulo = sem data para acabar) */
   ate: DiaDoCalendarioSchema.nullable().default(null),
+  /**
+   * Toda semana, em quais dias (2.4.7, o Luan: "quero ter a opção de repetir por dia da semana, por exemplo, toda terça e
+   * quinta"): 0 = segunda … 6 = domingo (como o `diaDaSemana`). O dia do evento entra sempre; nulo ou vazio, só ele (como antes).
+   * Fora do Toda semana, não vale.
+   */
+  dias: z.array(z.number().int().min(0).max(6)).max(7).nullish()
+    .transform((v) => (v && v.length ? [...new Set(v)].sort((a, b) => a - b) : null)),
 });
 export type Repeticao = z.infer<typeof RepeticaoSchema>;
+/** A regra que gera as datas: a frequência e, na semanal, os dias (2.4.7). */
+export type RegraDaRepeticao = { frequencia: FrequenciaDaRepeticao; dias?: readonly number[] | null };
+/** Os nomes curtos dos dias, de segunda a domingo (0 a 6), para os botões da janela. */
+export const DIAS_DA_SEMANA_DA_REPETICAO = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'] as const;
+
+/**
+ * Os dias da semana em que a série cai (2.4.7): na Toda semana, os escolhidos com o dia do evento (que entra sempre), em ordem;
+ * nas outras, nulo. Um só dia (o do evento) é a Toda semana de antes.
+ */
+export function diasDaRepeticao(r: RegraDaRepeticao, ancora: string): number[] | null {
+  if (r.frequencia !== 'semanal') return null;
+  return [...new Set([...(r.dias ?? []), diaDaSemana(ancora)])].sort((a, b) => a - b);
+}
+/** A mesma regra de dias? (nulo, vazio e só o dia do evento são a mesma coisa) */
+export function mesmosDias(a: RegraDaRepeticao, b: RegraDaRepeticao, ancora: string): boolean {
+  return (diasDaRepeticao(a, ancora) ?? []).join() === (diasDaRepeticao(b, ancora) ?? []).join();
+}
+/** O que se guarda na série: os dias só quando há mais de um (um só é o dia do evento, como antes). */
+export function diasParaGuardar(r: RegraDaRepeticao, ancora: string): number[] | null {
+  const d = diasDaRepeticao(r, ancora);
+  return d && d.length > 1 ? d : null;
+}
 
 /** Ao mudar ou excluir um evento que se repete: só ele, ou ele e os próximos da série. */
 export const ESCOPOS_DA_SERIE = ['este', 'proximos'] as const;
@@ -368,12 +397,21 @@ const ultimoDiaDoMes = (mes: string) => Number(somarDias(`${somarMeses(mes, 1)}-
 
 /**
  * As datas da série, do primeiro dia (sempre entra: é o evento que a pessoa pôs) até `ate`, inclusive. Todo mês cai no mesmo dia
- * do primeiro; no mês que não tem esse dia (o 31 em abril), no último dia do mês. `depoisDe`: só as datas depois deste dia (para
- * estender a série). `max`: um teto de segurança.
+ * do primeiro; no mês que não tem esse dia (o 31 em abril), no último dia do mês. Toda semana com dias escolhidos (2.4.7), em cada
+ * um deles, a partir do primeiro dia. `depoisDe`: só as datas depois deste dia (para estender a série). `max`: um teto de segurança.
+ * `regra`: a frequência sozinha (como antes) ou com os dias.
  */
-export function datasDaRepeticao(ancora: string, frequencia: FrequenciaDaRepeticao, ate: string, depoisDe?: string | null, max = 1000): string[] {
+export function datasDaRepeticao(ancora: string, regra: FrequenciaDaRepeticao | RegraDaRepeticao, ate: string, depoisDe?: string | null, max = 1000): string[] {
+  const r: RegraDaRepeticao = typeof regra === 'string' ? { frequencia: regra } : regra;
+  const frequencia = r.frequencia;
   const out: string[] = [];
   const entra = (d: string) => (!depoisDe || d > depoisDe) && out.push(d);
+  const dias = diasDaRepeticao(r, ancora);
+  if (dias && dias.length > 1) {
+    const naSemana = new Set(dias);
+    for (let d = ancora; d <= ate && out.length < max; d = somarDias(d, 1)) if (naSemana.has(diaDaSemana(d))) entra(d);
+    return out;
+  }
   if (frequencia === 'mensal') {
     const dia = Number(ancora.slice(8, 10));
     for (let k = 0; out.length < max; k++) {
@@ -416,11 +454,11 @@ export type PlanoDosProximos = { mesmaRegra: boolean; mudar: Array<{ id: string;
  */
 export function planoDosProximos(
   proximos: readonly DataDaSerie[],
-  antes: { inicio: string; frequencia: FrequenciaDaRepeticao; ate: string | null },
-  depois: { inicio: string; repetir: Repeticao | null; limite: string },
+  antes: { inicio: string; frequencia: FrequenciaDaRepeticao; ate: string | null; dias?: readonly number[] | null },
+  depois: { inicio: string; repetir: (RegraDaRepeticao & { ate: string | null }) | null; limite: string },
 ): PlanoDosProximos {
   const r = depois.repetir;
-  if (r && r.frequencia === antes.frequencia && (r.ate ?? null) === (antes.ate ?? null) && depois.inicio === antes.inicio) {
+  if (r && r.frequencia === antes.frequencia && (r.ate ?? null) === (antes.ate ?? null) && depois.inicio === antes.inicio && mesmosDias(r, antes, antes.inicio)) {
     return { mesmaRegra: true, mudar: proximos.map((p) => ({ id: p.id, inicio: p.inicio })), descartar: [], criar: [], manter: [] };
   }
   const historia = proximos.filter((p) => p.situacao !== 'agendado');
@@ -428,7 +466,7 @@ export function planoDosProximos(
   if (!r) return { mesmaRegra: false, mudar: [], descartar: agendadas.map((p) => p.id), criar: [], manter: historia.map((p) => p.id) };
   // o dia que já tem um feito ou um cancelado não ganha outra data (o cancelado continua dizendo que naquele dia não teve)
   const ocupados = new Set(historia.map((p) => p.inicio));
-  const datas = datasDaRepeticao(depois.inicio, r.frequencia, depois.limite, depois.inicio).filter((d) => !ocupados.has(d));
+  const datas = datasDaRepeticao(depois.inicio, r, depois.limite, depois.inicio).filter((d) => !ocupados.has(d));
   return {
     mesmaRegra: false,
     mudar: agendadas.slice(0, datas.length).map((p, k) => ({ id: p.id, inicio: datas[k]! })),
@@ -438,20 +476,30 @@ export function planoDosProximos(
   };
 }
 
-/** "Toda terça", "Todo dia útil (segunda a sexta)", "Todo mês, no dia 10" — e ", até 31/03/2027" ou ", sem data para acabar". */
-export function textoDaRepeticao(r: { frequencia: FrequenciaDaRepeticao; ate: string | null }, ancora: string): string {
+/**
+ * "Toda terça", "Toda terça e quinta" (2.4.7), "Toda semana: segunda, quarta e sábado", "Todo dia útil (segunda a sexta)", "Todo
+ * mês, no dia 10" — e ", até 31/03/2027" ou ", sem data para acabar".
+ */
+export function textoDaRepeticao(r: { frequencia: FrequenciaDaRepeticao; ate: string | null; dias?: readonly number[] | null }, ancora: string): string {
   const dia = diaDaSemana(ancora);
+  const dias = diasDaRepeticao(r, ancora) ?? [];
+  const juntar = (xs: readonly number[]) => { const n = xs.map((x) => DIAS_POR_EXTENSO[x]!); return n.length > 1 ? `${n.slice(0, -1).join(', ')} e ${n[n.length - 1]}` : n[0] ?? ''; };
+  // o "toda"/"todo" acompanha o dia: com sábado ou domingo no meio dos outros, "Toda semana:"
+  const semanal = dias.length <= 1 ? `${dia >= 5 ? 'Todo' : 'Toda'} ${DIAS_POR_EXTENSO[dia]}`
+    : dias.every((x) => x < 5) ? `Toda ${juntar(dias)}` : dias.every((x) => x >= 5) ? `Todo ${juntar(dias)}` : `Toda semana: ${juntar(dias)}`;
   const regra = r.frequencia === 'diaria' ? 'Todo dia'
     : r.frequencia === 'dias_uteis' ? 'Todo dia útil (segunda a sexta)'
-      : r.frequencia === 'semanal' ? `${dia >= 5 ? 'Todo' : 'Toda'} ${DIAS_POR_EXTENSO[dia]}`
+      : r.frequencia === 'semanal' ? semanal
         : `Todo mês, no dia ${Number(ancora.slice(8, 10))}${Number(ancora.slice(8, 10)) > 28 ? ' (no mês que não tem, no último dia)' : ''}`;
   return `${regra}${r.ate ? `, até ${diaCurto(r.ate)}/${r.ate.slice(0, 4)}` : ', sem data para acabar'}`;
 }
 
 /** A frase do que não serve na repetição (a mesma no servidor e na janela); nula quando serve. */
-export function problemaDaRepeticao(r: { frequencia: FrequenciaDaRepeticao; ate: string | null }, inicio: string, fim: string): string | null {
+export function problemaDaRepeticao(r: { frequencia: FrequenciaDaRepeticao; ate: string | null; dias?: readonly number[] | null }, inicio: string, fim: string): string | null {
   if (!diaValido(inicio) || !diaValido(fim)) return null;
   const dias = diasEntre(inicio, fim) + 1;
+  // em mais de um dia da semana (2.4.7), uma data não pode cair em cima da outra: um dia só
+  if (dias > 1 && (diasDaRepeticao(r, inicio)?.length ?? 0) > 1) return 'O evento que se repete em mais de um dia da semana dura um dia só.';
   if (dias > DURACAO_MAXIMA_NA_REPETICAO[r.frequencia]) {
     return r.frequencia === 'mensal' ? 'O evento que se repete todo mês dura até 28 dias.'
       : r.frequencia === 'semanal' ? 'O evento que se repete toda semana dura até 7 dias.'
@@ -544,7 +592,7 @@ export type EventoDoCalendario = {
   lembretes: number[];
   lembrarQuem: QuemRecebeOLembrete;
   /** a série (2.4.6): o evento que se repete, com a regra de agora (a âncora é o dia de onde as datas saem) */
-  repeticao: { serieId: string; frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string } | null;
+  repeticao: { serieId: string; frequencia: FrequenciaDaRepeticao; ate: string | null; ancora: string; dias?: number[] | null } | null;
   criadoPor: string | null;
   criadoEm: string;
   alteradoPor: string | null;

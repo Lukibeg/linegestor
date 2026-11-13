@@ -37,7 +37,7 @@ import { IrParaOComercial } from './pages/atendimento/Comercial.js';
 import { SimuladorLista } from './pages/comercial/simulador/Lista.js';
 import { SimulacaoDoComercial } from './pages/comercial/simulador/Simulacao.js';
 import { AjustesDoSimuladorTela } from './pages/comercial/simulador/Ajustes.js';
-import { IrParaAImplantacao, IrParaODesenvolvimento, IrParaOSuporte } from './pages/atendimento/Suporte.js';
+import { IrParaAImplantacao, IrParaODesenvolvimento, IrParaOMeuPainel, IrParaOSuporte } from './pages/atendimento/Suporte.js';
 import { JanelaAbrirChamado, NovoChamado } from './pages/atendimento/Novo.js';
 import { ChamadoEmJanela, FichaDoChamado } from './pages/atendimento/Ficha.js';
 import { fundoDaJanela } from './pages/atendimento/comum.js';
@@ -133,6 +133,8 @@ const TelaDeBaixo = memo(function TelaDeBaixo() {
         <Route path="/atendimento/:codigo" element={<Protegido><FichaDoChamado /></Protegido>} />
         {/* o Suporte no menu (2.0.2): o atalho para o quadro do painel Suporte */}
         <Route path="/suporte" element={<Protegido><IrParaOSuporte /></Protegido>} />
+        {/* o Meu painel (2.4.7): o atalho para o painel pessoal de quem está logado */}
+        <Route path="/suporte/meu-painel" element={<Protegido><IrParaOMeuPainel /></Protegido>} />
         <Route path="/suporte/relatorios" element={<Protegido><IrParaOSuporte parte="relatorios" /></Protegido>} />
         <Route path="/suporte/implantacao" element={<Protegido><IrParaAImplantacao /></Protegido>} />
         <Route path="/suporte/desenvolvimento" element={<Protegido><IrParaODesenvolvimento /></Protegido>} />

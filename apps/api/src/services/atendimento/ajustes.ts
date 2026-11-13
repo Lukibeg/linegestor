@@ -29,10 +29,11 @@ import {
   type Painel, type PainelGravarSchema, type TipoEtapa,
   mudancasDasCaixinhas, nomeCompletoDoCampo, opcaoDoModelo, type CaixinhasGravarSchema, type OpcaoDoModelo,
   gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO, type GrupoDeCampos, type GruposGravar,
+  AJUSTES_DO_PAINEL_PESSOAL, ETAPAS_DO_PAINEL_PESSOAL, nomeDoPainelPessoal, siglasDoPainelPessoal,
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
-import { assuntoDaLinha, campoDaLinha, carregarCampos, carregarPaineis, lerPrazos, painelDaLinha, registrarEvento, type Ator } from './contexto.js';
+import { assuntoDaLinha, campoDaLinha, carregarCampos, carregarPaineis, lerPrazos, painelDaLinha, podeTrabalhar, podeVerChamados, registrarEvento, type Ator } from './contexto.js';
 import { gravarTeste, lerAvisos, mandarWhatsApp, type AvisosGuardados } from './whatsapp.js';
 
 type PainelGravar = z.infer<typeof PainelGravarSchema>;
@@ -129,9 +130,12 @@ async function limparRegrasDasEtapas(tx: Tx, painelId: string, validos: Obrigato
  * `salvarEtapas`, e o painel e as etapas são gravados na mesma transação — se a etapa que sai tem
  * chamados sem destino, nada muda, nem o nome do painel.
  */
-export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string | null, d: PainelGravar): Promise<Gravado<Painel>> {
+export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string | null, d: PainelGravar, opts: { dono?: string } = {}): Promise<Gravado<Painel>> {
   const db = app.db;
   const atual = id ? await linhaDoPainel(db, id) : null;
+  // o painel pessoal (2.4.7) é sempre só do dono: quem vê não muda pela janela (e ele continua de Gestão)
+  const donoDoPainel = atual?.ownerId ?? opts.dono ?? null;
+  if (donoDoPainel) d = { ...d, acesso: 'escolhidos', pessoas: [donoDoPainel], tipo: 'gestao', modelo: null };
   const sigla = d.sigla;
   if (atual && atual.key !== sigla && atual.nextNumber > 1) {
     throw new BadRequest(`A sigla ${atual.key} não muda mais: o painel já tem chamados (${atual.key}-1 em diante).`);
@@ -197,7 +201,7 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
       : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
     await db.transaction(async (tx) => {
       const [ultimo] = await tx.select({ n: sql<number>`coalesce(max(${ticketPanels.sortOrder}), -1)::int` }).from(ticketPanels);
-      await tx.insert(ticketPanels).values({ id: novoId, ...campos, kind: tipo, sortOrder: Number(ultimo?.n ?? -1) + 1 });
+      await tx.insert(ticketPanels).values({ id: novoId, ...campos, kind: tipo, sortOrder: Number(ultimo?.n ?? -1) + 1, ownerId: opts.dono ?? null });
       await aplicarEtapas(tx, ator, plano, agora);
       if (camposDeFabrica.length) {
         const ids = camposDeFabrica.map(() => newId());
@@ -257,6 +261,8 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
 export async function removerPainel(app: FastifyInstance, id: string): Promise<Gravado<{ ok: true }>> {
   const db = app.db;
   const p = await linhaDoPainel(db, id);
+  // o pessoal (2.4.7) é de uma pessoa e volta sozinho: não sai (o administrador, que o vê, pode desativar)
+  if (p.ownerId) throw new BadRequest('O painel pessoal não sai: ele é de uma pessoa (dá para desativar na janela dele).');
   const [abertos] = await db.select({ n: sql<number>`count(*)::int` }).from(tickets)
     .innerJoin(ticketStages, eq(ticketStages.id, tickets.stageId))
     .where(and(eq(tickets.panelId, id), isNull(tickets.deletedAt), inArray(ticketStages.kind, ['entrada', 'andamento', 'resolvido'])));
@@ -629,6 +635,7 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
 const campoParaAuditoria = (c: CampoPersonalizado) => ({
   nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes, ativo: c.ativo, incluirNaHora: c.incluirNaHora,
   ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}), ...(c.anexos ? { anexos: true } : {}),
+  ...(c.largura ? { largura: c.largura } : {}),
 });
 
 /**
@@ -778,7 +785,7 @@ export async function criarCampo(app: FastifyInstance, painelId: string, d: Camp
   await db.transaction(async (tx) => {
     await tx.insert(ticketFields).values({
       id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: d.tipo === 'lista' && d.incluirNaHora,
-      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId, followsFieldId: d.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos,
+      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId, followsFieldId: d.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos, width: d.largura,
     });
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
@@ -803,7 +810,7 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
   await db.transaction(async (tx) => {
     await tx.update(ticketFields).set({
       name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date(),
-      section: d.parte, productId: d.produtoId, followsFieldId: antes.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos,
+      section: d.parte, productId: d.produtoId, followsFieldId: antes.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos, width: d.largura,
     }).where(eq(ticketFields.id, id));
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
@@ -1158,4 +1165,58 @@ export async function testarAvisos(
   });
   await gravarTeste(app.db, r.ok, r.mensagem);
   return { ok: r.ok, mensagem: r.mensagem, para };
+}
+
+// =====================================================================
+//  O PAINEL PESSOAL (2.4.7)
+// =====================================================================
+
+/**
+ * Garante o painel pessoal de quem entra nos Painéis (2.4.7, o Luan: "quero que nativamente todos os usuários tenham um painel
+ * pessoal de atividades"): quem vê chamados e ainda não tem um ganha o seu — "seco" (os campos do sistema desligados, sem prazo),
+ * com as etapas Stand By, Novos, Em andamento, Concluído e Validado, só ele vê. Roda a cada leitura das opções e dos Painéis: na
+ * segunda vez, já não faz nada (uma consulta).
+ *
+ * O painel que a pessoa já usava como pessoal fica sendo o dela, sem mudar nada (o Luan: "eu já tenho um pessoal e n quero que
+ * altere nada nele, ele só vai virar já meu pessoal"): um painel ativo de Gestão, com "Pessoal" no nome, que só ela vê.
+ */
+export async function garantirPainelPessoal(app: FastifyInstance, ator: Ator): Promise<void> {
+  // quem só lê (o Leitor) não abre chamado: não ganha painel
+  if (ator.tipo !== 'pessoa' || !podeVerChamados(ator) || !podeTrabalhar(ator)) return;
+  const db = app.db;
+  const [ja] = await db.select({ id: ticketPanels.id }).from(ticketPanels)
+    .where(and(eq(ticketPanels.ownerId, ator.id), isNull(ticketPanels.deletedAt))).limit(1);
+  if (ja) return;
+  const todos = await db.select({ id: ticketPanels.id, nome: ticketPanels.name, sigla: ticketPanels.key, kind: ticketPanels.kind, access: ticketPanels.access,
+    memberIds: ticketPanels.memberIds, ownerId: ticketPanels.ownerId, deletedAt: ticketPanels.deletedAt }).from(ticketPanels);
+  const queJaUsava = todos.filter((p) => !p.deletedAt && !p.ownerId && p.kind === 'gestao' && p.access === 'escolhidos'
+    && p.memberIds.length === 1 && p.memberIds[0] === ator.id && paraBusca(p.nome).includes('pessoal'));
+  try {
+    if (queJaUsava.length === 1) {
+      // só passa a ser o pessoal: o nome, as etapas, os campos e os chamados ficam como estão
+      await db.update(ticketPanels).set({ ownerId: ator.id }).where(and(eq(ticketPanels.id, queJaUsava[0]!.id), isNull(ticketPanels.ownerId)));
+      return;
+    }
+    const [pessoa] = await db.select({ nome: users.name }).from(users).where(eq(users.id, ator.id)).limit(1);
+    const nome = pessoa?.nome ?? ator.nome;
+    const usadas = new Set(todos.map((p) => p.sigla));
+    let sigla = siglasDoPainelPessoal(nome).find((x) => !usadas.has(x));
+    // todas em uso: as iniciais (ou PE) com mais uma letra, de A a Z
+    for (let i = 0; !sigla && i < 26 * 26; i++) {
+      const base = (siglasDoPainelPessoal(nome)[0] ?? 'PE').slice(0, 3);
+      const x = `${base}${String.fromCharCode(65 + (i % 26))}${i >= 26 ? String.fromCharCode(65 + Math.floor(i / 26) - 1) : ''}`;
+      if (!usadas.has(x)) sigla = x;
+    }
+    if (!sigla) return;
+    await gravarPainel(app, ator, null, {
+      nome: nomeDoPainelPessoal(nome), sigla, descricao: `As atividades de ${nome}`, cor: 'accent', tipo: 'gestao', acesso: 'escolhidos', pessoas: [ator.id], ativo: true,
+      ajustes: { ...AJUSTES_DO_PAINEL_PESSOAL, camposDesligados: [...AJUSTES_DO_PAINEL_PESSOAL.camposDesligados] },
+      etapas: ETAPAS_DO_PAINEL_PESSOAL.map((e) => ({ ...e, avisar: [], resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false })),
+      destino: {}, modelo: null,
+    }, { dono: ator.id });
+  } catch (e) {
+    // duas leituras ao mesmo tempo: a outra já criou (o índice único da pessoa, ou a sigla) — fica o dela
+    if ((e as { code?: string }).code === '23505' || e instanceof Conflict) return;
+    throw e;
+  }
 }

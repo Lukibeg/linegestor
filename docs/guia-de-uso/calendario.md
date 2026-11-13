@@ -75,6 +75,9 @@ Para o que é fixo na agenda (a reunião de toda segunda, o plantão de todo mê
 - No evento novo, **Repetir**: **Não repete**, **Todo dia**, **Todo dia útil** (de segunda a sexta), **Toda semana** (no
   mesmo dia da semana) ou **Todo mês** (no mesmo dia; no mês que não tem o dia 31, no último dia). Embaixo, **Sem data para
   acabar** ou **Até** uma data (até 2 anos depois do primeiro dia).
+- Na **Toda semana** (2.4.7), os botões **Nos dias** escolhem mais dias: marque Ter e Qui para "toda terça e quinta". O dia
+  do evento já vem marcado e não sai (é a primeira data; para trocá-lo, mude a data do evento). Em mais de um dia da semana,
+  o evento dura um dia só.
 - **Cada data é um evento de verdade**: o **Feito**, o **Cancelar** e os lembretes valem um por um. Sem data para acabar, o
   calendário fica sempre preenchido até 12 meses à frente. O evento que se repete tem o ícone de repetir.
 - A duração cabe no intervalo: o que se repete todo dia dura um dia só; toda semana, até 7 dias; todo mês, até 28.

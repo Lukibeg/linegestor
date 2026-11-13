@@ -22,6 +22,7 @@ import {
 import { BadRequest } from '../plugins/errors.js';
 import { incluirOpcao } from '../services/atendimento/ajustes.js';
 import { atorDaPessoa, carregarContexto, podeVerPainel } from '../services/atendimento/contexto.js';
+import { garantirPainelPessoal } from '../services/atendimento/ajustes.js';
 import * as svc from '../services/atendimento/chamados.js';
 import * as leitura from '../services/atendimento/leitura.js';
 import { relatorioDoPainelDeVendas } from '../services/atendimento/vendas.js';
@@ -65,7 +66,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   // ---------- ler ----------
 
   app.get('/opcoes', { ...ler, schema: { tags, summary: 'Os painéis que a pessoa vê, as pessoas, os assuntos, os produtos, as operadoras, as etiquetas e os prazos' } },
-    async (req) => leitura.opcoes(app, ator(req)));
+    async (req) => { await garantirPainelPessoal(app, ator(req)); return leitura.opcoes(app, ator(req)); });
 
   app.get('/quadro', { ...ler, schema: { tags, summary: 'O quadro de um painel: uma coluna por etapa (o Fechado mostra só os 30 mais recentes)', querystring: QuadroSchema } },
     async (req) => leitura.quadro(app, ator(req), req.query));
@@ -81,7 +82,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   app.get('/paineis/resumo', { ...ler, schema: { tags, summary: 'A tela inicial: os números de cada painel (em aberto, meus, sem dono, vencidos, perto, esperando e por etapa)' } },
-    async (req) => leitura.resumoDosPaineisVisiveis(app, ator(req)));
+    async (req) => { await garantirPainelPessoal(app, ator(req)); return leitura.resumoDosPaineisVisiveis(app, ator(req)); });
 
   app.get('/vendas', {
     ...ler,
@@ -232,8 +233,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => fichaDepois(req, await svc.apagarAnotacao(app, ator(req), req.params.id, req.params.notaId), 'delete'));
 
   // 2.3: os anexos dos campos do card e das caixinhas
+  // 2.4.7: até 30 MB por arquivo. A tela manda um de cada vez (uns 40 MB no pedido, com o base64); o padrão do app é 30 MB
   app.post('/chamados/:id/campos/:campoId/anexos', {
-    ...trabalhar, schema: { tags, summary: 'Anexar num campo do card ou numa caixinha (opcaoId): até 5 arquivos de 10 MB por vez, até 20 em cada', params: Id.extend({ campoId: z.string().min(1) }), body: AnexosDoCampoSchema },
+    ...trabalhar, bodyLimit: 45 * 1024 * 1024,
+    schema: { tags, summary: 'Anexar num campo do card ou numa caixinha (opcaoId): arquivos de até 30 MB (um por pedido, na tela), até 20 em cada', params: Id.extend({ campoId: z.string().min(1) }), body: AnexosDoCampoSchema },
   }, async (req) => fichaDepois(req, await svc.anexarNoCampo(app, ator(req), req.params.id, req.params.campoId, req.body)));
 
   app.delete('/chamados/:id/anexos/:anexoId', {

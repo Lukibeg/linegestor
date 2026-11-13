@@ -114,7 +114,7 @@ export const PAINEL_QUE_SUBSTITUIU_O_LEGADO = 'painel-suporte';
 /** Para onde vai o envio de antes do 2.4.5: o Suporte; sem ele, o primeiro painel de chamados; sem nenhum, o Legado. */
 async function painelPadrao(db: Db): Promise<string> {
   const ps = await db.select({ id: ticketPanels.id }).from(ticketPanels)
-    .where(and(isNull(ticketPanels.deletedAt), ne(ticketPanels.kind, 'vendas'))).orderBy(ticketPanels.sortOrder);
+    .where(and(isNull(ticketPanels.deletedAt), ne(ticketPanels.kind, 'vendas'), isNull(ticketPanels.ownerId))).orderBy(ticketPanels.sortOrder);
   return ps.find((p) => p.id === PAINEL_QUE_SUBSTITUIU_O_LEGADO)?.id ?? ps[0]?.id ?? ORIGEM_LEGADO;
 }
 

@@ -36,7 +36,7 @@ import {
   NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
-  type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO,
+  type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO, MAX_BYTES_ANEXO_DO_CAMPO,
   type CampoPersonalizado, condicoesGuardadas, mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES,
 } from '@gestor/shared';
 import type { Tx } from './ajustes.js';
@@ -1264,8 +1264,8 @@ export async function trocarPainel(app: FastifyInstance, ator: Ator, ref: string
 // =====================================================================
 
 /** O anexo como fica guardado: o tipo de verdade da imagem (pelos bytes); a imagem que não é imagem baixa como arquivo. */
-function anexoParaGuardar(a: { fileName: string; conteudo: string }) {
-  const { mimeType, dataBase64 } = lerConteudo(a.conteudo);
+function anexoParaGuardar(a: { fileName: string; conteudo: string }, limite?: number) {
+  const { mimeType, dataBase64 } = lerConteudo(a.conteudo, limite);
   const buffer = Buffer.from(dataBase64, 'base64');
   const real = tipoDaImagem(buffer);
   return {
@@ -1287,7 +1287,7 @@ export async function anotar(app: FastifyInstance, ator: Ator, ref: string, d: {
   const anexos = d.anexos ?? [];
   if (!texto && !anexos.length) throw new BadRequest('Escreva a anotação ou anexe um arquivo.');
   if (anexos.length > 5) throw new BadRequest('No máximo 5 anexos por anotação.');
-  const guardar = anexos.map(anexoParaGuardar);
+  const guardar = anexos.map((a) => anexoParaGuardar(a));
   const e = await carregar(app, ator, ref);
   const { t, agora } = e;
   const pessoa = pessoaDoAtor(ator);
@@ -1386,13 +1386,15 @@ async function valorDoDocumento(tx: Tx, t: typeof tickets.$inferSelect, c: Campo
 
 /**
  * Anexar num campo do card ou numa caixinha (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs que
- * vão ter pré visualização"): até 5 arquivos de 10 MB por vez, até 20 em cada campo (ou caixinha). O histórico conta.
+ * vão ter pré visualização"): até 5 arquivos por vez, até 20 em cada campo (ou caixinha). O histórico conta. Desde o 2.4.7,
+ * cada arquivo vai até 30 MB (era 10 MB: o contrato assinado da proposta não cabia).
  */
 export async function anexarNoCampo(app: FastifyInstance, ator: Ator, ref: string, campoId: string, d: { opcaoId: string | null; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<Feito> {
   exigirTrabalhar(ator);
   if (!d.anexos.length) throw new BadRequest('Escolha o arquivo.');
   if (d.anexos.length > 5) throw new BadRequest('Até 5 arquivos de uma vez.');
-  const guardar = d.anexos.map(anexoParaGuardar);
+  // 2.4.7: o anexo do campo vai até 30 MB (o da anotação continua com 10 MB)
+  const guardar = d.anexos.map((a) => anexoParaGuardar(a, MAX_BYTES_ANEXO_DO_CAMPO));
   const e = await carregar(app, ator, ref);
   const { t, agora } = e;
   const { c, opcao, nome } = campoParaAnexo(e, campoId, d.opcaoId);

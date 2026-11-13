@@ -246,6 +246,13 @@
       "when": 1794340972522,
       "tag": "0034_repeticao_e_links_cancelados",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794493287349,
+      "tag": "0035_largura_painel_pessoal_e_dias_da_semana",
+      "breakpoints": true
     }
   ]
 }

@@ -8,11 +8,13 @@
  * A terceira vista é a dos números: o **Relatório** de vendas, no painel de Vendas (2.0.1), e os
  * **Relatórios** dos chamados, nos painéis de Gestão (2.1, decisão 0055).
  */
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ChartColumn, ChevronsUpDown, Kanban, List, Settings2 } from 'lucide-react';
 import type { Painel } from '@gestor/shared';
 import { Popover } from '../../components/ui/index.js';
-import { usePode } from './comum.js';
+import { usePodeConfigurar } from './comum.js';
+import { JanelaConfigurarPainel } from './ajustes/Paineis.js';
 import { PontoDoPainel, useFiltrosNoEndereco } from './quadro/filtros.js';
 
 export type Vista = 'quadro' | 'lista' | 'relatorio';
@@ -47,7 +49,8 @@ export function CabecalhoDoPainel({ paineis, atual, vista, outraVista, className
   outraVista?: string;
   className?: string;
 }) {
-  const pode = usePode();
+  const podeConfigurar = usePodeConfigurar();
+  const [configurando, setConfigurando] = useState(false);
   const { sp } = useFiltrosNoEndereco();
   const vendas = atual.tipo === 'vendas';
   // o desativado só aparece se for o aberto (um link antigo)
@@ -115,11 +118,14 @@ export function CabecalhoDoPainel({ paineis, atual, vista, outraVista, className
           </ul>
         </Popover>
       )}
-      {pode.cuidar && (
-        <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(atual.id)}`} className="btn-ghost btn-sm text-ink-2" title="As etapas, as regras e quem vê este painel" aria-label="Configurar">
+      {/* 2.4.7: o Configurar abre a janela aqui mesmo, por cima do painel (sem ir para Painéis › Ajustes) */}
+      {podeConfigurar(atual) && (
+        <button type="button" className="btn-ghost btn-sm text-ink-2" title="O painel, as etapas, os campos, os assuntos e as etiquetas" aria-label="Configurar"
+          id="painel-configurar" onClick={() => setConfigurando(true)}>
           <Settings2 size={15} aria-hidden /> <span className="hidden 2xl:inline">Configurar</span>
-        </Link>
+        </button>
       )}
+      {configurando && <JanelaConfigurarPainel painelId={atual.id} onFechar={() => setConfigurando(false)} />}
     </div>
   );
 }

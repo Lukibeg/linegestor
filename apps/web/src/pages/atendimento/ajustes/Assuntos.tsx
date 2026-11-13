@@ -50,7 +50,7 @@ function alturaDoAssunto(id: string, todos: Assunto[], n = 0): number {
 /** Uma linha por item, sem as vazias (o checklist, o de-para). */
 const linhas = (t: string) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 
-export function AjustesAssuntos({ painel, onVoltar }: { painel: Painel; onVoltar: () => void }) {
+export function AjustesAssuntos({ painel, onVoltar }: { painel: Painel; onVoltar?: () => void }) {
   const opcoes = useOpcoes();
   const [busca, setBusca] = useState('');
   /** a janela de um assunto: editar (assunto) ou incluir (na raiz ou dentro de outro) */
@@ -71,8 +71,11 @@ export function AjustesAssuntos({ painel, onVoltar }: { painel: Painel; onVoltar
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1" id="assuntos-painel">
-        <button type="button" className="btn-ghost btn-sm -ml-2 text-ink-2" onClick={onVoltar} id="assuntos-voltar"><ArrowLeft size={15} /> Os campos</button>
-        <span className="text-line-strong" aria-hidden>/</span>
+        {/* na janela do Configurar (2.4.7) os assuntos são uma aba: sem o Voltar */}
+        {onVoltar && <>
+          <button type="button" className="btn-ghost btn-sm -ml-2 text-ink-2" onClick={onVoltar} id="assuntos-voltar"><ArrowLeft size={15} /> Os campos</button>
+          <span className="text-line-strong" aria-hidden>/</span>
+        </>}
         <h3 className="font-display font-semibold text-[15px] flex flex-wrap items-center gap-2">
           A árvore de assuntos do painel <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
         </h3>

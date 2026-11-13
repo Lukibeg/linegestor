@@ -13,7 +13,10 @@
  * auditoria — e segredo nenhum vai junto: a chave do WhatsApp, o segredo do webhook e a chave de API
  * aparecem (quando aparecem) só na resposta de quem pediu, uma vez.
  */
+import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { eq } from 'drizzle-orm';
+import { ticketFields, ticketSubjects, ticketTags } from '@gestor/db';
 import { z } from 'zod';
 import {
   AjustesDaNiaSchema, AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CaixinhasGravarSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
@@ -21,7 +24,8 @@ import {
   LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, parametrosDoEndereco, SitesIframeSchema, WebhookGravarSchema,
   EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO,
 } from '@gestor/shared';
-import { atorDaPessoa } from '../services/atendimento/contexto.js';
+import { atorDaPessoa, carregarPaineis, exigirConfigurarPainel, podeConfigurarPainel } from '../services/atendimento/contexto.js';
+import { Unauthorized } from '../plugins/errors.js';
 import * as ajustes from '../services/atendimento/ajustes.js';
 import { experimentarRobo } from '../services/atendimento/entrada.js';
 import * as etiquetas from '../services/atendimento/etiquetas.js';
@@ -46,6 +50,22 @@ const TestarAvisosSchema = z.object({
 const routes: FastifyPluginAsyncZod = async (app) => {
   const cuidar = { preHandler: app.requirePermission('tickets.manage') };
   const integrar = { preHandler: app.requirePermission('admin.manage') };
+  /**
+   * Os Ajustes de UM painel (2.4.7): quem cuida dos chamados configura os da equipe; o painel pessoal, só o dono (o painel pessoal
+   * de outra pessoa dá 404, como se não existisse). `qual` diz de que painel é o pedido.
+   */
+  const doPainel = (qual: (req: FastifyRequest) => Promise<string | null | undefined> | string | null | undefined) => ({
+    preHandler: async (req: FastifyRequest) => {
+      if (!req.user) throw new Unauthorized();
+      await exigirConfigurarPainel(app.db, atorDaPessoa(req.user), await qual(req));
+    },
+  });
+  const idDe = (req: FastifyRequest) => (req.params as { id: string }).id;
+  const peloPainel = doPainel(idDe);
+  const peloCampo = doPainel(async (req) => (await app.db.select({ p: ticketFields.panelId }).from(ticketFields).where(eq(ticketFields.id, idDe(req))).limit(1))[0]?.p);
+  const pelaEtiqueta = doPainel(async (req) => (await app.db.select({ p: ticketTags.panelId }).from(ticketTags).where(eq(ticketTags.id, idDe(req))).limit(1))[0]?.p);
+  const peloAssunto = doPainel(async (req) => (await app.db.select({ p: ticketSubjects.panelId }).from(ticketSubjects).where(eq(ticketSubjects.id, idDe(req))).limit(1))[0]?.p);
+  const peloCorpo = doPainel((req) => (req.body as { painelId?: string } | null)?.painelId);
 
   // =====================================================================
   //  OS PAINÉIS E AS ETAPAS
@@ -61,7 +81,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   });
 
   app.put('/paineis/:id', {
-    ...cuidar,
+    ...peloPainel,
     schema: { tags, summary: 'Mudar um painel e, se vierem, as etapas (as regras do PUT /etapas, tudo junto: ou grava tudo, ou nada; a sigla não muda depois do primeiro chamado)', params: Id, body: PainelGravarSchema },
   }, async (req) => {
     const r = await ajustes.gravarPainel(app, atorDaPessoa(req.user!), req.params.id, req.body);
@@ -77,7 +97,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   app.put('/paineis/:id/etapas', {
-    ...cuidar,
+    ...peloPainel,
     schema: { tags, summary: 'As etapas do painel, na ordem (sem id = nova; a que não vier sai, e os chamados dela vão para o destino)', params: Id, body: EtapasGravarSchema },
   }, async (req) => {
     const r = await ajustes.salvarEtapas(app, atorDaPessoa(req.user!), req.params.id, req.body);
@@ -90,7 +110,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   // =====================================================================
 
   app.put('/paineis/:id/campos-do-sistema', {
-    ...cuidar,
+    ...peloPainel,
     schema: { tags, summary: 'Ligar e desligar os campos do sistema no painel (assunto, tipo, gravidade e alcance, produtos, operadoras) e as opções do Tipo', params: Id, body: CamposDoSistemaSchema },
   }, async (req) => {
     const r = await ajustes.salvarCamposDoSistema(app, req.params.id, req.body);
@@ -99,7 +119,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   });
 
   app.post('/paineis/:id/campos', {
-    ...cuidar,
+    ...peloPainel,
     schema: { tags, summary: 'Criar um campo no painel (texto, texto longo, número, data, sim ou não, lista); obrigatório para abrir ou nas etapas escolhidas', params: Id, body: CampoGravarSchema },
   }, async (req, reply) => {
     const r = await ajustes.criarCampo(app, req.params.id, req.body);
@@ -108,7 +128,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   });
 
   app.put('/campos/:id', {
-    ...cuidar,
+    ...peloCampo,
     schema: { tags, summary: 'Mudar um campo do painel (o tipo não muda; desativar = ativo: false; a opção que não vier fica desativada)', params: Id, body: CampoGravarSchema },
   }, async (req) => {
     const r = await ajustes.alterarCampo(app, req.params.id, req.body);
@@ -118,7 +138,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // 2.3: o "Editar as caixinhas" do card (as caixinhas e as pastas, sem mexer no resto do campo)
   app.put('/campos/:id/caixinhas', {
-    ...cuidar,
+    ...peloCampo,
     schema: { tags, summary: 'Mudar só as caixinhas de um campo de caixinhas (criar, renomear, tirar, a ordem e as pastas); vale para todos os cards do painel', params: Id, body: CaixinhasGravarSchema },
   }, async (req) => {
     const r = await ajustes.alterarCaixinhas(app.db, req.params.id, req.body);
@@ -128,7 +148,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // 2.4: excluir um campo (não só desativar), a lista dos excluídos e o Restaurar
   app.delete('/campos/:id', {
-    ...cuidar,
+    ...peloCampo,
     schema: { tags, summary: 'Excluir um campo do painel: sai dos Ajustes, da ficha, do Abrir chamado e das regras; o que os chamados preencheram fica guardado e volta com o Restaurar', params: Id },
   }, async (req) => {
     const r = await ajustes.excluirCampo(app, req.params.id);
@@ -137,12 +157,12 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   });
 
   app.get('/paineis/:id/campos/excluidos', {
-    ...cuidar,
+    ...peloPainel,
     schema: { tags, summary: 'Os campos excluídos do painel (para restaurar), do mais recente para o mais antigo', params: Id },
   }, async (req) => ajustes.camposExcluidos(app.db, req.params.id));
 
   app.post('/campos/:id/restaurar', {
-    ...cuidar,
+    ...peloCampo,
     schema: { tags, summary: 'Restaurar um campo excluído: volta no fim da lista, com o que os chamados tinham; não é pedido em lugar nenhum', params: Id },
   }, async (req) => {
     const r = await ajustes.restaurarCampo(app, req.params.id);
@@ -151,7 +171,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   });
 
   app.put('/paineis/:id/grupos', {
-    ...cuidar,
+    ...peloPainel,
     schema: { tags, summary: 'Os grupos de campos do painel (a lista inteira, na ordem da ficha): criar, renomear (antes), no meio ou na lateral, ativar ou desativar todos os campos do grupo; o que não vier é excluído com os campos', params: Id, body: GruposGravarSchema },
   }, async (req) => {
     const r = await ajustes.gravarGrupos(app, req.params.id, req.body);
@@ -160,7 +180,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   });
 
   app.put('/paineis/:id/campos/ordem', {
-    ...cuidar,
+    ...peloPainel,
     schema: { tags, summary: 'A ordem dos campos do painel (todos os ids, na ordem nova)', params: Id, body: OrdemDosCamposSchema },
   }, async (req) => {
     const r = await ajustes.ordenarCampos(app, req.params.id, req.body.ids);
@@ -172,17 +192,23 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   //  AS ETIQUETAS (com a cor; cada painel tem as suas, desde o 2.0.3)
   // =====================================================================
 
-  app.get('/etiquetas', { ...cuidar, schema: { tags, summary: 'As etiquetas de todos os painéis, com o painel, a cor e em quantos chamados dele cada uma está (Ajustes › Etiquetas)' } },
-    async () => etiquetas.listarEtiquetas(app.db));
+  // 2.4.7: quem cuida vê as de todos os painéis da equipe; o dono do painel pessoal, as do dele
+  app.get('/etiquetas', { preHandler: app.requireLogin, schema: { tags, summary: 'As etiquetas dos painéis que a pessoa configura, com o painel, a cor e em quantos chamados dele cada uma está (Ajustes › Etiquetas)' } },
+    async (req) => {
+      const ator = atorDaPessoa(req.user!);
+      const { paineis } = await carregarPaineis(app.db);
+      const meus = new Set(paineis.filter((p) => podeConfigurarPainel(p, ator)).map((p) => p.id));
+      return (await etiquetas.listarEtiquetas(app.db)).filter((e) => meus.has(e.painelId));
+    });
 
-  app.post('/etiquetas', { ...cuidar, schema: { tags, summary: 'Criar uma etiqueta num painel, com a cor (o nome não se repete no painel, sem ligar para maiúscula e acento)', body: EtiquetaGravarSchema } },
+  app.post('/etiquetas', { ...peloCorpo, schema: { tags, summary: 'Criar uma etiqueta num painel, com a cor (o nome não se repete no painel, sem ligar para maiúscula e acento)', body: EtiquetaGravarSchema } },
     async (req, reply) => {
       const r = await etiquetas.criarEtiqueta(app.db, req.body, req.user!.id);
       await app.audit(req, { action: 'create', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, after: r.depois });
       return reply.status(201).send(r.valor);
     });
 
-  app.put('/etiquetas/:id', { ...cuidar, schema: { tags, summary: 'Editar uma etiqueta: o nome e a cor (valem nos chamados do painel que a têm)', params: Id, body: EtiquetaEditarSchema } },
+  app.put('/etiquetas/:id', { ...pelaEtiqueta, schema: { tags, summary: 'Editar uma etiqueta: o nome e a cor (valem nos chamados do painel que a têm)', params: Id, body: EtiquetaEditarSchema } },
     async (req) => {
       const r = await etiquetas.editarEtiqueta(app.db, { id: req.params.id }, req.body, req.user!.id);
       await app.audit(req, { action: 'update', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
@@ -190,7 +216,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   // o seletor de etiquetas (no Abrir chamado e na ficha) edita pelo nome: as opções da tela não levam o id
-  app.put('/etiquetas', { ...cuidar, schema: { tags, summary: 'Editar uma etiqueta pelo painel e o nome de agora (`de`): o nome e a cor', body: EtiquetaEditarPeloNomeSchema } },
+  app.put('/etiquetas', { ...peloCorpo, schema: { tags, summary: 'Editar uma etiqueta pelo painel e o nome de agora (`de`): o nome e a cor', body: EtiquetaEditarPeloNomeSchema } },
     async (req) => {
       const { de, painelId, ...d } = req.body;
       const r = await etiquetas.editarEtiqueta(app.db, { painelId, nome: de }, d, req.user!.id);
@@ -198,7 +224,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return r.valor;
     });
 
-  app.delete('/etiquetas/:id', { ...cuidar, schema: { tags, summary: 'Tirar uma etiqueta das sugestões (só a que nenhum chamado usa)', params: Id } },
+  app.delete('/etiquetas/:id', { ...pelaEtiqueta, schema: { tags, summary: 'Tirar uma etiqueta das sugestões (só a que nenhum chamado usa)', params: Id } },
     async (req) => {
       const r = await etiquetas.removerEtiqueta(app.db, req.params.id);
       await app.audit(req, { action: 'delete', entityType: 'ticket_tag', entityId: req.params.id, summary: r.resumo, before: r.antes });
@@ -209,14 +235,14 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   //  OS ASSUNTOS
   // =====================================================================
 
-  app.post('/paineis/:id/assuntos', { ...cuidar, schema: { tags, summary: 'Criar um assunto (até 3 níveis; sem nome repetido entre irmãos)', params: Id, body: AssuntoGravarSchema } },
+  app.post('/paineis/:id/assuntos', { ...peloPainel, schema: { tags, summary: 'Criar um assunto (até 3 níveis; sem nome repetido entre irmãos)', params: Id, body: AssuntoGravarSchema } },
     async (req, reply) => {
       const r = await ajustes.criarAssunto(app, req.params.id, req.body);
       await app.audit(req, { action: 'create', entityType: 'ticket_subject', entityId: r.valor.id, summary: r.resumo, after: r.depois });
       return reply.status(201).send(r.valor);
     });
 
-  app.put('/assuntos/:id', { ...cuidar, schema: { tags, summary: 'Mudar um assunto (o nome, o lugar na árvore, o checklist; desativar = ativo: false)', params: Id, body: AssuntoGravarSchema } },
+  app.put('/assuntos/:id', { ...peloAssunto, schema: { tags, summary: 'Mudar um assunto (o nome, o lugar na árvore, o checklist; desativar = ativo: false)', params: Id, body: AssuntoGravarSchema } },
     async (req) => {
       const r = await ajustes.alterarAssunto(app, req.params.id, req.body);
       await app.audit(req, { action: 'update', entityType: 'ticket_subject', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
@@ -224,7 +250,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   app.post('/paineis/:id/assuntos/colar', {
-    ...cuidar,
+    ...peloPainel,
     schema: { tags, summary: 'Colar a lista de assuntos ("Ramal - Configuração - Identidade", um por linha): cria só o que falta', params: Id, body: AssuntosColarSchema },
   }, async (req) => {
     const r = await ajustes.colarAssuntos(app, req.params.id, req.body.texto);

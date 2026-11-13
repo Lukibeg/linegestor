@@ -57,7 +57,7 @@ Voltar a negociação e mover de novo não abre outro card.
   dos que a marcaram; o campo pode ficar sem nenhuma) › Salvar. Vale para todos os cards do painel.
 - **Todos os produtos.** Cada parte mostra um bloco para cada produto do card; o que ainda não tem campo naquela parte
   (o VoiceNet, por exemplo) aparece vazio, com o aviso.
-- **Os anexos.** Cada campo da Curadoria tem o **Anexar**: imagens, PDF, Word, Excel, até 10 MB cada. A Configuração e os
+- **Os anexos.** Cada campo da Curadoria tem o **Anexar**: imagens, PDF, Word, Excel, até 30 MB cada. A Configuração e os
   Testes ficam sem (o Recebe anexos, em Painéis › Ajustes › Campos, liga em qualquer campo; nas caixinhas, o anexo vai
   no clipe de cada uma). A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
   Sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
@@ -107,3 +107,7 @@ viram documento sem perder o que foi escrito.
 
 E a opção **Recebe anexos**: com ela, o campo ganha o Anexar na ficha (nas caixinhas, o clipe de cada uma). No modelo
 Implantação, vem ligada nos campos da Curadoria.
+
+E, desde o 2.4.7, a **Largura na ficha** (num grupo do meio da ficha): **Metade** (lado a lado com o campo vizinho de metade,
+como a Operadora Doadora e a Conta operadora doadora) ou **Linha inteira** (como a Faixa Numérica). Sem escolher, vale a do
+tipo: o texto longo, o documento e as caixinhas ocupam a linha; o resto, metade.

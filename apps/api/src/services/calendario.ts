@@ -18,7 +18,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { calendarEvents, calendarSeries, clients, newId, roles, tickets, users, type Db } from '@gestor/db';
 import {
-  datasDaRepeticao, diasEntre, limiteDaRepeticao, planoDosProximos, textoDaRepeticao, HORIZONTE_DA_REPETICAO,
+  datasDaRepeticao, diasEntre, diasParaGuardar, limiteDaRepeticao, planoDosProximos, textoDaRepeticao, HORIZONTE_DA_REPETICAO,
   type EscopoDaSerie, type FrequenciaDaRepeticao, type Repeticao,
   chaveDoLembrete, comecoDoEvento, eventoVisivel, hojeNoCalendario, lembretesAoGravar, lembretesDevidos, NOME_SITUACAO_DO_EVENTO, paineisDepoisDaEdicao,
   quemRecebeOLembrete, somarDias, textoDoLembrete, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, valoresDoLembrete,
@@ -145,7 +145,7 @@ async function paraTela(db: Db, linhas: Linha[]): Promise<EventoDoCalendario[]> 
 /** A regra da série do evento, como a tela recebe (o evento avulso: nula). */
 function repeticaoDaLinha(l: Linha, series: ReadonlyMap<string, typeof calendarSeries.$inferSelect>): EventoDoCalendario['repeticao'] {
   const s = l.seriesId ? series.get(l.seriesId) : undefined;
-  return s ? { serieId: s.id, frequencia: s.frequency as FrequenciaDaRepeticao, ate: s.untilOn, ancora: s.anchorOn } : null;
+  return s ? { serieId: s.id, frequencia: s.frequency as FrequenciaDaRepeticao, ate: s.untilOn, ancora: s.anchorOn, dias: s.weekdays ?? null } : null;
 }
 
 /** Os eventos que a pessoa vê e que tocam o período (o mês da tela, com as pontas da grade). */
@@ -293,7 +293,7 @@ const textoDaSerie = (r: Repeticao, ancora: string, n: number, ultimo: string) =
 async function novaSerie(db: Db, r: Repeticao, v: Valores, quem: string | null, agora: Date): Promise<string> {
   const serieId = newId();
   await db.insert(calendarSeries).values({
-    id: serieId, frequency: r.frequencia, anchorOn: v.startsOn, untilOn: r.ate,
+    id: serieId, frequency: r.frequencia, anchorOn: v.startsOn, untilOn: r.ate, weekdays: diasParaGuardar(r, v.startsOn),
     generatedUntil: limiteDaRepeticao(r, v.startsOn, hojeNoCalendario(agora)), template: moldeDe(v), createdById: quem,
   });
   return serieId;
@@ -311,7 +311,7 @@ async function inserirDatas(db: Db, serieId: string, m: Molde, datas: readonly s
 /** As datas depois do primeiro dia, até o limite de agora; devolve o pedaço do resumo da auditoria. */
 async function gerarAsDatas(db: Db, serieId: string, r: Repeticao, v: Valores, quem: string | null, agora: Date): Promise<string> {
   const limite = limiteDaRepeticao(r, v.startsOn, hojeNoCalendario(agora));
-  const datas = datasDaRepeticao(v.startsOn, r.frequencia, limite, v.startsOn);
+  const datas = datasDaRepeticao(v.startsOn, r, limite, v.startsOn);
   await inserirDatas(db, serieId, moldeDe(v), datas, quem, agora);
   return textoDaSerie(r, v.startsOn, datas.length + 1, datas.at(-1) ?? v.startsOn);
 }
@@ -330,7 +330,7 @@ export async function estenderRepeticoes(db: Db, agora: Date = new Date()): Prom
   for (const s of series) {
     const limite = limiteDaRepeticao({ ate: s.untilOn }, s.anchorOn, hoje);
     if (limite <= s.generatedUntil) continue;
-    const datas = datasDaRepeticao(s.anchorOn, s.frequency as FrequenciaDaRepeticao, limite, s.generatedUntil);
+    const datas = datasDaRepeticao(s.anchorOn, { frequencia: s.frequency as FrequenciaDaRepeticao, dias: s.weekdays }, limite, s.generatedUntil);
     // a vez é reservada antes de gerar (só se ninguém estendeu no meio): duas voltas não dobram as datas
     const [reservado] = await db.update(calendarSeries).set({ generatedUntil: limite, updatedAt: agora })
       .where(and(eq(calendarSeries.id, s.id), eq(calendarSeries.generatedUntil, s.generatedUntil))).returning({ id: calendarSeries.id });
@@ -356,7 +356,7 @@ export async function avisarDaInclusao(app: FastifyInstance, ator: Ator, id: str
   if (!para.length) return 0;
   // o que se repete (2.4.6): o aviso diz a regra
   const [serie] = l.seriesId ? await app.db.select().from(calendarSeries).where(eq(calendarSeries.id, l.seriesId)).limit(1) : [];
-  const repeticao = serie ? { frequencia: serie.frequency as FrequenciaDaRepeticao, ate: serie.untilOn, ancora: serie.anchorOn } : null;
+  const repeticao = serie ? { frequencia: serie.frequency as FrequenciaDaRepeticao, ate: serie.untilOn, ancora: serie.anchorOn, dias: serie.weekdays ?? null } : null;
   const evento = { id: l.id, titulo: l.title, inicio: l.startsOn, fim: l.endsOn, diaInteiro: l.allDay, horaInicio: l.startTime, local: l.location, observacao: l.notes, repeticao };
   const nomes = await nomesDoLembrete(app.db, l, { nomeDoPainel: new Map(paineis.map((p) => [p.id, p.nome])), tipos }, linkDoEvento(app, evento));
   return avisarDoCalendario(app, {
@@ -424,7 +424,7 @@ async function mudarOsProximos(db: Db, antes: Linha, d: Valores, r: Repeticao | 
   const limite = r ? limiteDaRepeticao(r, d.startsOn, hojeNoCalendario(agora)) : d.startsOn;
   const plano = planoDosProximos(
     proximos.map((p) => ({ id: p.id, inicio: p.startsOn, situacao: p.status as SituacaoDoEvento })),
-    { inicio: antes.startsOn, frequencia: serie.frequency as FrequenciaDaRepeticao, ate: serie.untilOn },
+    { inicio: antes.startsOn, frequencia: serie.frequency as FrequenciaDaRepeticao, ate: serie.untilOn, dias: serie.weekdays },
     { inicio: d.startsOn, repetir: r, limite },
   );
   const m = moldeDe(d);
@@ -449,7 +449,7 @@ async function mudarOsProximos(db: Db, antes: Linha, d: Valores, r: Repeticao | 
     const saiu = plano.descartar.length;
     return ` e parou de repetir${saiu ? ` (${saiu === 1 ? 'a data seguinte saiu' : `as ${saiu} datas seguintes saíram`})` : ''}`;
   }
-  await db.update(calendarSeries).set({ frequency: r.frequencia, anchorOn: d.startsOn, untilOn: r.ate, generatedUntil: limite, template: m, undo: null, updatedAt: agora })
+  await db.update(calendarSeries).set({ frequency: r.frequencia, anchorOn: d.startsOn, untilOn: r.ate, weekdays: diasParaGuardar(r, d.startsOn), generatedUntil: limite, template: m, undo: null, updatedAt: agora })
     .where(eq(calendarSeries.id, serie.id));
   const datas = [d.startsOn, ...plano.mudar.map((x) => x.inicio), ...plano.criar].sort();
   return ` e os próximos${textoDaSerie(r, d.startsOn, datas.length, datas.at(-1)!)}`;

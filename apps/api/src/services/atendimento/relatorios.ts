@@ -182,7 +182,8 @@ const DO_ENVIO: Ator = { tipo: 'integracao', id: 'envio-automatico', nome: 'Envi
 /** Os painéis que podem ter um envio: os de chamados (os de Vendas têm o relatório deles), ativos ou não. */
 export async function paineisDoEnvio(app: FastifyInstance): Promise<Array<Pick<Painel, 'id' | 'nome' | 'sigla' | 'ativo'>>> {
   const ctx = await carregarContexto(app.db);
-  return ctx.paineis.filter((p) => p.tipo !== 'vendas').map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, ativo: p.ativo }));
+  // os painéis pessoais (2.4.7) não entram: são de uma pessoa só
+  return ctx.paineis.filter((p) => p.tipo !== 'vendas' && !p.donoId).map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, ativo: p.ativo }));
 }
 
 /**

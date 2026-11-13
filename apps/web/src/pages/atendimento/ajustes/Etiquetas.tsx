@@ -23,7 +23,8 @@ import { EscolhaDoPainel } from './Campos.js';
 
 const CHAVE = ['atendimento', 'ajustes', 'etiquetas'];
 
-export function AjustesEtiquetas() {
+/** A aba Etiquetas; na janela do Configurar do painel (2.4.7), presa a um painel (`painelFixo`). */
+export function AjustesEtiquetas({ painelFixo }: { painelFixo?: string } = {}) {
   const q = useQuery({ queryKey: CHAVE, queryFn: () => api.atendimento.etiquetas() });
   const opcoes = useOpcoes();
   const [sp, setSp] = useSearchParams();
@@ -45,7 +46,7 @@ export function AjustesEtiquetas() {
   if (q.isError || opcoes.isError || !opcoes.data) return <p className="text-bad text-sm" role="alert">{mensagemErro(q.error ?? opcoes.error)}</p>;
   const { paineis } = opcoes.data;
   // o painel fica no endereço (?painel=), o mesmo das abas dos campos e dos painéis
-  const painel = paineis.find((p) => p.id === sp.get('painel')) ?? paineis[0];
+  const painel = paineis.find((p) => p.id === (painelFixo ?? sp.get('painel'))) ?? (painelFixo ? undefined : paineis[0]);
   if (!painel) return <Vazio titulo="Nenhum painel" texto="Crie um painel em Painéis e etapas: as etiquetas são de cada painel." />;
   const escolherPainel = (id: string) => {
     setSp((x) => { const n = new URLSearchParams(x); n.set('painel', id); return n; }, { replace: true });
@@ -78,7 +79,7 @@ export function AjustesEtiquetas() {
 
   return (
     <div className="flex flex-col gap-4 max-w-4xl">
-      <EscolhaDoPainel paineis={paineis} atual={painel} onEscolher={escolherPainel} id="etiquetas-painel" rotulo="O painel das etiquetas" />
+      {!painelFixo && <EscolhaDoPainel paineis={paineis} atual={painel} onEscolher={escolherPainel} id="etiquetas-painel" rotulo="O painel das etiquetas" />}
       <CartaoAjuste icone={<Tags size={18} />} titulo={`Etiquetas do ${painel.nome}`} id="ajustes-etiquetas"
         situacao={lista.length > 0 && <span className="text-[12.5px] text-muted tnum">{lista.length} {lista.length === 1 ? 'etiqueta' : 'etiquetas'}</span>}>
         <Explicacao>

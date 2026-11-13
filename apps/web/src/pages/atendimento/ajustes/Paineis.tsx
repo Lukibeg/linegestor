@@ -36,7 +36,11 @@ import {
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
-import { Carregando, Chip, Confirmar, EscolherComBusca, Modal, Spinner, Toggle, mensagemErro, type OpcaoBusca } from '../../../components/ui/index.js';
+import { Abas, Carregando, Chip, Confirmar, EscolherComBusca, Modal, Spinner, Toggle, mensagemErro, type OpcaoBusca } from '../../../components/ui/index.js';
+import { useAuth } from '../../../lib/auth.js';
+import { AjustesAssuntos } from './Assuntos.js';
+import { AjustesCampos } from './Campos.js';
+import { AjustesEtiquetas } from './Etiquetas.js';
 import { useArrastar } from '../../../lib/arrastar.js';
 import { CodigoChamado, TOM_DO_PAINEL, useDepoisDeMudar, useOpcoes } from '../comum.js';
 import { CampoValor } from '../venda.js';
@@ -160,7 +164,7 @@ function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: Pe
   const vendas = p.tipo === 'vendas';
   const usados = [...camposDoSistemaDoTipo(p.tipo).filter((c) => !a.camposDesligados.includes(c)).map((c) => NOME_CAMPO_DO_SISTEMA[c]), ...campos.filter((c) => c.ativo).map((c) => c.nome)];
   const paraAbrir = limparObrigatorios(a.obrigatoriosAoAbrir, obrigatoriosDoPainel(a, campos, p.tipo)).map((k) => nomeDoObrigatorio(k, campos));
-  const quemVe = p.acesso === 'todos'
+  const quemVe = p.donoId ? `${nomeDaPessoa(pessoas, p.donoId)} e os administradores (o painel pessoal)` : p.acesso === 'todos'
     ? 'Todos que veem chamados'
     : p.pessoas.length ? `Só ${listaDeNomes(p.pessoas.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Só quem cuida dos chamados (ninguém escolhido)';
   const regras = vendas ? [
@@ -298,13 +302,39 @@ const PARTES = [
 ] as const;
 const irPara = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFechar, onSalvo }: {
+/**
+ * O Configurar do alto do painel (2.4.7, o Luan: "quando eu clicar em configurar dentro de um painel, quero que eu possa alterar
+ * todas as configurações dele a partir desse popup inclusive a arvore de assuntos, etiquetas etc, sem precisar ir na parte de
+ * ajustes dos painéis"): a janela do painel por cima da tela em que se está, com as abas Painel e etapas, Campos, Assuntos e
+ * Etiquetas. Nada leva para Painéis › Ajustes.
+ */
+export function JanelaConfigurarPainel({ painelId, onFechar }: { painelId: string; onFechar: () => void }) {
+  const opcoes = useOpcoes();
+  const painel = opcoes.data?.paineis.find((p) => p.id === painelId);
+  // a janela fica de pé enquanto a lista relê (o painel salvo volta com o que mudou)
+  const [primeiro] = useState(() => painel);
+  const atual = painel ?? primeiro;
+  if (!opcoes.data || !atual) return null;
+  return (
+    <JanelaPainel painel={atual} paineis={opcoes.data.paineis} pessoas={opcoes.data.pessoas.filter((p) => p.ativo)} todasAsPessoas={opcoes.data.pessoas}
+      campos={opcoes.data.campos.filter((c) => c.painelId === atual.id)} completa onFechar={onFechar} onSalvo={onFechar} />
+  );
+}
+
+type AbaDoConfigurar = 'painel' | 'campos' | 'assuntos' | 'etiquetas';
+
+function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFechar, onSalvo, completa = false }: {
   painel: Painel | null; paineis: Painel[]; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[];
   /** os campos deste painel (o painel novo ainda não tem nenhum) */
   campos: CampoPersonalizado[];
   onFechar: () => void; onSalvo: (p: Painel) => void;
+  /** o Configurar do alto do painel (2.4.7): com as abas Campos, Assuntos e Etiquetas do painel */
+  completa?: boolean;
 }) {
   const depois = useDepoisDeMudar();
+  const eu = useAuth().user?.id;
+  const [aba, setAba] = useState<AbaDoConfigurar>('painel');
+  const comAbas = completa && !!painel;
   const [inicio] = useState(() => ({ form: formDoPainel(painel), etapas: painel ? painel.etapas.map(daEtapa) : etapasDoModelo(undefined) }));
   const [f, setF] = useState<FormPainel>(inicio.form);
   const vendas = f.tipo === 'vendas';
@@ -438,19 +468,38 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   // fechar com mudanças pergunta antes (um clique fora da janela não perde o que foi feito)
   const pedirParaFechar = () => { if (mudouAlgo) setFechar(true); else onFechar(); };
 
+  const naAbaDoPainel = !comAbas || aba === 'painel';
   return (
-    <Modal open onClose={pedirParaFechar} largura="max-w-3xl" titulo={painel ? `Editar o painel ${painel.nome}` : vendas ? 'Novo painel de Vendas' : implantacao ? 'Novo painel de Implantação' : 'Novo painel'}
-      rodape={<>
+    <Modal open onClose={pedirParaFechar} largura={comAbas ? 'max-w-5xl' : 'max-w-3xl'}
+      titulo={comAbas ? `Configurar o painel ${painel!.nome}` : painel ? `Editar o painel ${painel.nome}` : vendas ? 'Novo painel de Vendas' : implantacao ? 'Novo painel de Implantação' : 'Novo painel'}
+      rodape={naAbaDoPainel ? <>
         {erro && <p className="text-bad text-[13px] mr-auto basis-full sm:basis-auto sm:flex-1" role="alert" id="painel-erro">{erro}</p>}
         <button type="button" className="btn-secondary" onClick={pedirParaFechar}>Cancelar</button>
         <button type="button" className="btn-primary" id="painel-salvar" disabled={salvando} onClick={() => void salvar()}>
           {salvando ? <Spinner className="text-white" /> : painel ? 'Salvar' : 'Criar painel'}
         </button>
+      </> : <>
+        {/* nas outras abas cada mudança já vale na hora (como em Painéis › Ajustes); o Salvar é só da aba Painel e etapas */}
+        <span className="text-[12.5px] text-muted mr-auto">{mudouAlgo ? 'Na aba Painel e etapas há mudanças sem salvar.' : 'O que se muda nesta aba já vale.'}</span>
+        <button type="button" className="btn-secondary" id="configurar-fechar" onClick={pedirParaFechar}>Fechar</button>
       </>}>
-      <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); void salvar(); }} className="flex flex-col gap-4">
+      {comAbas && (
+        <div className="-mt-1 mb-3" id="configurar-abas">
+          <Abas<AbaDoConfigurar> atual={aba} onChange={setAba} abas={[
+            { id: 'painel', label: 'Painel e etapas' }, { id: 'campos', label: 'Campos' },
+            ...(painel!.ajustes.camposDesligados.includes('assunto') ? [] : [{ id: 'assuntos' as const, label: 'Assuntos' }]),
+            { id: 'etiquetas', label: 'Etiquetas' },
+          ]} />
+        </div>
+      )}
+      {comAbas && aba === 'campos' && <div id="configurar-campos"><AjustesCampos painelFixo={painel!.id} onAssuntos={() => setAba('assuntos')} /></div>}
+      {comAbas && aba === 'assuntos' && <div id="configurar-assuntos"><AjustesAssuntos painel={painel!} /></div>}
+      {comAbas && aba === 'etiquetas' && <div id="configurar-etiquetas"><AjustesEtiquetas painelFixo={painel!.id} /></div>}
+      {/* a aba Painel e etapas fica montada (escondida) nas outras: o que foi mexido nela não se perde ao trocar de aba */}
+      <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); void salvar(); }} className={`flex flex-col gap-4 ${naAbaDoPainel ? '' : 'hidden'}`}>
         {/* a janela é comprida: a barra leva a cada parte. Ela gruda no alto da caixa que rola (o -top-4
             desconta o espaço de cima da caixa; sem ele, o texto passava por cima da barra) */}
-        <nav className="sticky -top-4 z-10 -mx-5 -mt-4 px-4 py-1.5 bg-surface border-b border-line flex gap-1 overflow-x-auto" aria-label="Partes da janela" id="painel-partes">
+        <nav className={`sticky -top-4 z-10 -mx-5 ${comAbas ? '' : '-mt-4'} px-4 py-1.5 bg-surface border-b border-line flex gap-1 overflow-x-auto`} aria-label="Partes da janela" id="painel-partes">
           {PARTES.map((x) => (
             <button key={x.id} type="button" className="btn-ghost btn-sm whitespace-nowrap" onClick={() => irPara(x.id)}>
               {x.nome}{x.id === 'painel-etapas' ? ` (${rascunho.length})` : ''}
@@ -512,7 +561,14 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
             </div>
           </CampoRotulo>
 
-          <CampoRotulo rotulo="Quem vê" id="painel-acesso" grupo dica="Quem cuida dos chamados vê todos os painéis, mesmo os de pessoas escolhidas. Para os outros, o chamado de um painel que não veem não existe.">
+          {/* o painel pessoal (2.4.7): só o dono vê, e isso não muda */}
+          {painel?.donoId ? (
+            <CampoRotulo rotulo="Quem vê" id="painel-acesso" grupo>
+              <p className="text-[13px] text-ink-2" id="painel-pessoal">
+                {painel.donoId === eu ? 'Você' : nomeDaPessoa(todasAsPessoas, painel.donoId)} e quem tem o perfil de administrador: é um painel pessoal.
+              </p>
+            </CampoRotulo>
+          ) : <CampoRotulo rotulo="Quem vê" id="painel-acesso" grupo dica="Quem cuida dos chamados vê todos os painéis, mesmo os de pessoas escolhidas. Para os outros, o chamado de um painel que não veem não existe.">
             <div className="flex flex-col gap-2" role="radiogroup" aria-label="Quem vê" id="painel-acesso">
               <Opcao ativo={f.acesso === 'todos'} onClick={() => mudar({ acesso: 'todos' })} titulo="Todos que veem chamados" texto="O Suporte, por exemplo." />
               <Opcao ativo={f.acesso === 'escolhidos'} onClick={() => mudar({ acesso: 'escolhidos' })} titulo="Só as pessoas escolhidas" texto="Um painel Interno ou Administrativo." />
@@ -523,7 +579,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
                 </div>
               )}
             </div>
-          </CampoRotulo>
+          </CampoRotulo>}
 
           <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <Toggle checked={f.ativo} onChange={(v) => mudar({ ativo: v })} />
@@ -583,7 +639,9 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
             })}
           </ul>
           <p className="text-[12.5px] text-muted" id="painel-onde-campos">
-            A árvore do Assunto, as opções do Tipo e os campos que a equipe cria ficam em Painéis › Ajustes › <b className="text-ink-2">Campos</b>{painel ? '' : ', depois de criar o painel'}.
+            {comAbas
+              ? <>A árvore do Assunto, as opções do Tipo e os campos que a equipe cria ficam nas abas <b className="text-ink-2">Campos</b> e <b className="text-ink-2">Assuntos</b>, no alto desta janela.</>
+              : <>A árvore do Assunto, as opções do Tipo e os campos que a equipe cria ficam em Painéis › Ajustes › <b className="text-ink-2">Campos</b>{painel ? '' : ', depois de criar o painel'}.</>}
           </p>
         </section>
 
