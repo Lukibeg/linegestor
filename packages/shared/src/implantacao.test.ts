@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type Obrigatorio } from './atendimento.js';
 import {
-  etapaDoFimDaImplantacao,
+  ehPainelDaImplantacao, etapaDoFimDaImplantacao, partesNoCartao,
   gruposDoPainel, gruposNaLateral, mesmoGrupo,
   MODELO_DA_IMPLANTACAO, opcaoDoModelo, modulosDoChecklist, modulosSemMarcar, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
   planoDaImplantacao, planoDoCadastro, progressoDasPartes, tituloDaImplantacao,
@@ -97,6 +97,55 @@ describe('as partes da ficha', () => {
     expect(parteDaEtapa(partes, 'configuracao')?.parte).toBe('Configuração');
     expect(parteDaEtapa(partes, 'Testes')).toBeNull();
     expect(parteDaEtapa(partes, null)).toBeNull();
+  });
+
+  // 2.4.8: no painel da implantação, o cartão mostra todas as partes; a que acabou, só o ✓
+  describe('no cartão do quadro', () => {
+    const ETAPAS = ['Stand By', 'Curadoria', 'Configuração', 'Implantado - Em acompanhamento', 'Implantado - Concluído'].map((nome, i) => ({ id: `e${i}`, nome }));
+    const PARTES = [
+      { parte: 'Curadoria', feitos: 4, total: 5 },
+      { parte: 'Configuração', feitos: 3, total: 15 },
+      // sem a etapa Testes neste painel: fica logo depois da Configuração
+      { parte: 'Testes', feitos: 0, total: 6 },
+      { parte: 'Vazia', feitos: 0, total: 0 },
+    ];
+    const momentos = (etapaId: string, partes = PARTES, todas = true) => partesNoCartao(partes, ETAPAS, etapaId, todas).map((p) => [p.parte, p.momento]);
+
+    it('fora da implantação, só a parte da etapa, como antes (cheia continua barra)', () => {
+      expect(momentos('e1', PARTES, false)).toEqual([['Curadoria', 'da-etapa']]);
+      expect(momentos('e3', PARTES, false)).toEqual([]);
+      expect(momentos('e1', [{ parte: 'Curadoria', feitos: 5, total: 5 }], false)).toEqual([['Curadoria', 'da-etapa']]);
+    });
+
+    it('na implantação, todas, em qualquer etapa: a da etapa, as que ficaram para trás e as que ainda vêm', () => {
+      expect(momentos('e1')).toEqual([['Curadoria', 'da-etapa'], ['Configuração', 'adiante'], ['Testes', 'adiante']]);
+      // na Configuração com a curadoria pela metade
+      expect(momentos('e2')).toEqual([['Curadoria', 'ficou'], ['Configuração', 'da-etapa'], ['Testes', 'adiante']]);
+      // implantado com a configuração e os testes faltando
+      expect(momentos('e3')).toEqual([['Curadoria', 'ficou'], ['Configuração', 'ficou'], ['Testes', 'ficou']]);
+      // no Stand By, nada ficou para trás; a parte sem nada a fazer não aparece
+      expect(momentos('e0')).toEqual([['Curadoria', 'adiante'], ['Configuração', 'adiante'], ['Testes', 'adiante']]);
+    });
+
+    it('a parte que acabou vira o ✓, mesmo a da etapa', () => {
+      const partes = [{ parte: 'Curadoria', feitos: 5, total: 5 }, { parte: 'Configuração', feitos: 15, total: 15 }, { parte: 'Testes', feitos: 2, total: 6 }];
+      expect(momentos('e2', partes)).toEqual([['Curadoria', 'feita'], ['Configuração', 'feita'], ['Testes', 'adiante']]);
+      expect(momentos('e4', partes)).toEqual([['Curadoria', 'feita'], ['Configuração', 'feita'], ['Testes', 'ficou']]);
+    });
+
+    it('o painel da implantação: o que tem a etapa que liga no cadastro, ou o que o Comercial abre', () => {
+      const etapa = (extra: Partial<EtapaPainel> = {}) => ({ id: 'x', nome: 'x', tipo: 'andamento', nivel: null, obrigatorios: [], avisar: [], resultado: null, ...extra }) as EtapaPainel;
+      const imp = { id: 'imp', tipo: 'gestao' as const, ativo: true, etapas: [etapa()] };
+      const suporte = { id: 'sup', tipo: 'gestao' as const, ativo: true, etapas: [etapa()] };
+      const comercial = { id: 'com', tipo: 'vendas' as const, ativo: true, etapas: [etapa({ abreImplantacao: 'imp' })] };
+      expect(ehPainelDaImplantacao(imp, [imp, suporte, comercial])).toBe(true);
+      expect(ehPainelDaImplantacao(suporte, [imp, suporte, comercial])).toBe(false);
+      // o Comercial desativado não conta; a etapa que liga no cadastro, sim
+      expect(ehPainelDaImplantacao(imp, [imp, { ...comercial, ativo: false }])).toBe(false);
+      expect(ehPainelDaImplantacao({ ...suporte, etapas: [etapa({ ligaNoCadastro: true })] }, [suporte])).toBe(true);
+      // um painel de Vendas nunca é
+      expect(ehPainelDaImplantacao({ ...comercial, etapas: [etapa({ ligaNoCadastro: true })] }, [comercial])).toBe(false);
+    });
   });
 
   it('as partes do painel, sem repetir, e o nome com o produto', () => {

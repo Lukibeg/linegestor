@@ -62,7 +62,12 @@ Voltar a negociação e mover de novo não abre outro card.
   no clipe de cada uma). A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
   Sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
 - Cada parte mostra a conta (**3 de 5**); a parte da etapa em que o card está fica aberta, e as outras abrem com um
-  clique. O cartão do quadro mostra a barrinha da parte da etapa.
+  clique.
+- **O cartão do quadro (2.4.8)** mostra o andamento de **todas as partes**, em qualquer etapa — uma barrinha para cada:
+  **azul** a da etapa em que o card está, **laranja** a que ficou para trás (a curadoria pela metade com o card já na
+  Configuração; a configuração faltando com o card no Implantado) e **cinza** a que ainda vem. A parte que acabou vira só
+  o **✓** com o nome, numa linha em cima. Vale para o painel da implantação (o que o Comercial abre, ou o que tem a etapa que
+  liga no cadastro); nos outros painéis, o cartão continua mostrando só a barrinha da parte da etapa.
 - **O que falta (2.4.4).** O campo que ainda falta tem uma **bolinha vermelha** antes do nome — o mesmo que a conta da
   parte conta. Nas caixinhas, a bolinha fica até a última ser marcada.
 - **O documento conta (2.4.4).** O campo com um arquivo anexado conta como preenchido, mesmo sem nada escrito: na conta da

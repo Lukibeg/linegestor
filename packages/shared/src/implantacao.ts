@@ -20,7 +20,7 @@ import { cnpjLimpo, paraBusca } from './formatos.js';
 import {
   valorPreenchido,
   type AjustesDoPainel, type CampoPersonalizado, type CorPainel, type EtapaPainel, type GrupoDeCampos, type LugarDoGrupo, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
-  type OpcaoDoCampo, type TipoCampo, type ValorDoCampo, type ValoresDosCampos, AJUSTES_PAINEL_PADRAO,
+  type OpcaoDoCampo, type Painel, type TipoCampo, type ValorDoCampo, type ValoresDosCampos, AJUSTES_PAINEL_PADRAO,
 } from './atendimento.js';
 
 // =====================================================================
@@ -196,6 +196,60 @@ export function parteDaEtapa(partes: readonly ProgressoDaParte[], etapa: string 
   if (!etapa) return null;
   const k = chaveDaParte(etapa);
   return partes.find((p) => chaveDaParte(p.parte) === k && p.total > 0) ?? null;
+}
+
+/**
+ * O painel da implantação (2.4.8): o de Gestão que a etapa de um painel de Vendas abre (Ao chegar aqui, abre a implantação),
+ * ou o que tem a etapa que liga no cadastro (o Implantado). Nele, o cartão do quadro mostra o andamento de todas as partes,
+ * e não só o da etapa (`partesNoCartao`). Os mesmos critérios do Suporte › Painel da Implantação, mas para qualquer um deles.
+ */
+export function ehPainelDaImplantacao(
+  painel: Pick<Painel, 'id' | 'tipo' | 'etapas'>, paineis: ReadonlyArray<Pick<Painel, 'tipo' | 'etapas' | 'ativo'>>,
+): boolean {
+  if (painel.tipo !== 'gestao') return false;
+  if (painel.etapas.some((e) => e.ligaNoCadastro)) return true;
+  return paineis.some((p) => p.ativo && p.tipo === 'vendas' && p.etapas.some((e) => e.abreImplantacao === painel.id));
+}
+
+/**
+ * Onde a parte está em relação à etapa do card (2.4.8): `feita` (tudo marcado — vira só o ✓), `da-etapa` (a parte da etapa
+ * em que o card está), `ficou` (o card já passou da etapa desta parte e ainda falta coisa: a curadoria pela metade com o
+ * card na Configuração, a configuração pela metade com o card no Implantado) e `adiante` (a etapa dela ainda vem).
+ */
+export type MomentoDaParte = 'feita' | 'da-etapa' | 'ficou' | 'adiante';
+export type ParteNoCartao = ProgressoDaParte & { momento: MomentoDaParte };
+
+/**
+ * As partes que o cartão do quadro mostra. Fora da implantação (`todas` falso), só a da etapa, como desde o 2.3 ("Configuração
+ * · 3 de 15" no card que está na Configuração; sem uma parte com o nome da etapa, nenhuma). No painel da implantação (o
+ * pedido do Luan, 13/11: "o cliente já tem configuração e já está andando na configuração, porém já tem alguns processos de
+ * curadoria que ainda está em andamento, ou já está implantado, porém tem alguns processos de configuração… não fica muito
+ * fácil de acompanhar"), todas, em qualquer etapa — e a que acabou só com o ✓ ("se tiver ok, ele pode até reduzir… ficar só
+ * com um Vzinho").
+ *
+ * A etapa de cada parte é a do mesmo nome. A parte sem etapa com o nome dela (os Testes num painel sem a etapa Testes) fica
+ * logo depois da etapa da parte de antes: com o card no Implantado, os testes que faltam ficaram para trás; na Configuração,
+ * ainda vêm. As partes sem nada a fazer neste card (total 0) não aparecem.
+ */
+export function partesNoCartao(
+  partes: readonly ProgressoDaParte[], etapas: ReadonlyArray<Pick<EtapaPainel, 'id' | 'nome'>>, etapaId: string | null | undefined, todas: boolean,
+): ParteNoCartao[] {
+  const atual = etapas.findIndex((e) => e.id === etapaId);
+  const etapaDaParte = (nome: string) => etapas.findIndex((e) => chaveDaParte(e.nome) === chaveDaParte(nome));
+  const lista: ParteNoCartao[] = [];
+  // a posição da parte entre as etapas; a sem etapa fica meio passo depois da etapa da parte anterior
+  let anterior = -1;
+  for (const p of partes) {
+    const i = etapaDaParte(p.parte);
+    const lugar = i >= 0 ? i : anterior + 0.5;
+    if (i >= 0) anterior = i;
+    if (p.total <= 0) continue;
+    const momento: MomentoDaParte = p.feitos >= p.total && todas ? 'feita'
+      : i >= 0 && i === atual ? 'da-etapa'
+        : atual >= 0 && lugar < atual ? 'ficou' : 'adiante';
+    lista.push({ ...p, momento });
+  }
+  return todas ? lista : lista.filter((p) => p.momento === 'da-etapa');
 }
 
 /** As partes que já existem no painel (para sugerir ao criar um campo), na ordem dos campos. */
