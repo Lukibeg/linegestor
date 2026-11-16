@@ -4470,6 +4470,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       } catch (err) { A.erros.push(`implantação ${ex.negociacao}: ${err instanceof Error ? err.message : String(err)}`); }
     }
     for (const marcar of ganhosDepois) marcar();
+    // 2.4.8: as duas últimas etapas com os nomes do painel do Luan ("Implantado - Em acompanhamento" e "Implantado - Concluído"),
+    // para a prévia mostrar o que ele vai ver: as duas abrem a aba Implantação, e a barrinha dela fica azul no cartão. Depois dos
+    // exemplos, que andam pelos nomes do modelo (o Concluído e o Implantado)
+    for (const [de, para] of [['Concluído', 'Implantado - Em acompanhamento'], ['Implantado', 'Implantado - Concluído']] as const) {
+      const e = A.etapas.find((x) => x.painelId === PAINEL_DA_IMPLANTACAO && x.nome === de && !x.deletedAt);
+      if (e) e.nome = para;
+    }
 
     // ---- o sininho: o que é antigo já foi lido ----
     // O Luan vê os 5 de que mais precisa (o Crítico que chegou, o prazo perto, o chamado que recebeu, o

@@ -1214,8 +1214,9 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     await entrar('admin');
     const op = await api.opcoes();
     const imp = painel(op, 'IMP');
-    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
-    expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado']);
+    // as duas últimas com os nomes do painel do Luan (2.4.8: só na prévia; o modelo continua com o Concluído e o Implantado)
+    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Implantado - Em acompanhamento', 'Implantado - Concluído']);
+    expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado - Concluído']);
     expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
     // os 19 campos do modelo (a Ativação dos módulos saiu no 2.4 e voltou no 2.4.1), em três partes, de dois produtos; e, só na
     // prévia, a aba Implantação com os dois checklists do card do LinePBX (2.4.8: os ramais no telefone, vindos da Lista de
@@ -1230,18 +1231,18 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
 
     const q = await api.quadro({ painel: imp.id });
     const naEtapa = Object.fromEntries(q.colunas.map((c) => [c.etapa.nome, c.chamados.map((x) => x.cliente?.nome)]));
-    expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Implantado: ['Ótica Visão Clara'] });
+    expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], 'Implantado - Concluído': ['Ótica Visão Clara'] });
     // o cartão mostra a conta da parte da etapa (a Configuração do LineChat: 3 de 5)
     const movimento = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados[0]!;
     // 3 de 5 caixinhas + 1 de 2 módulos escolhidos na Curadoria (o checklist conta)
     expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 4, total: 7 });
 
-    const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado')!.chamados[0]!.codigo);
+    const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado - Concluído')!.chamados[0]!.codigo);
     expect(vc.origem).toBe('comercial');
     expect(vc.daNegociacao?.codigo).toMatch(/^COM-/);
     expect(vc.historico.some((ev) => ev.tipo === 'cadastro' && /Line Reports/.test(ev.texto))).toBe(true);
     const negociacao = await api.chamado(vc.daNegociacao!.codigo);
-    expect(negociacao.implantacoes).toMatchObject([{ codigo: vc.codigo, etapa: 'Implantado', situacao: 'fechado', podeAbrir: true }]);
+    expect(negociacao.implantacoes).toMatchObject([{ codigo: vc.codigo, etapa: 'Implantado - Concluído', situacao: 'fechado', podeAbrir: true }]);
     // o card no Implantado levou a negociação ao Implantado do Comercial; depois, o Ganho (começou a faturar)
     expect(etapa(op, 'COM', 'Implantado').recebeImplantacao).toBe(true);
     expect(negociacao.historico.some((ev) => ev.tipo === 'etapa' && ev.texto.includes(`a implantação ${vc.codigo} terminou`))).toBe(true);
@@ -1314,7 +1315,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(Object.keys(menos.marcas[config.id]!)).toEqual([opcao(config, 'Criação das equipes')]);
 
     // a janela do Implantado: o LineChat ganha a data, o WebChat liga
-    const validado = imp.etapas.find((e) => e.nome === 'Implantado')!;
+    const validado = imp.etapas.find((e) => e.nome === 'Implantado - Concluído')!;
     const plano = (await api.aoMover(card.id, { etapaId: validado.id })).cadastro!;
     expect(plano.produtos).toEqual([{ id: chat, nome: 'LineChat', acao: 'ativa' }]);
     expect(plano.modulos.map((m) => [m.nome, m.acao])).toEqual([['WebChat', 'liga']]);
@@ -1372,7 +1373,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     // o checklist conta os escolhidos: o FOP2 marcado, o Callback faltando
     const ficha = await api.chamado(horizonte.codigo);
     expect(contaDoCampo(checklist, ficha.campos[checklist.id], ficha.campos)).toEqual({ feitos: 1, total: 2 });
-    const plano = (await api.aoMover(horizonte.id, { etapaId: imp.etapas.find((e) => e.nome === 'Implantado')!.id })).cadastro!;
+    const plano = (await api.aoMover(horizonte.id, { etapaId: imp.etapas.find((e) => e.nome === 'Implantado - Concluído')!.id })).cadastro!;
     expect(plano.modulos.map((m) => m.nome)).toEqual(['FOP2', 'Callback']);
     expect(plano.semMarcar).toEqual([expect.objectContaining({ nome: 'Callback', produto: 'LinePBX', campo: 'Ativação dos módulos' })]);
   });
