@@ -115,7 +115,11 @@ export const campoDoTipo = (tipo: TipoDePainel, c: CampoObrigatorio) => !(tipo =
 export const CORES_PAINEL = ['accent', 'roxo', 'turquesa', 'signal', 'ok', 'rosa', 'amarelo', 'neutral'] as const;
 export type CorPainel = (typeof CORES_PAINEL)[number];
 
-export type ItemChecklist = { id: string; texto: string; feito: boolean; porId: string | null; em: string | null; doAssunto: boolean };
+export type ItemChecklist = {
+  id: string; texto: string; feito: boolean; porId: string | null; em: string | null; doAssunto: boolean;
+  /** no checklist do card (2.4.8): o campo de onde o item veio (a Lista de ramais da Curadoria); nulo, incluído à mão */
+  origem?: string | null;
+};
 /**
  * Os itens dos campos Checklist do card (2.4.8), pelo id do campo. Diferente das caixinhas (as mesmas em todos os cards do
  * painel), cada card monta a sua lista: "uma implantação varia muito o que tem que fazer… uma lista de ramais que tenho que
@@ -532,7 +536,17 @@ export type CampoPersonalizado = {
    * inteira. Nulo: pelo tipo, como antes (larguraDoCampo).
    */
   largura?: LarguraDoCampo | null;
+  /**
+   * De onde vêm os itens (2.4.8, o Luan: "quero que os campos de outras etapas que eu selecionar … gere esse checklist na
+   * implantação"): num Checklist do card, os campos deste painel cujo conteúdo vira item — cada linha de um texto longo, cada
+   * opção escolhida numa lista de várias; o texto curto e a lista de uma opção viram um item com o nome do campo. O checklist
+   * acompanha: o que entra lá aparece, o que sai some. Vazio: só os itens incluídos à mão.
+   */
+  origens?: string[];
 };
+/** Os tipos de campo que podem gerar os itens de um checklist do card (2.4.8). */
+export const TIPOS_QUE_GERAM_ITENS: readonly TipoCampo[] = ['texto', 'texto_longo', 'lista', 'lista_varios'];
+export const MAX_ORIGENS_DO_CHECKLIST = 20;
 export const LARGURAS_DO_CAMPO = ['metade', 'inteiro'] as const;
 export type LarguraDoCampo = (typeof LARGURAS_DO_CAMPO)[number];
 export const NOME_LARGURA_DO_CAMPO: Record<LarguraDoCampo, string> = { metade: 'Metade', inteiro: 'Linha inteira' };
@@ -1477,6 +1491,9 @@ export const CampoGravarSchema = z.object({
   produtoId: z.string().trim().max(60).nullish().transform((v) => v || null),
   /** Nos módulos (2.3): o campo de módulos de onde vêm as opções (o checklist do que foi escolhido na Curadoria) */
   escolhidosEm: z.string().trim().max(60).nullish().transform((v) => v || null),
+  // de onde vêm os itens do checklist do card (2.4.8): sem repetir; nos outros tipos, nada
+  origens: z.array(z.string().trim().min(1).max(60)).max(MAX_ORIGENS_DO_CHECKLIST, `Até ${MAX_ORIGENS_DO_CHECKLIST} campos`).default([])
+    .transform((v) => [...new Set(v)]),
   /** recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha */
   anexos: z.boolean().default(false),
   /** a largura no grupo do meio da ficha (2.4.7): metade ou a linha inteira; vazio, pelo tipo */
@@ -1493,7 +1510,7 @@ export const CampoGravarSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'A lista precisa de pelo menos uma opção' });
   }
   opcoesSemRepetir(c.opcoes, ctx);
-}).transform((c) => (c.tipo === 'documento' ? { ...c, anexos: true, opcoes: [] } : c.tipo === 'checklist' ? { ...c, opcoes: [], incluirNaHora: false } : c));
+}).transform((c) => (c.tipo === 'documento' ? { ...c, anexos: true, opcoes: [], origens: [] } : c.tipo === 'checklist' ? { ...c, opcoes: [], incluirNaHora: false } : { ...c, origens: [] }));
 /**
  * Só as caixinhas do campo (2.3, o "Editar as caixinhas" do card: criar, renomear, tirar, mudar a ordem e as pastas), sem
  * mexer no resto do campo. Vale para todos os cards do painel. Desde o 2.4 a que sai é excluída de verdade (o Luan: "aqui eu

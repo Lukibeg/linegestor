@@ -1218,11 +1218,15 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado']);
     expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
     // os 19 campos do modelo (a Ativação dos módulos saiu no 2.4 e voltou no 2.4.1), em três partes, de dois produtos; e, só na
-    // prévia, os dois checklists do card da Configuração do LinePBX (2.4.8: os ramais no telefone e no softphone)
+    // prévia, a aba Implantação com os dois checklists do card do LinePBX (2.4.8: os ramais no telefone, vindos da Lista de
+    // ramais da Curadoria, e os do softphone)
     const campos = op.campos.filter((c) => c.painelId === imp.id);
     expect(campos).toHaveLength(21);
-    expect(campos.filter((c) => c.tipo === 'checklist').map((c) => [c.nome, c.parte])).toEqual([['Ramais no telefone', 'Configuração'], ['Ramais no softphone', 'Configuração']]);
-    expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
+    const ramaisDaCuradoria = campos.find((c) => c.nome === 'Lista de ramais' && c.produtoId === op.produtos.find((p) => p.nome === 'LinePBX')!.id)!;
+    expect(campos.filter((c) => c.tipo === 'checklist').map((c) => [c.nome, c.parte, c.origens])).toEqual([
+      ['Ramais no telefone', 'Implantação', [ramaisDaCuradoria.id]], ['Ramais no softphone', 'Implantação', []],
+    ]);
+    expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes', 'Implantação']);
 
     const q = await api.quadro({ painel: imp.id });
     const naEtapa = Object.fromEntries(q.colunas.map((c) => [c.etapa.nome, c.chamados.map((x) => x.cliente?.nome)]));
@@ -1348,9 +1352,8 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     const semTelefones = await api.salvarCaixinhas(conf.id, { opcoes: novo.opcoes.filter((o) => o.nome !== 'Configuração dos telefones').map((o) => ({ id: o.id, nome: o.nome, pasta: o.pasta ?? null })) });
     expect(semTelefones.opcoes.some((o) => o.nome === 'Configuração dos telefones')).toBe(false);
     const conta = (await api.chamado(visao.codigo)).partes.find((p) => p.parte === 'Configuração')!;
-    // as 9 caixinhas que ficaram marcadas + os 2 módulos da Ativação dos módulos (de volta no 2.4.1) + os 4 itens marcados nos
-    // ramais do telefone e do softphone (2.4.8)
-    expect(conta.feitos).toBe(15);
+    // as 9 caixinhas que ficaram marcadas + os 2 módulos da Ativação dos módulos (de volta no 2.4.1)
+    expect(conta.feitos).toBe(11);
     expect((await erroDe(api.salvarCaixinhas(campoDe(op, imp.id, 'Módulos a ativar', pbx).id, { opcoes: [{ nome: 'X' }] }))).status).toBe(400);
     await entrar('operador');
     expect((await erroDe(api.salvarCaixinhas(conf.id, { opcoes: [{ nome: 'X' }] }))).status).toBe(403);
@@ -1383,8 +1386,8 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     const testes = campoDe(op, imp.id, 'Testes realizados', chat);
     const vazio = await api.salvarCaixinhas(testes.id, { opcoes: [] });
     expect(vazio.opcoes).toEqual([]);
-    // os grupos: o modelo vem com os três, no meio; um grupo novo na lateral
-    expect(imp.ajustes.partes.map((g) => g.nome)).toEqual(['Curadoria', 'Configuração', 'Testes']);
+    // os grupos: o modelo vem com os três, no meio (a prévia põe a Implantação, 2.4.8); um grupo novo na lateral
+    expect(imp.ajustes.partes.map((g) => g.nome)).toEqual(['Curadoria', 'Configuração', 'Testes', 'Implantação']);
     await api.salvarGrupos(imp.id, { grupos: [...imp.ajustes.partes.map((g) => ({ nome: g.nome, antes: g.nome, lugar: g.lugar })), { nome: 'Contrato', lugar: 'lateral' }] });
     op = await api.opcoes();
     expect(painel(op, 'IMP').ajustes.partes.at(-1)).toEqual({ nome: 'Contrato', lugar: 'lateral' });
@@ -1571,16 +1574,21 @@ describe('o checklist do card na prévia (2.4.8, como o servidor)', () => {
     const soft = op.campos.find((c) => c.painelId === imp.id && c.nome === 'Ramais no softphone')!;
     const cards = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items;
     const visao = await api.chamado(cards.find((c) => c.cliente?.nome === 'Ótica Visão Clara')!.codigo);
-    // implantada, com o softphone do vendedor ainda por fazer
+    // implantada, com o softphone do vendedor ainda por fazer; os ramais do telefone vieram da Lista de ramais da Curadoria
     expect(visao.listas[soft.id]!.map((i) => [i.texto, i.feito])).toEqual([['202 Gerência (Fernanda), no celular', true], ['210 Vendedor (notebook)', false]]);
-    expect(visao.historico.map((e) => e.texto)).toContain('incluiu em Ramais no telefone (LinePBX): 200 Recepção (loja do centro), 201 Laboratório de lentes, 202 Gerência (Fernanda)');
+    expect(visao.listas[tel.id]!.map((i) => [i.texto, i.feito, i.origem])).toEqual([
+      ['200 Recepção (loja do centro)', true, tel.origens![0]], ['201 Laboratório de lentes', true, tel.origens![0]],
+      ['202 Gerência (Fernanda)', true, tel.origens![0]], ['210 a 221 Vendedores', true, tel.origens![0]],
+    ]);
+    expect(visao.historico.map((e) => e.texto)).toContain('marcou em Ramais no telefone (LinePBX): 210 a 221 Vendedores');
+    expect(visao.partes.find((p) => p.parte === 'Implantação')).toEqual({ parte: 'Implantação', feitos: 5, total: 6 });
 
     const hotel = cards.find((c) => c.cliente?.nome === 'Hotel Beira Mar')!;
-    const antes = hotel.partes.find((p) => p.parte === 'Configuração')!;
+    const antes = hotel.partes.find((p) => p.parte === 'Implantação')!;
     let f = await api.listaDoCampo(hotel.id, soft.id, { acao: 'incluir', textos: ['- 200 Recepção\n- 201 Reservas'] });
     expect(f.listas[soft.id]!.map((i) => i.texto)).toEqual(['200 Recepção', '201 Reservas']);
     // o softphone vazio contava um por fazer; agora conta os dois itens
-    expect(f.partes.find((p) => p.parte === 'Configuração')).toEqual({ parte: 'Configuração', feitos: antes.feitos, total: antes.total + 1 });
+    expect(f.partes.find((p) => p.parte === 'Implantação')).toEqual({ parte: 'Implantação', feitos: antes.feitos, total: antes.total + 1 });
     const [a, b] = f.listas[soft.id]!;
     f = await api.listaDoCampo(hotel.id, soft.id, { acao: 'marcar', itemId: a!.id, feito: true });
     expect(f.listas[soft.id]![0]).toMatchObject({ feito: true, porId: expect.any(String) });
@@ -1592,6 +1600,15 @@ describe('o checklist do card na prévia (2.4.8, como o servidor)', () => {
     expect((await erroDe(api.listaDoCampo(hotel.id, op.campos.find((c) => c.painelId === imp.id && c.nome === 'IP do cliente')!.id, { acao: 'incluir', textos: ['x'] }))).status).toBe(400);
     // o alterar não aceita o checklist como valor
     expect((await erroDe(api.alterar(hotel.id, { campos: { [tel.id]: ['200'] } }))).message).toMatch(/inclua os itens pela ficha/);
+    // os ramais do telefone vêm da Curadoria: marcar, sim; tirar e corrigir, lá. A Curadoria muda e o checklist acompanha
+    const ramais = tel.origens![0]!;
+    f = await api.chamado(hotel.id);
+    expect(f.listas[tel.id]!.map((i) => i.texto)).toEqual(['200 Recepção (24h)', '201 Reservas', '202 Governança', '210 a 269 Apartamentos']);
+    f = await api.listaDoCampo(hotel.id, tel.id, { acao: 'marcar', itemId: f.listas[tel.id]![1]!.id, feito: true });
+    expect((await erroDe(api.listaDoCampo(hotel.id, tel.id, { acao: 'tirar', itemId: f.listas[tel.id]![0]!.id }))).message)
+      .toBe('Esse item vem de Lista de ramais (LinePBX) (Curadoria): para tirar, mude lá.');
+    f = await api.alterar(hotel.id, { campos: { [ramais]: '201 reservas\n203 Restaurante' } });
+    expect(f.listas[tel.id]!.map((i) => [i.texto, i.feito])).toEqual([['201 reservas', true], ['203 Restaurante', false]]);
     await entrar('leitor');
     expect((await erroDe(api.listaDoCampo(hotel.id, soft.id, { acao: 'incluir', textos: ['x'] }))).status).toBe(403);
   });

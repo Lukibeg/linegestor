@@ -145,3 +145,71 @@ describe('o checklist do card (2.4.8)', () => {
     expect(itens).toHaveLength(2);
   });
 });
+
+// 2.4.8: o checklist da aba Implantação gerado dos campos das outras abas (o Luan: "quero que os campos de outras etapas que eu
+// selecionar em algum lugar gere esse checklist na implantação")
+describe('o checklist do card gerado de outros campos (2.4.8)', () => {
+  let ramais: CampoPersonalizado;
+  let filas: CampoPersonalizado;
+  let implantar: CampoPersonalizado;
+  let cartao = '';
+
+  beforeAll(async () => {
+    ramais = (await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Lista de ramais', tipo: 'texto_longo', parte: 'Curadoria' })).json();
+    filas = (await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Filas', tipo: 'lista_varios', parte: 'Curadoria', opcoes: [{ nome: 'Vendas', ativa: true }, { nome: 'Suporte', ativa: true }] })).json();
+    const r = await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'O que fazer na implantação', tipo: 'checklist', parte: 'Implantação', origens: [ramais.id, filas.id, ramais.id] });
+    expect(r.statusCode, r.body).toBe(201);
+    implantar = r.json();
+    cartao = (await s.post('/atendimento/chamados', { painelId: IMP, titulo: 'Implantação da Padaria' })).json().id;
+  });
+
+  it('o campo guarda de onde vêm os itens (sem repetir); só campos que geram itens, deste painel', async () => {
+    expect(implantar.origens).toEqual([ramais.id, filas.id]);
+    const data = (await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Data da visita', tipo: 'data', parte: 'Curadoria' })).json();
+    const ruim = await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Outro checklist', tipo: 'checklist', origens: [data.id] });
+    expect(ruim.statusCode).toBe(400);
+    expect(ruim.body).toContain('não gera itens');
+    expect((await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Mais um', tipo: 'checklist', origens: ['campo-de-outro-painel'] })).statusCode).toBe(400);
+    // a auditoria registra as origens
+    const aud = (await s.get(`/admin/audit?entityId=${implantar.id}&pageSize=5`)).json().items as Array<{ after: Record<string, unknown> | null }>;
+    expect(aud[0]?.after).toMatchObject({ origens: [ramais.id, filas.id] });
+  });
+
+  it('o que a Curadoria escreve vira item na Implantação; a conta da aba vem com eles', async () => {
+    const alt = await s.patch(`/atendimento/chamados/${cartao}`, { campos: { [ramais.id]: '200 Recepção\n201 Reservas', [filas.id]: [filas.opcoes[1]!.id] } });
+    expect(alt.statusCode, alt.body).toBe(200);
+    const f: FichaChamado = alt.json();
+    expect(f.listas[implantar.id]!.map((i) => [i.texto, i.origem])).toEqual([['200 Recepção', ramais.id], ['201 Reservas', ramais.id], ['Suporte', filas.id]]);
+    expect(f.partes.find((p) => p.parte === 'Implantação')).toEqual({ parte: 'Implantação', feitos: 0, total: 3 });
+  });
+
+  it('marcar o que veio fica guardado; a Curadoria muda a lista e o checklist acompanha', async () => {
+    let f = await ficha(cartao);
+    const r200 = f.listas[implantar.id]![0]!;
+    expect((await lista(cartao, implantar.id, { acao: 'marcar', itemId: r200.id, feito: true })).statusCode).toBe(200);
+    expect((await lista(cartao, implantar.id, { acao: 'incluir', textos: ['Treinar a recepção'] })).statusCode).toBe(200);
+    f = (await s.patch(`/atendimento/chamados/${cartao}`, { campos: { [ramais.id]: '200 Recepção\n202 Governança' } })).json();
+    expect(f.listas[implantar.id]!.map((i) => [i.texto, i.feito])).toEqual([['200 Recepção', true], ['202 Governança', false], ['Suporte', false], ['Treinar a recepção', false]]);
+    // a etapa mostra o mesmo
+    const cartoes = (await s.get(`/atendimento/chamados?painel=${IMP}&situacao=todos`)).json().items as Array<{ id: string; partes: unknown[] }>;
+    expect(cartoes.find((c) => c.id === cartao)?.partes).toContainEqual({ parte: 'Implantação', feitos: 1, total: 4 });
+  });
+
+  it('o que veio de outro campo não se corrige nem se tira aqui', async () => {
+    const f = await ficha(cartao);
+    const item = f.listas[implantar.id]!.find((i) => i.texto === '202 Governança')!;
+    const t = await lista(cartao, implantar.id, { acao: 'tirar', itemId: item.id });
+    expect(t.statusCode).toBe(400);
+    expect(t.json().error).toBe('Esse item vem de Lista de ramais (Curadoria): para tirar, mude lá.');
+    expect((await lista(cartao, implantar.id, { acao: 'editar', itemId: item.id, texto: 'x' })).statusCode).toBe(400);
+    // o incluído à mão, sim
+    const mao = f.listas[implantar.id]!.find((i) => i.texto === 'Treinar a recepção')!;
+    expect((await lista(cartao, implantar.id, { acao: 'tirar', itemId: mao.id })).statusCode).toBe(200);
+  });
+
+  it('sem as origens, ficam só os incluídos à mão', async () => {
+    const r = await s.put(`/atendimento/campos/${implantar.id}`, { nome: implantar.nome, tipo: 'checklist', parte: 'Implantação', origens: [] });
+    expect(r.statusCode, r.body).toBe(200);
+    expect((await ficha(cartao)).listas[implantar.id]).toBeUndefined();
+  });
+});

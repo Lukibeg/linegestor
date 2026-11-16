@@ -38,7 +38,7 @@ import {
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO, MAX_BYTES_ANEXO_DO_CAMPO,
   type CampoPersonalizado, condicoesGuardadas, mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES,
-  listaDepois, type AcaoNaLista, type ListasDosCampos,
+  listaDepois, itensDoChecklist, type AcaoNaLista, type ListasDosCampos,
 } from '@gestor/shared';
 import type { Tx } from './ajustes.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
@@ -854,7 +854,7 @@ async function conferirMovimento(
 ): Promise<'sobe' | 'desce' | null> {
   const painel = o.painel ?? e.painel;
   const dados = {
-    ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id), (await camposComAnexoDe(db, [e.t.id])).get(e.t.id)),
+    ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id), (await camposComAnexoDe(db, [e.t.id])).get(e.t.id), camposDoPainel(e.ctx, e.t.panelId, true)),
     ...(o.responsavelId !== undefined ? { responsavelId: o.responsavelId } : {}),
     // o motivo da perda vem junto com o marcar como perdido (o de antes, de uma perda desfeita, não vale)
     ...(para.resultado === 'perdido' ? { motivoPerda: o.venda?.motivoPerda ?? null } : {}),
@@ -1137,7 +1137,7 @@ export async function assumir(app: FastifyInstance, ator: Ator, ref: string, opt
   if (opts.mover !== false && e.painel.tipo !== 'vendas' && e.etapa?.tipo === 'entrada') {
     const alvo = etapaAoAssumir(e.painel.etapas, t.stageId);
     if (alvo) {
-      const dados = { ...dadosDaLinha(t, await minutosGastos(app.db, t.id), (await camposComAnexoDe(app.db, [t.id])).get(t.id)), responsavelId: ator.id };
+      const dados = { ...dadosDaLinha(t, await minutosGastos(app.db, t.id), (await camposComAnexoDe(app.db, [t.id])).get(t.id), camposDoPainel(e.ctx, t.panelId, true)), responsavelId: ator.id };
       if (!faltaParaEtapa(dados, alvo, { de: e.etapa, painel: e.painel }).length) para = alvo;
     }
   }
@@ -1658,7 +1658,11 @@ export async function mexerNaListaDoCampo(app: FastifyInstance, ator: Ator, ref:
   if (c.tipo !== 'checklist') throw new BadRequest(`${c.nome} não é um checklist do card.`);
   const nome = nomeCompletoDoCampo(c, ctx.produtos);
   const listas = (t.fieldLists as ListasDosCampos | null) ?? {};
-  const r = listaDepois(listas[c.id], { nome }, d, pessoaDoAtor(ator), agora.toISOString(), newId);
+  // a lista como a ficha mostra: com os itens que vêm de outros campos (2.4.8), que aqui só se marcam
+  const campos = camposDoPainel(ctx, t.panelId, true);
+  const atual = itensDoChecklist(c, campos, t.customFields as ValoresDosCampos | null, listas[c.id]);
+  const nomeDaOrigem = (id: string) => { const o = campos.find((x) => x.id === id); return o ? `${nomeCompletoDoCampo(o, ctx.produtos)}${o.parte ? ` (${o.parte})` : ''}` : undefined; };
+  const r = listaDepois(atual, { nome }, d, pessoaDoAtor(ator), agora.toISOString(), newId, nomeDaOrigem);
   if (!r.ok) throw new BadRequest(r.erro);
   if (!r.mudou) return nada(t);
   const novas: ListasDosCampos = { ...listas };

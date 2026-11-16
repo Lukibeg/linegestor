@@ -34,7 +34,7 @@ import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronRight, FolderPlus, ListTree, Pencil, Plus, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
 import {
   camposDoSistemaDoTipo, DICA_CAMPO_DO_SISTEMA, DICA_TIPO_CAMPO, MAX_CAMPOS_DO_PAINEL, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO,
-  NOME_LUGAR_DO_GRUPO, OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, TIPOS_QUE_TROCAM, chaveDoCampo, etiquetasUnicas, gruposDoPainel, mesmoGrupo, nomeDoSistemaIgual, paraBusca,
+  NOME_LUGAR_DO_GRUPO, OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, TIPOS_QUE_GERAM_ITENS, TIPOS_QUE_TROCAM, nomeCompletoDoCampo, chaveDoCampo, etiquetasUnicas, gruposDoPainel, mesmoGrupo, nomeDoSistemaIgual, paraBusca,
   temOpcoesEscritas, tipoTroca, LARGURAS_DO_CAMPO, NOME_LARGURA_DO_CAMPO, larguraDoCampo,
   type LarguraDoCampo, type CampoDoSistema, type CampoGravarEntrada, type CampoPersonalizado, type GrupoDoPainel, type GruposGravarEntrada, type LugarDoGrupo, type Painel, type TipoCampo,
 } from '@gestor/shared';
@@ -375,6 +375,9 @@ function LinhaDoCampo({ c, painel, primeiro, ultimo, movendo, onMover, onEditar 
 }) {
   const pede = c.ativo ? ondePede(painel, [chaveDoCampo(c.id)]) : [];
   const ativas = c.opcoes.filter((o) => o.ativa);
+  // de onde vêm os itens do checklist do card (2.4.8)
+  const opcoes = useOpcoes();
+  const origens = (c.origens ?? []).map((id) => opcoes.data?.campos.find((x) => x.id === id)).filter((x): x is CampoPersonalizado => !!x);
   return (
     <li className="flex items-start gap-1.5 px-2 py-2 sm:px-3" data-campo={c.nome}>
       <span className="flex shrink-0">
@@ -391,6 +394,11 @@ function LinhaDoCampo({ c, painel, primeiro, ultimo, movendo, onMover, onEditar 
         </span>
         {temOpcoesEscritas(c.tipo) && <span className="block text-[12.5px] text-ink-2 break-words">{ativas.map((o) => o.nome).join(' · ') || (c.tipo === 'caixinhas' ? 'Nenhuma caixinha' : 'Sem opções ativas')}</span>}
         {c.tipo === 'modulos' && <span className="block text-[12.5px] text-ink-2 break-words">{ativas.map((o) => o.nome).join(' · ') || 'O produto ainda não tem módulos (Administração › Produtos)'}</span>}
+        {c.tipo === 'checklist' && (
+          <span className="block text-[12.5px] text-ink-2 break-words">
+            {origens.length ? `Os itens vêm de ${origens.map((o) => `${nomeCompletoDoCampo(o, opcoes.data?.produtos ?? [])}${o.parte ? ` (${o.parte})` : ''}`).join(' · ')}, e cada card inclui os seus` : 'Cada card inclui os seus itens'}
+          </span>
+        )}
         {c.dica && <span className="block text-[12.5px] text-muted leading-snug break-words">{c.dica}</span>}
       </button>
       <button type="button" className="btn-ghost btn-sm shrink-0" onClick={onEditar} aria-label={`Editar o campo ${c.nome}`}>
@@ -609,6 +617,8 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
     anexos: campo?.anexos ?? false,
     // 2.4.7: vazio = pelo tipo (o que a ficha fazia antes)
     largura: (campo?.largura ?? '') as LarguraDoCampo | '',
+    // 2.4.8: de onde vêm os itens do checklist do card
+    origens: campo?.origens ?? [],
   }));
   // as caixinhas, em pastas (2.3)
   const [pastas, setPastas] = useState<PastaRascunho[]>(() => pastasDoEditor(campo?.opcoes ?? []));
@@ -629,6 +639,11 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
   // o checklist dos módulos (2.3) segue um campo de módulos do mesmo produto, que seja a escolha
   const fontes = (opcoesDoModulo.data?.campos ?? []).filter((c) => c.painelId === painel.id && c.tipo === 'modulos' && !c.escolhidosEm && c.id !== campo?.id && (c.produtoId ?? '') === f.produtoId);
   const seguido = !!campo && (opcoesDoModulo.data?.campos ?? []).some((c) => c.escolhidosEm === campo.id);
+  // os campos que geram os itens do checklist do card (2.4.8): os textos e as listas deste painel, na ordem dos grupos
+  const ordemDoGrupo = (parte: string | null) => { const i = grupos.findIndex((g) => mesmoGrupo(g.nome, parte ?? '')); return i < 0 ? -1 : i; };
+  const geradores = (opcoesDoModulo.data?.campos ?? [])
+    .filter((c) => c.painelId === painel.id && c.ativo && c.id !== campo?.id && TIPOS_QUE_GERAM_ITENS.includes(c.tipo))
+    .sort((a, b) => ordemDoGrupo(a.parte) - ordemDoGrupo(b.parte) || a.ordem - b.ordem);
 
   const excluir = async () => {
     setSalvando(true); setErro('');
@@ -671,6 +686,8 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
       escolhidosEm: f.tipo === 'modulos' && fontes.some((c) => c.id === f.escolhidosEm) ? f.escolhidosEm : null,
       anexos: f.anexos,
       largura: f.largura || null,
+      // na ordem dos campos (e sem os que saíram)
+      origens: f.tipo === 'checklist' ? geradores.filter((c) => f.origens.includes(c.id)).map((c) => c.id) : [],
       opcoes: f.tipo === 'caixinhas' ? caixinhasParaGravar(pastas) : lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
       obrigatorioAoAbrir: f.tipo !== 'checklist' && f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
     };
@@ -788,6 +805,30 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
               {fontes.map((c) => <option key={c.id} value={c.id}>Só os marcados em {c.nome}{c.parte ? ` (${c.parte})` : ''}</option>)}
             </select>
           </Rotulo>
+        )}
+
+        {/* 2.4.8, o Luan: "quero que os campos de outras etapas que eu selecionar … gere esse checklist na implantação" */}
+        {f.tipo === 'checklist' && (
+          <fieldset className="rounded-lg border border-line px-3.5 pt-1.5 pb-3 min-w-0" id="campo-origens">
+            <legend className="text-[13px] font-semibold px-1">Os itens vêm de (opcional)</legend>
+            <p className="text-[12.5px] text-muted mb-2">
+              Cada linha de um texto longo (a Lista de ramais) e cada opção escolhida numa lista viram um item; o texto curto e a lista
+              de uma opção, um item com o nome do campo. O checklist acompanha o que mudar lá, e os itens incluídos à mão continuam.
+            </p>
+            {geradores.length ? (
+              <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2 max-h-60 overflow-y-auto pr-1">
+                {geradores.map((c) => (
+                  <label key={c.id} className="flex items-start gap-2 text-sm cursor-pointer min-w-0">
+                    <input type="checkbox" className="mt-[3px] shrink-0" checked={f.origens.includes(c.id)}
+                      onChange={(e) => mudar({ origens: e.target.checked ? [...f.origens, c.id] : f.origens.filter((x) => x !== c.id) })} />
+                    <span className="min-w-0">{nomeCompletoDoCampo(c, opcoesDoModulo.data?.produtos ?? [])}
+                      <span className="block text-[12px] text-muted">{c.parte ?? 'Detalhes'} · {NOME_TIPO_CAMPO[c.tipo]}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : <p className="text-[12.5px] text-muted italic">Este painel ainda não tem um texto ou uma lista para gerar itens.</p>}
+          </fieldset>
         )}
 
         <Rotulo rotulo="Explicação (opcional)" id="campo-dica" dica="Aparece embaixo do campo, na ficha e no Abrir chamado.">

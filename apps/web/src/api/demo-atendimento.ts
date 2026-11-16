@@ -36,6 +36,7 @@ import {
   textoDoValor, textosDosCampos, valoresVisiveis,
   ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, modulosSemMarcar, AoMoverSchema,
   GruposGravarSchema, gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO, ListaDoCampoSchema, listaDepois, type AcaoNaLista, type ListasDosCampos,
+  itensDoChecklist, listasEfetivas, TIPOS_QUE_GERAM_ITENS,
   mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES, CondicoesDaNegociacaoSchema, mesDeHoje, type CondicoesDaNegociacao,
   type AssinaturaNoCadastro, type MarcasDosCampos, type NegociacaoNoFim, type OQueAEtapaFaz, type PlanoDaImplantacao, type PlanoDoCadastro, type PedidoDoCliente,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
@@ -669,7 +670,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Os campos do painel, na ordem dos Ajustes (todos, ou só os ativos). */
   const camposDoPainel = (painelId: string, soAtivos = false) =>
     A.campos.filter((c) => c.painelId === painelId && (!soAtivos || c.ativo)).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
-  const campoParaTela = (c: CampoPersonalizado): CampoPersonalizado => ({ ...c, opcoes: c.opcoes.map((o) => ({ ...o })) });
+  const campoParaTela = (c: CampoPersonalizado): CampoPersonalizado => ({ ...c, opcoes: c.opcoes.map((o) => ({ ...o })), ...(c.origens ? { origens: [...c.origens] } : {}) });
 
   /** O chamado no quadro e na lista: sem o que o painel desligou (fica guardado) e com os campos ativos dele. */
   function cartao(t: ChamadoRow, par: Parentes, agora: Date): CartaoChamado {
@@ -879,7 +880,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
       solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id), campos: t.campos,
       camposComAnexo: camposComAnexo(t.id),
-      listas: t.listas ?? {},
+      listas: listasEfetivas(camposDoPainel(t.painelId, true), t.campos, t.listas),
       valor: t.valor, ativacao: t.ativacao, empresa: t.empresa, motivoPerda: t.motivoPerda,
     };
   }
@@ -2268,8 +2269,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const c = camposDoPainel(t.painelId, true).find((x) => x.id === campoId);
     if (!c) throw naoAchado('Campo do painel');
     if (c.tipo !== 'checklist') throw bad(`${c.nome} não é um checklist do card.`);
-    const nome = nomeCompletoDoCampo(c, S.products.filter((x) => !x.deletedAt).map((x) => ({ id: x.id, nome: x.name })));
-    const r = listaDepois(t.listas?.[c.id], { nome }, d, pessoaDoAtor(ator), iso(agora), novoId);
+    const produtos = S.products.filter((x) => !x.deletedAt).map((x) => ({ id: x.id, nome: x.name }));
+    const nome = nomeCompletoDoCampo(c, produtos);
+    // a lista como a ficha mostra: com os itens que vêm de outros campos (2.4.8), que aqui só se marcam
+    const campos = camposDoPainel(t.painelId, true);
+    const atual = itensDoChecklist(c, campos, t.campos, t.listas?.[c.id]);
+    const nomeDaOrigem = (id: string) => { const o = campos.find((x) => x.id === id); return o ? `${nomeCompletoDoCampo(o, produtos)}${o.parte ? ` (${o.parte})` : ''}` : undefined; };
+    const r = listaDepois(atual, { nome }, d, pessoaDoAtor(ator), iso(agora), novoId, nomeDaOrigem);
     if (!r.ok) throw bad(r.erro);
     if (!r.mudou) return nada(t);
     const novas: ListasDosCampos = { ...(t.listas ?? {}) };
@@ -3075,7 +3081,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       outrosContatos: campoLigado(painel.ajustes, 'cliente') ? t.outrosContatos ?? [] : [],
       outrasConversas: (t.outrasSessoes ?? []).map((sessaoId) => ({ sessaoId, url: linkDaConversa(A.integ.linkConversa, sessaoId) })),
       checklist: t.checklist.map((i) => ({ ...i })),
-      listas: Object.fromEntries(Object.entries(t.listas ?? {}).map(([k, v]) => [k, v.map((i) => ({ ...i }))])),
+      listas: Object.fromEntries(Object.entries(listasEfetivas(camposDoPainel(t.painelId, true), t.campos, t.listas)).map(([k, v]) => [k, v.map((i) => ({ ...i }))])),
       observadores: t.observadores.map((id) => pessoaCurta(id)!),
       citaveis: quemVeOPainel(painel),
       criadoPor: pessoaCurta(t.criadoPorId),
@@ -3528,6 +3534,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const campoParaAuditoria = (c: CampoPersonalizado) => ({
     nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes.map((o) => ({ ...o })), ativo: c.ativo, incluirNaHora: c.incluirNaHora,
     ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}), ...(c.anexos ? { anexos: true } : {}),
+    ...(c.origens?.length ? { origens: [...c.origens] } : {}),
   });
   /**
    * Incluir uma opção numa lista do painel ali mesmo (2.0.3, a Indicação), como o servidor: só nas listas marcadas;
@@ -3591,6 +3598,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (doSistema) throw conflito(`Todo chamado do painel ${p.nome} já tem o campo ${doSistema}: escolha outro nome.`);
     // os módulos são os do produto: trocar o produto trocaria as opções do que já foi marcado
     if (atual?.tipo === 'modulos' && atual.produtoId !== d.produtoId) throw bad(`O produto dos módulos não muda depois de criado (${atual.nome}). Crie outro campo e desative este.`);
+    // de onde vêm os itens do checklist do card (2.4.8): campos deste painel que geram itens, e não ele mesmo
+    for (const id of d.origens) {
+      const o = camposDoPainel(p.id).find((c) => c.id === id);
+      if (!o || o.id === atual?.id) throw bad('Os itens do checklist vêm de outros campos deste painel.');
+      if (!TIPOS_QUE_GERAM_ITENS.includes(o.tipo)) throw bad(`${o.nome} (${NOME_TIPO_CAMPO[o.tipo]}) não gera itens: escolha um texto, um texto longo ou uma lista.`);
+    }
     // o checklist dos módulos (2.3): segue um campo de módulos deste painel, do mesmo produto, que seja a escolha
     if (d.escolhidosEm) {
       if (d.tipo !== 'modulos') throw bad('Só os módulos do produto seguem outro campo.');
@@ -3678,6 +3691,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const c: CampoPersonalizado = {
       id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, incluirNaHora: d.tipo === 'lista' && d.incluirNaHora,
       parte: d.parte, produtoId: d.produtoId, escolhidosEm: d.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos, largura: d.largura,
+      ...(d.tipo === 'checklist' ? { origens: d.origens } : {}),
     };
     A.campos.push(c);
     sincronizarModulos();
@@ -3697,6 +3711,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     conferirProdutoDoCampo(d.produtoId);
     const opcoes = conferirCampo(p, d, antes);
     Object.assign(c, { nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos, largura: d.largura });
+    if (c.tipo === 'checklist') c.origens = d.origens; else delete c.origens;
     sincronizarModulos();
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
@@ -3758,7 +3773,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (igual) throw conflito(`O painel ${p.nome} já tem um campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}: renomeie ou exclua esse antes de restaurar.`);
     if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw bad(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos: exclua um antes de restaurar.`);
     A.excluidos.splice(i, 1);
-    const volta: CampoPersonalizado = { ...c, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, escolhidosEm: c.escolhidosEm && outros.some((x) => x.id === c.escolhidosEm) ? c.escolhidosEm : null };
+    const volta: CampoPersonalizado = {
+      ...c, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, escolhidosEm: c.escolhidosEm && outros.some((x) => x.id === c.escolhidosEm) ? c.escolhidosEm : null,
+      ...(c.origens ? { origens: c.origens.filter((o) => outros.some((x) => x.id === o)) } : {}),
+    };
     A.campos.push(volta);
     sincronizarModulos();
     return { valor: campoParaTela(volta), resumo: `Restaurou o campo ${nomeDoCampoInteiro(volta)} no painel ${p.nome}`, depois: campoParaAuditoria(volta) };
@@ -4046,14 +4064,20 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         deletedAt: null, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro,
       }));
       camposDeFabricaDoPainel(PAINEL_DA_IMPLANTACAO, 'gestao', true);
-      // o checklist do card (2.4.8): os ramais de cada cliente, no telefone e no softphone — cada card monta a sua lista. Só na
-      // prévia (o modelo não traz: cada equipe cria os seus em Configurar › Campos)
+      // o checklist do card (2.4.8), na aba Implantação: os ramais no telefone vêm da Lista de ramais da Curadoria; os do
+      // softphone, cada card inclui. Só na prévia (o modelo não traz: cada equipe cria o grupo e os campos em Configurar › Campos)
       const pbx = S.products.find((x) => x.code === 'linepbx' && !x.deletedAt)?.id ?? null;
+      const imp = A.paineis.find((x) => x.id === PAINEL_DA_IMPLANTACAO);
       const depois = Math.max(-1, ...A.campos.filter((c) => c.painelId === PAINEL_DA_IMPLANTACAO).map((c) => c.ordem)) + 1;
-      if (pbx) ['Ramais no telefone', 'Ramais no softphone'].forEach((nome, k) => A.campos.push({
-        id: novoId(), painelId: PAINEL_DA_IMPLANTACAO, nome, tipo: 'checklist', dica: null, opcoes: [], ativo: true, ordem: depois + k, incluirNaHora: false,
-        parte: 'Configuração', produtoId: pbx, escolhidosEm: null, anexos: false,
-      }));
+      const listaDeRamais = A.campos.find((c) => c.painelId === PAINEL_DA_IMPLANTACAO && c.nome === 'Lista de ramais' && c.produtoId === pbx);
+      if (pbx && imp) {
+        imp.ajustes = { ...imp.ajustes, partes: [...(imp.ajustes.partes ?? []), { nome: 'Implantação', lugar: 'meio' }] };
+        ['Ramais no telefone', 'Ramais no softphone'].forEach((nome, k) => A.campos.push({
+          id: novoId(), painelId: PAINEL_DA_IMPLANTACAO, nome, tipo: 'checklist', ordem: depois + k, incluirNaHora: false, opcoes: [], ativo: true, parte: 'Implantação', produtoId: pbx,
+          escolhidosEm: null, anexos: false, origens: k === 0 && listaDeRamais ? [listaDeRamais.id] : [],
+          dica: k === 0 ? 'Os ramais da Lista de ramais da Curadoria: marque conforme configurar cada telefone.' : 'Quem usa o softphone (no computador ou no celular).',
+        }));
+      }
     }
 
     // ---- os assuntos: a lista da equipe (colada) e o que já foi preenchido em alguns ----
@@ -4428,7 +4452,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
             if (!c) throw new Error(`o campo ${l.nome} não é da Implantação`);
             if (l.incluir) mexerNaListaDoCampo(ator, card.id, c.id, { acao: 'incluir', textos: [l.incluir] }, quando);
             for (const [k, texto] of (l.marcar ?? []).entries()) {
-              const item = card.listas?.[c.id]?.find((i) => i.texto === texto);
+              // os que vêm da Lista de ramais (2.4.8) também: a lista como a ficha mostra
+              const item = itensDoChecklist(c, camposDoPainel(PAINEL_DA_IMPLANTACAO, true), card.campos, card.listas?.[c.id]).find((i) => i.texto === texto);
               if (!item) throw new Error(`o item ${texto} não está em ${l.nome}`);
               mexerNaListaDoCampo(ator, card.id, c.id, { acao: 'marcar', itemId: item.id, feito: true }, new Date(quando.getTime() + (k + 1) * MINUTO));
             }

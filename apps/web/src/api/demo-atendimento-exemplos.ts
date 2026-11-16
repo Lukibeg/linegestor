@@ -1498,7 +1498,8 @@ export type PassoDaImplantacao = {
   campos?: CampoDaImplantacaoDeExemplo[];
   /**
    * O checklist do card (2.4.8): os itens que a pessoa inclui (cada linha, um item) e os que ela marca, pelo texto. Os campos
-   * Ramais no telefone e Ramais no softphone (LinePBX, na Configuração) só existem na prévia: o modelo não os traz.
+   * Ramais no telefone (os itens vêm da Lista de ramais da Curadoria) e Ramais no softphone (LinePBX, na aba Implantação) só
+   * existem na prévia: o modelo não os traz.
    */
   listas?: Array<{ nome: 'Ramais no telefone' | 'Ramais no softphone'; incluir?: string; marcar?: string[] }>;
   para?: 'Configuração' | 'Testes' | 'Concluído' | 'Implantado';
@@ -1525,7 +1526,7 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
       {
         dias: 11, hora: '16:30', por: 'bruno', responsavel: 'marina', para: 'Testes',
         listas: [
-          { nome: 'Ramais no telefone', incluir: '200 Recepção (loja do centro)\n201 Laboratório de lentes\n202 Gerência (Fernanda)', marcar: ['200 Recepção (loja do centro)', '201 Laboratório de lentes', '202 Gerência (Fernanda)'] },
+          { nome: 'Ramais no telefone', marcar: ['200 Recepção (loja do centro)', '201 Laboratório de lentes', '202 Gerência (Fernanda)', '210 a 221 Vendedores'] },
           // o notebook do vendedor ainda não estava na loja: o softphone dele ficou para depois
           { nome: 'Ramais no softphone', incluir: '202 Gerência (Fernanda), no celular\n210 Vendedor (notebook)', marcar: ['202 Gerência (Fernanda), no celular'] },
         ],
@@ -1564,7 +1565,7 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
       {
         dias: 3, hora: '10:00', por: 'lucio', responsavel: 'marina', para: 'Testes',
         listas: [
-          { nome: 'Ramais no telefone', incluir: '300 Portaria do canteiro\n302 Almoxarifado', marcar: ['300 Portaria do canteiro', '302 Almoxarifado'] },
+          { nome: 'Ramais no telefone', marcar: ['300 Portaria do canteiro', '302 Almoxarifado'] },
           { nome: 'Ramais no softphone', incluir: '301 Engenheiro residente (Edson)' },
         ],
         campos: [
@@ -1614,7 +1615,6 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
     passos: [
       {
         dias: 1, hora: '10:00', por: 'luan',
-        listas: [{ nome: 'Ramais no telefone', incluir: '200 Recepção (24h)\n201 Reservas\n202 Governança' }],
         campos: [
           { produto: 'linepbx', nome: 'IP do cliente', valor: '189.45.12.90' },
           { produto: 'linepbx', nome: 'Lista de ramais', valor: '200 Recepção (24h)\n201 Reservas\n202 Governança\n210 a 269 Apartamentos' },

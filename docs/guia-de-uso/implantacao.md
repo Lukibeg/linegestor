@@ -60,14 +60,21 @@ Voltar a negociação e mover de novo não abre outro card.
   **cole a lista** (cada linha vira um item; o botão diz **Incluir 3**). Marque conforme faz (cada item mostra quem marcou e
   quando); o lápis corrige o texto e o × tira. A lista vazia conta como uma coisa por fazer na parte; cada item conta como
   um. Pedido numa etapa, o campo só está feito com itens, todos marcados.
+- **Os itens que vêm de outros campos.** Na janela do checklist, **Os itens vêm de**: marque, por exemplo, a **Lista de
+  ramais** da Curadoria. Cada linha dela vira um item no checklist (numa lista de várias, cada opção escolhida; num texto
+  curto ou numa lista de uma opção, um item com o nome do campo). A Curadoria mudou a lista? O checklist acompanha: o que
+  entrou aparece, o que saiu some, e o que já foi marcado continua marcado. Esses itens só se marcam ali: para corrigir ou
+  tirar, mude na Lista de ramais.
 - **Todos os produtos.** Cada parte mostra um bloco para cada produto do card; o que ainda não tem campo naquela parte
   (o VoiceNet, por exemplo) aparece vazio, com o aviso.
 - **Os anexos.** Cada campo da Curadoria tem o **Anexar**: imagens, PDF, Word, Excel, até 30 MB cada. A Configuração e os
   Testes ficam sem (o Recebe anexos, em Painéis › Ajustes › Campos, liga em qualquer campo; nas caixinhas, o anexo vai
   no clipe de cada uma). A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
   Sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
-- Cada parte mostra a conta (**3 de 5**); a parte da etapa em que o card está fica aberta, e as outras abrem com um
-  clique.
+- **As abas (2.4.8).** As partes ficam em abas no meio da ficha: **Curadoria · Configuração · Testes · Implantação**. Cada
+  aba mostra a conta (**3/5**) ou o ✓ quando acabou, e a bolinha vermelha quando a próxima etapa pede algo dela. A ficha abre
+  na aba da etapa em que o card está (as etapas "Implantado - …" abrem a Implantação). A aba Implantação é um grupo como os
+  outros: crie em Configurar › Campos › **Novo grupo** (no meio da ficha).
 - **O cartão do quadro (2.4.8)** mostra o andamento de **todas as partes**, em qualquer etapa — uma barrinha para cada:
   **azul** a da etapa em que o card está, **laranja** a que ficou para trás (a curadoria pela metade com o card já na
   Configuração; a configuração faltando com o card no Implantado) e **cinza** a que ainda vem. A parte que acabou vira só

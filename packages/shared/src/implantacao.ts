@@ -19,7 +19,7 @@
 import { cnpjLimpo, paraBusca } from './formatos.js';
 import {
   valorPreenchido, MAX_ITENS_DA_LISTA, MAX_LETRAS_DO_ITEM,
-  type AjustesDoPainel, type ItemChecklist, type ListasDosCampos, type CampoPersonalizado, type CorPainel, type EtapaPainel, type GrupoDeCampos, type LugarDoGrupo, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
+  type AjustesDoPainel, type ItemChecklist, type ListasDosCampos, TIPOS_QUE_GERAM_ITENS, type CampoPersonalizado, type CorPainel, type EtapaPainel, type GrupoDeCampos, type LugarDoGrupo, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
   type OpcaoDoCampo, type Painel, type TipoCampo, type ValorDoCampo, type ValoresDosCampos, AJUSTES_PAINEL_PADRAO,
 } from './atendimento.js';
 
@@ -46,6 +46,24 @@ const temAnexo = (anexos: CamposComAnexo | null | undefined, id: string | undefi
 
 /** O nome da parte como se compara ("Configuração" e "configuracao" são a mesma). */
 const chaveDaParte = (p: string) => paraBusca(p.trim());
+
+/**
+ * A etapa é da parte? Com o mesmo nome (a Configuração da Configuração, como desde o 2.3) ou, desde o 2.4.8, com a primeira
+ * palavra da mesma raiz: o "Implantado - Em acompanhamento" e o "Implantado - Concluído" do painel do Luan são da parte
+ * Implantação (implanta-do, implanta-ção); a "Configuração dos ramais", da Configuração. A raiz tem de ter 5 letras ou mais
+ * e quase toda a palavra mais curta, para "Novos" não casar com "Novidades".
+ */
+export function etapaEhDaParte(etapa: string, parte: string): boolean {
+  const e = chaveDaParte(etapa);
+  const p = chaveDaParte(parte);
+  if (!e || !p) return false;
+  if (e === p) return true;
+  const pe = e.split(/[^a-z0-9]+/).find(Boolean) ?? '';
+  const pp = p.split(/[^a-z0-9]+/).find(Boolean) ?? '';
+  let n = 0;
+  while (n < pe.length && n < pp.length && pe[n] === pp[n]) n++;
+  return n >= 5 && n >= Math.min(pe.length, pp.length) * 0.7;
+}
 
 /** O campo aparece neste chamado? Ativo e, se é de um produto, o chamado tem o produto. */
 export function campoAparece(c: Pick<CampoPersonalizado, 'ativo' | 'produtoId'>, produtosDoChamado: readonly string[]): boolean {
@@ -129,7 +147,7 @@ export function partesDoChamado(
     let b = p.blocos.find((x) => x.produtoId === c.produtoId);
     if (!b) { b = { produtoId: c.produtoId, campos: [] }; p.blocos.push(b); }
     b.campos.push(c);
-    const conta = contaDoCampo(c, valores?.[c.id], valores, anexos, listas?.[c.id]);
+    const conta = contaDoCampo(c, valores?.[c.id], valores, anexos, c.tipo === 'checklist' ? itensDoChecklist(c, campos, valores, listas?.[c.id]) : null);
     p.feitos += conta.feitos;
     p.total += conta.total;
     if (conta.feitos < conta.total) p.faltam.push(c.id);
@@ -201,8 +219,7 @@ export function progressoDasPartes(
  */
 export function parteDaEtapa(partes: readonly ProgressoDaParte[], etapa: string | null | undefined): ProgressoDaParte | null {
   if (!etapa) return null;
-  const k = chaveDaParte(etapa);
-  return partes.find((p) => chaveDaParte(p.parte) === k && p.total > 0) ?? null;
+  return partes.find((p) => etapaEhDaParte(etapa, p.parte) && p.total > 0) ?? null;
 }
 
 /**
@@ -234,26 +251,26 @@ export type ParteNoCartao = ProgressoDaParte & { momento: MomentoDaParte };
  * fácil de acompanhar"), todas, em qualquer etapa — e a que acabou só com o ✓ ("se tiver ok, ele pode até reduzir… ficar só
  * com um Vzinho").
  *
- * A etapa de cada parte é a do mesmo nome. A parte sem etapa com o nome dela (os Testes num painel sem a etapa Testes) fica
- * logo depois da etapa da parte de antes: com o card no Implantado, os testes que faltam ficaram para trás; na Configuração,
- * ainda vêm. As partes sem nada a fazer neste card (total 0) não aparecem.
+ * As etapas de cada parte são as do mesmo nome ou da mesma raiz (`etapaEhDaParte`: os dois "Implantado - …" são da
+ * Implantação). A parte sem etapa (os Testes num painel sem a etapa Testes) fica logo depois da etapa da parte de antes: com o
+ * card no Implantado, os testes que faltam ficaram para trás; na Configuração, ainda vêm. As partes sem nada a fazer neste
+ * card (total 0) não aparecem.
  */
 export function partesNoCartao(
   partes: readonly ProgressoDaParte[], etapas: ReadonlyArray<Pick<EtapaPainel, 'id' | 'nome'>>, etapaId: string | null | undefined, todas: boolean,
 ): ParteNoCartao[] {
   const atual = etapas.findIndex((e) => e.id === etapaId);
-  const etapaDaParte = (nome: string) => etapas.findIndex((e) => chaveDaParte(e.nome) === chaveDaParte(nome));
   const lista: ParteNoCartao[] = [];
-  // a posição da parte entre as etapas; a sem etapa fica meio passo depois da etapa da parte anterior
+  // a última etapa da parte; a parte sem etapa fica meio passo depois da última etapa da parte anterior
   let anterior = -1;
   for (const p of partes) {
-    const i = etapaDaParte(p.parte);
-    const lugar = i >= 0 ? i : anterior + 0.5;
-    if (i >= 0) anterior = i;
+    const daParte = etapas.map((e, i) => (etapaEhDaParte(e.nome, p.parte) ? i : -1)).filter((i) => i >= 0);
+    const ultima = daParte.length ? daParte[daParte.length - 1]! : anterior + 0.5;
+    if (daParte.length) anterior = ultima;
     if (p.total <= 0) continue;
     const momento: MomentoDaParte = p.feitos >= p.total && todas ? 'feita'
-      : i >= 0 && i === atual ? 'da-etapa'
-        : atual >= 0 && lugar < atual ? 'ficou' : 'adiante';
+      : daParte.includes(atual) ? 'da-etapa'
+        : atual >= 0 && ultima < atual ? 'ficou' : 'adiante';
     lista.push({ ...p, momento });
   }
   return todas ? lista : lista.filter((p) => p.momento === 'da-etapa');
@@ -291,6 +308,83 @@ export function linhasDaLista(texto: string | readonly string[]): string[] {
     .filter(Boolean);
 }
 
+/** Um número curto para o id do item que veio de outro campo (o mesmo texto, o mesmo id: a marca não se perde). */
+function resumoDoTexto(k: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < k.length; i++) { h ^= k.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36);
+}
+
+/**
+ * O que um campo de origem dá ao checklist do card (2.4.8): o texto longo, uma linha por item (a Lista de ramais da Curadoria);
+ * a lista de várias, uma opção escolhida por item; o texto curto e a lista de uma opção, um item com o nome do campo ("IP do
+ * cliente: 189.45.12.90"). Os outros tipos não dão nada.
+ */
+export function textosDaOrigem(o: Pick<CampoPersonalizado, 'nome' | 'tipo' | 'opcoes'>, v: ValorDoCampo | null | undefined): string[] {
+  if (v === null || v === undefined || v === '') return [];
+  if (o.tipo === 'texto_longo') return typeof v === 'string' ? linhasDaLista(v) : [];
+  if (o.tipo === 'lista_varios') {
+    const ids = Array.isArray(v) ? v : [];
+    return ids.map((id) => o.opcoes.find((x) => x.id === id)?.nome).filter((x): x is string => !!x).flatMap((x) => linhasDaLista(x));
+  }
+  if (o.tipo === 'texto' && typeof v === 'string') {
+    const t = linhasDaLista(v).join(' ');
+    return t ? [`${o.nome}: ${t}`.slice(0, MAX_LETRAS_DO_ITEM)] : [];
+  }
+  if (o.tipo === 'lista' && typeof v === 'string') {
+    const nome = o.opcoes.find((x) => x.id === v)?.nome;
+    return nome ? [`${o.nome}: ${nome}`.slice(0, MAX_LETRAS_DO_ITEM)] : [];
+  }
+  return [];
+}
+
+/**
+ * Os itens do checklist do card como a ficha mostra (2.4.8): primeiro os que vêm dos campos de origem (na ordem das origens e
+ * das linhas), com a marca que já tinham — o item se acha pelo texto, sem ligar para maiúscula e acento —; depois os incluídos
+ * à mão. O item que veio de um campo e saiu de lá some (com a marca); o incluído à mão com o mesmo texto de um que veio passa a
+ * ser dele. Sem origens, os guardados, como estão.
+ */
+export function itensDoChecklist(
+  c: Pick<CampoPersonalizado, 'id' | 'origens'>, campos: readonly Pick<CampoPersonalizado, 'id' | 'nome' | 'tipo' | 'opcoes' | 'ativo'>[],
+  valores: ValoresDosCampos | null | undefined, guardados: readonly ItemChecklist[] | null | undefined,
+): ItemChecklist[] {
+  const lista = guardados ?? [];
+  if (!c.origens?.length) return lista.filter((i) => !i.origem);
+  const gerados: ItemChecklist[] = [];
+  const vistos = new Set<string>();
+  const usados = new Set<string>();
+  for (const oid of c.origens) {
+    const o = campos.find((x) => x.id === oid && x.id !== c.id && x.ativo && TIPOS_QUE_GERAM_ITENS.includes(x.tipo));
+    if (!o) continue;
+    for (const texto of textosDaOrigem(o, valores?.[o.id])) {
+      const k = paraBusca(texto);
+      if (!k || vistos.has(k)) continue;
+      vistos.add(k);
+      const guardado = lista.find((i) => !usados.has(i.id) && i.origem && paraBusca(i.texto) === k)
+        ?? lista.find((i) => !usados.has(i.id) && !i.origem && paraBusca(i.texto) === k);
+      if (guardado) usados.add(guardado.id);
+      gerados.push({
+        id: guardado?.id ?? `g-${resumoDoTexto(k)}`, texto, feito: guardado?.feito ?? false, porId: guardado?.porId ?? null, em: guardado?.em ?? null,
+        doAssunto: false, origem: o.id,
+      });
+    }
+  }
+  return [...gerados, ...lista.filter((i) => !i.origem && !usados.has(i.id))];
+}
+
+/** Os itens de todos os checklists do card como a ficha mostra (os que vêm de outros campos já dentro). */
+export function listasEfetivas(
+  campos: readonly CampoPersonalizado[], valores: ValoresDosCampos | null | undefined, listas: ListasDosCampos | null | undefined,
+): ListasDosCampos {
+  const r: ListasDosCampos = {};
+  for (const c of campos) {
+    if (c.tipo !== 'checklist') continue;
+    const itens = itensDoChecklist(c, campos, valores, listas?.[c.id]);
+    if (itens.length) r[c.id] = itens;
+  }
+  return r;
+}
+
 /** O que mexer no checklist do card faz (o mesmo no servidor e na prévia). */
 export type AcaoNaLista =
   | { acao: 'incluir'; textos: string[] } | { acao: 'marcar'; itemId: string; feito: boolean }
@@ -306,6 +400,7 @@ export type ListaDepois =
  */
 export function listaDepois(
   atual: readonly ItemChecklist[] | null | undefined, campo: { nome: string }, d: AcaoNaLista, quem: string | null, em: string, novoId: () => string,
+  nomeDaOrigem: (id: string) => string | undefined = () => undefined,
 ): ListaDepois {
   const lista = [...(atual ?? [])];
   const achar = (id: string) => lista.findIndex((i) => i.id === id);
@@ -328,6 +423,11 @@ export function listaDepois(
   const i = achar(d.itemId);
   if (i < 0) return { ok: false, erro: 'Esse item não está mais na lista (alguém tirou?). Atualize a ficha.' };
   const item = lista[i]!;
+  // o item que veio de outro campo (2.4.8) muda lá: aqui só se marca
+  if (item.origem && (d.acao === 'tirar' || d.acao === 'editar')) {
+    const de = nomeDaOrigem(item.origem);
+    return { ok: false, erro: `Esse item vem ${de ? `de ${de}` : 'de outro campo do card'}: ${d.acao === 'tirar' ? 'para tirar' : 'para corrigir'}, mude lá.` };
+  }
   if (d.acao === 'tirar') {
     lista.splice(i, 1);
     return { ok: true, mudou: true, lista, evento: { acao: 'tirou', campo: campo.nome, item: item.texto }, resumo: `Tirou "${item.texto}" de ${campo.nome}` };

@@ -6,18 +6,36 @@
  * Diferente das caixinhas (as mesmas em todos os cards do painel, editadas no "Editar as caixinhas"), aqui quem trabalha no
  * card inclui os itens dele: um por vez, ou colando a lista (cada linha vira um item). Cada item marcado mostra quem marcou e
  * quando; o lápis corrige o texto e o × tira. Marcar muda na tela antes (e volta se o servidor recusar).
+ *
+ * Os itens que vêm de outros campos (2.4.8, o Luan: "os campos de outras etapas que eu selecionar … gere esse checklist na
+ * implantação"): em cima, debaixo do nome do campo de onde vêm ("Da Lista de ramais · Curadoria"); só se marcam aqui — para
+ * corrigir ou tirar, é lá. Os incluídos à mão vêm depois ("Incluídos aqui").
  */
 import { useState, type KeyboardEvent } from 'react';
 import { Check, Pencil, Plus, X } from 'lucide-react';
-import { linhasDaLista, MAX_LETRAS_DO_ITEM, type CampoPersonalizado, type ItemChecklist } from '@gestor/shared';
+import { linhasDaLista, MAX_LETRAS_DO_ITEM, nomeCompletoDoCampo, type CampoPersonalizado, type ItemChecklist } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { BolinhaDoQueFalta, ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
 import { dataCompleta, emQuando } from './Cabecalho.js';
 
 export function ChecklistDoCard({ c }: { c: CampoPersonalizado }) {
-  const { f, pode } = useAberta();
+  const { f, pode, opcoes } = useAberta();
   const itens = f.listas?.[c.id] ?? [];
+  // de onde vêm os itens (2.4.8): o nome do campo e a aba ("Lista de ramais · Curadoria")
+  const nomeDaOrigem = (id: string) => {
+    const o = opcoes.campos.find((x) => x.id === id);
+    return o ? `${nomeCompletoDoCampo(o, opcoes.produtos)}${o.parte ? ` · ${o.parte}` : ''}` : 'outro campo';
+  };
+  const origens = (c.origens ?? []).filter((id) => opcoes.campos.some((x) => x.id === id && x.ativo));
+  // os itens em grupos: os que vêm de cada campo, na ordem, e depois os incluídos à mão
+  const grupos: Array<{ origem: string | null; itens: ItemChecklist[] }> = [];
+  for (const i of itens) {
+    const k = i.origem ?? null;
+    const g = grupos[grupos.length - 1];
+    if (g && g.origem === k) g.itens.push(i); else grupos.push({ origem: k, itens: [i] });
+  }
+  const comOrigem = grupos.some((g) => g.origem);
   const feitos = itens.filter((i) => i.feito).length;
   // também com o card fechado (o Implantado do modelo fecha o card, e a configuração pode ter ficado para trás)
   const aberto = pode;
@@ -31,9 +49,22 @@ export function ChecklistDoCard({ c }: { c: CampoPersonalizado }) {
       </div>
       {c.dica && <p className="text-[12px] text-muted -mt-0.5 mb-2">{c.dica}</p>}
       {itens.length > 0 ? (
-        <ul className="flex flex-col gap-0.5">{itens.map((i) => <ItemDaLista key={i.id} c={c} i={i} />)}</ul>
+        <div className="flex flex-col gap-2">
+          {grupos.map((g, k) => (
+            <div key={`${g.origem ?? 'mao'}:${k}`} className="min-w-0" data-origem={g.origem ? nomeDaOrigem(g.origem) : 'à mão'}>
+              {comOrigem && (
+                <p className="text-[11.5px] font-semibold uppercase tracking-wide text-muted mb-0.5">{g.origem ? `Vêm de ${nomeDaOrigem(g.origem)}` : 'Incluídos aqui'}</p>
+              )}
+              <ul className="flex flex-col gap-0.5">{g.itens.map((i) => <ItemDaLista key={i.id} c={c} i={i} />)}</ul>
+            </div>
+          ))}
+        </div>
       ) : (
-        <p className="text-[13px] text-muted italic">{aberto ? 'Nenhum item ainda: inclua os deste card abaixo.' : 'Nenhum item.'}</p>
+        <p className="text-[13px] text-muted italic">
+          {origens.length
+            ? `Os itens vêm de ${origens.map(nomeDaOrigem).join(', ')}: preencha lá${aberto ? ', ou inclua aqui' : ''}.`
+            : aberto ? 'Nenhum item ainda: inclua os deste card abaixo.' : 'Nenhum item.'}
+        </p>
       )}
       {aberto && <IncluirNaLista c={c} vazia={!itens.length} />}
     </div>
@@ -92,7 +123,8 @@ function ItemDaLista({ c, i }: { c: CampoPersonalizado; i: ItemChecklist }) {
             </span>
           </label>
         )}
-        {pode && !editando && (
+        {/* o que veio de outro campo muda lá (2.4.8): aqui só se marca */}
+        {pode && !editando && !i.origem && (
           <span className="flex items-center shrink-0 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
             <button type="button" className="btn-ghost btn-sm text-muted -my-0.5 !px-1.5" title="Corrigir o texto" aria-label={`Corrigir ${i.texto}`}
               onClick={() => { setTexto(i.texto); setEditando(true); }}>

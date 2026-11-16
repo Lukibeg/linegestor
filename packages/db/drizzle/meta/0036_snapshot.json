@@ -1,5 +1,5 @@
 {
-  "id": "cf277f49-ddfb-448e-82b5-a2e3395c7e94",
+  "id": "1c1dbaa5-5868-41dd-a74f-7f8035c7e80c",
   "prevId": "5177c358-ed29-478b-b5fc-73d9868549ad",
   "version": "7",
   "dialect": "postgresql",
@@ -7488,6 +7488,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "source_field_ids": {
+          "name": "source_field_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "active": {
           "name": "active",

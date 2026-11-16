@@ -24,7 +24,7 @@ import {
   type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
   type CartaoParaLista, type CasoOperadora, type DadosObrigatorios, type FichaChamado, type FiltrosAtendimento, type Gravidade, type ItemChecklist, type ListasDosCampos,
   type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Prioridade, type QuadroAtendimento, type ResumoDoPainel,
-  type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado, type ValoresDosCampos,
+  type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado, type ValoresDosCampos, type CampoPersonalizado, listasEfetivas,
 } from '@gestor/shared';
 import { NotFound } from '../../plugins/errors.js';
 import { etiquetasParaAPessoa } from './etiquetas.js';
@@ -35,7 +35,7 @@ import { lerAjustes as lerAjustesLineChat } from '../linechat.js';
 import { tipoDaImagem } from '../portal.js';
 import { listarContatos } from '../clients.js';
 import {
-  carregarCartoes, carregarContexto, carregarPaineis, cartoesDe, chamadoVisivel, eventoParaTela, lerAjustesDaNia, lerModeloDaConversa, pessoaCurta, podeCuidar, podeTrabalhar, podeVerPainel,
+  camposDoPainel, carregarCartoes, carregarContexto, carregarPaineis, cartoesDe, chamadoVisivel, eventoParaTela, lerAjustesDaNia, lerModeloDaConversa, pessoaCurta, podeCuidar, podeTrabalhar, podeVerPainel,
   quemVeOPainel, type Ator, type Contexto, type LinhaChamado,
 } from './contexto.js';
 import { whatsAppPronto } from './whatsapp.js';
@@ -52,7 +52,7 @@ const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 // =====================================================================
 
 /** O chamado na forma que a regra dos obrigatórios (`faltaParaEtapa`) entende. `camposComAnexo` (2.4.4): o anexo conta como preenchido. */
-export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number, camposComAnexo: readonly string[] = []): DadosObrigatorios {
+export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number, camposComAnexo: readonly string[] = [], campos: readonly CampoPersonalizado[] = []): DadosObrigatorios {
   return {
     tipoChamado: t.kind as TipoChamado,
     clienteId: t.clientId, contatoNome: t.contactName, contatoTelefone: t.contactPhone, contatoEmail: t.contactEmail,
@@ -63,7 +63,8 @@ export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number, camposComAne
     responsavelId: t.assigneeId,
     solucao: t.solution, causa: t.cause, validacao: t.validation,
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
-    listas: (t.fieldLists as ListasDosCampos | null) ?? {},
+    // com os itens que vêm de outros campos (2.4.8): o checklist pedido numa etapa conta com eles
+    listas: campos.length ? listasEfetivas(campos, t.customFields as ValoresDosCampos | null, t.fieldLists as ListasDosCampos | null) : (t.fieldLists as ListasDosCampos | null) ?? {},
     tempoMinutos,
     campos: (t.customFields as ValoresDosCampos | null) ?? {},
     camposComAnexo,
@@ -491,7 +492,7 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
   // o que falta para cada etapa e os filhos que travam
   const totalMinutos = tempo.reduce((s, i) => s + i.minutes, 0);
   // os campos com um arquivo anexado contam como preenchidos (2.4.4)
-  const dados = dadosDaLinha(t, totalMinutos, [...new Set(anexos.filter((a) => a.fieldId && !a.optionId && !a.noteId).map((a) => a.fieldId!))]);
+  const dados = dadosDaLinha(t, totalMinutos, [...new Set(anexos.filter((a) => a.fieldId && !a.optionId && !a.noteId).map((a) => a.fieldId!))], camposDoPainel(ctx, t.panelId, true));
   // de onde ele está (2.2: sair da entrada pede o responsável)
   const aqui = painel.etapas.find((e) => e.id === t.stageId);
   const faltam = Object.fromEntries(painel.etapas.map((e) => [e.id, faltaParaEtapa(dados, e, { de: aqui, painel })]));
@@ -533,7 +534,7 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     outrosContatos: campoLigado(painel.ajustes, 'cliente') ? (t.otherContacts ?? []) : [],
     outrasConversas: (t.otherSessions ?? []).map((sessaoId) => ({ sessaoId, url: linkDaConversa(integracoes.valor.linkConversa, sessaoId) })),
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
-    listas: (t.fieldLists as ListasDosCampos | null) ?? {},
+    listas: listasEfetivas(camposDoPainel(ctx, t.panelId, true), t.customFields as ValoresDosCampos | null, t.fieldLists as ListasDosCampos | null),
     observadores: t.watcherIds.map((id) => pessoaCurta(ctx, id)!),
     citaveis,
     criadoPor: pessoaCurta(ctx, t.createdById),

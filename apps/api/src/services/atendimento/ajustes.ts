@@ -20,7 +20,7 @@ import { newId, products, ticketFields, ticketPanels, ticketStages, ticketSubjec
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, MODELO_DA_IMPLANTACAO, temOpcoesEscritas,
   ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL, problemaNasEtapasDoTipo,
-  lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
+  lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, TIPOS_QUE_GERAM_ITENS, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
   EVENTOS_AVISO, EXEMPLOS_DOS_AVISOS, NOME_EVENTO_AVISO, modeloDoAviso, modelosParaGuardar, preencherAviso, variaveisDesconhecidas,
   type EventoAviso, type ResultadoDaVenda, type TipoDePainel,
@@ -635,7 +635,7 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
 const campoParaAuditoria = (c: CampoPersonalizado) => ({
   nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes, ativo: c.ativo, incluirNaHora: c.incluirNaHora,
   ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}), ...(c.anexos ? { anexos: true } : {}),
-  ...(c.largura ? { largura: c.largura } : {}),
+  ...(c.largura ? { largura: c.largura } : {}), ...(c.origens?.length ? { origens: c.origens } : {}),
 });
 
 /**
@@ -695,6 +695,7 @@ function conferirCampo(p: typeof ticketPanels.$inferSelect, outros: CampoPersona
   // os módulos são os do produto: trocar o produto trocaria as opções do que já foi marcado
   if (atual?.tipo === 'modulos' && atual.produtoId !== d.produtoId) throw new BadRequest(`O produto dos módulos não muda depois de criado (${atual.nome}). Crie outro campo e desative este.`);
   conferirEscolhidosEm(outros, d, atual?.id ?? null);
+  conferirOrigens(outros, d, atual?.id ?? null);
   // o mesmo nome pode estar em produtos diferentes (2.3: o Horário de atendimento do LineChat e o do LinePBX)
   const igual = outros.find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome) && (c.produtoId ?? null) === (d.produtoId ?? null));
   if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
@@ -716,6 +717,18 @@ function conferirEscolhidosEm(outros: CampoPersonalizado[], d: CampoGravar, atua
     throw new BadRequest('O checklist dos módulos segue um campo de módulos deste painel, do mesmo produto, em que os módulos são escolhidos.');
   }
   if (atualId && outros.some((c) => c.escolhidosEm === atualId)) throw new BadRequest(`Outro campo segue ${d.nome}: ele continua sendo a escolha dos módulos.`);
+}
+
+/**
+ * De onde vêm os itens do checklist do card (2.4.8): campos deste painel, de um tipo que gera itens (o texto, o texto longo, a
+ * lista de uma opção e a de várias), e não ele mesmo.
+ */
+function conferirOrigens(outros: CampoPersonalizado[], d: CampoGravar, atualId: string | null) {
+  for (const id of d.origens) {
+    const o = outros.find((c) => c.id === id);
+    if (!o || o.id === atualId) throw new BadRequest('Os itens do checklist vêm de outros campos deste painel.');
+    if (!TIPOS_QUE_GERAM_ITENS.includes(o.tipo)) throw new BadRequest(`${o.nome} (${NOME_TIPO_CAMPO[o.tipo]}) não gera itens: escolha um texto, um texto longo ou uma lista.`);
+  }
 }
 
 /**
@@ -786,6 +799,7 @@ export async function criarCampo(app: FastifyInstance, painelId: string, d: Camp
     await tx.insert(ticketFields).values({
       id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: d.tipo === 'lista' && d.incluirNaHora,
       sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId, followsFieldId: d.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos, width: d.largura,
+      sourceFieldIds: d.tipo === 'checklist' ? d.origens : [],
     });
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
@@ -811,6 +825,7 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
     await tx.update(ticketFields).set({
       name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date(),
       section: d.parte, productId: d.produtoId, followsFieldId: antes.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos, width: d.largura,
+      sourceFieldIds: antes.tipo === 'checklist' ? d.origens : [],
     }).where(eq(ticketFields.id, id));
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
@@ -961,7 +976,9 @@ export async function restaurarCampo(app: FastifyInstance, id: string): Promise<
   if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw new BadRequest(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos: exclua um antes de restaurar.`);
   // a escolha dos módulos que ele seguia pode ter saído: volta sem seguir ninguém
   const segue = c0.escolhidosEm && outros.some((c) => c.id === c0.escolhidosEm) ? c0.escolhidosEm : null;
-  await db.update(ticketFields).set({ deletedAt: null, updatedAt: new Date(), sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, followsFieldId: segue })
+  // as origens do checklist do card (2.4.8) que saíram também
+  const origens = (c0.origens ?? []).filter((o) => outros.some((c) => c.id === o));
+  await db.update(ticketFields).set({ deletedAt: null, updatedAt: new Date(), sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, followsFieldId: segue, sourceFieldIds: origens })
     .where(eq(ticketFields.id, id));
   const c = (await carregarCampos(db, p.id)).find((x) => x.id === id)!;
   const [nome] = await nomesDosCampos(db, [c]);

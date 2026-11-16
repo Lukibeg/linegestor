@@ -1145,6 +1145,7 @@ Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, en
 | `follows_field_id` | texto | O checklist dos módulos (2.3): o campo de módulos de onde vêm as opções — só os marcados lá (a Curadoria) aparecem aqui (a Configuração). Nulo: o campo é a escolha. | — |
 | `accepts_attachments` | sim/não | Recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha (os do modelo Implantação: os da Curadoria) | obrigatório · padrão: false |
 | `width` | texto | A largura no grupo do meio da ficha (2.4.7): metade ou inteiro; nulo, pelo tipo (o texto longo, a linha inteira; o curto, metade) | — |
+| `source_field_ids` | JSON | De onde vêm os itens do Checklist do card (2.4.8): os ids dos campos deste painel cujo conteúdo vira item (cada linha da Lista de ramais da Curadoria). Vazio nos outros tipos e no checklist só com itens incluídos à mão. | obrigatório · padrão: [] |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `deleted_at` | data e hora | Excluído (2.4, o Luan: "eu quero poder excluir os campos e n só desativar"): some dos Ajustes, da ficha, do Abrir chamado e das regras, e o nome fica livre para outro campo. O que os chamados tinham fica guardado; volta com o Restaurar (Ajustes › Campos › Excluídos). Nulo: no painel. | — |

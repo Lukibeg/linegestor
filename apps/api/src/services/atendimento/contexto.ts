@@ -196,6 +196,8 @@ export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonal
     anexos: c.acceptsAttachments,
     // a largura no grupo do meio (2.4.7): a escolhida, ou nula (pelo tipo)
     largura: c.width === 'metade' || c.width === 'inteiro' ? c.width : null,
+    // de onde vêm os itens do checklist do card (2.4.8): só nele
+    ...(c.kind === 'checklist' ? { origens: (c.sourceFieldIds as string[] | null) ?? [] } : {}),
   };
 }
 /**

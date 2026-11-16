@@ -1670,6 +1670,11 @@ export const ticketFields = pgTable(
     acceptsAttachments: boolean('accepts_attachments').notNull().default(false),
     /** A largura no grupo do meio da ficha (2.4.7): metade ou inteiro; nulo, pelo tipo (o texto longo, a linha inteira; o curto, metade) */
     width: text('width'),
+    /**
+     * De onde vêm os itens do Checklist do card (2.4.8): os ids dos campos deste painel cujo conteúdo vira item (cada linha da
+     * Lista de ramais da Curadoria). Vazio nos outros tipos e no checklist só com itens incluídos à mão.
+     */
+    sourceFieldIds: jsonb('source_field_ids').$type<string[]>().notNull().default([]),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     /**

@@ -1,15 +1,19 @@
 /**
  * A implantação na ficha (Patch 2.3, decisão 0057):
  *
- *  - as **partes** (a Curadoria, a Configuração, os Testes): os campos que têm parte (Painéis › Ajustes › Campos), cada
- *    parte num cartão da coluna larga, com um bloco por produto do card (o LineChat, o LinePBX) e a conta do que já foi
- *    feito. A parte da etapa em que o card está fica aberta; as outras, fechadas (um clique abre);
+ *  - as **partes** (a Curadoria, a Configuração, os Testes, a Implantação): os campos que têm parte (Painéis › Ajustes ›
+ *    Campos), com um bloco por produto do card (o LineChat, o LinePBX) e a conta do que já foi feito. Desde o 2.4.8 (decisão
+ *    0064, o Luan: "vai ser em uma aba, vai ficar curadoria, configuração, testes, implantação"), as partes são **abas** num
+ *    cartão só; abre na da etapa em que o card está (o "Implantado - Em acompanhamento" abre a Implantação). Com uma parte só,
+ *    o cartão de antes;
  *  - na negociação, os cards que ela abriu na implantação (a etapa de cada um); no card, a negociação de onde ele veio
  *    fica no cabeçalho.
  */
-import { useMemo, useState } from 'react';
-import { ChevronRight, ClipboardList, Rocket } from 'lucide-react';
-import { chaveDoCampo, ehCaixinhas, gruposNaLateral, larguraDoCampo, paraBusca, partesDoChamado, type BlocoDaParte, type CampoPersonalizado, type ParteDoChamado } from '@gestor/shared';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { Check, ChevronRight, ClipboardList, Rocket } from 'lucide-react';
+import {
+  chaveDoCampo, ehCaixinhas, etapaEhDaParte, gruposNaLateral, larguraDoCampo, paraBusca, partesDoChamado, type BlocoDaParte, type CampoPersonalizado, type ParteDoChamado,
+} from '@gestor/shared';
 import { ChipSituacao, CodigoChamado, painelDe } from '../comum.js';
 import { FaltaNaParte, Secao, useAberta } from './base.js';
 import { Caixinhas } from './Caixinhas.js';
@@ -27,23 +31,90 @@ export function PartesDoChamado() {
   const partes = useMemo(() => partesDoChamado(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, f.campos, grupos ?? [], comAnexo, f.listas),
     [opcoes.campos, f.painelId, produtos, f.campos, grupos, comAnexo, f.listas]);
   if (!partes.length) return null;
-  const daEtapa = etapa ? partes.find((p) => paraBusca(p.nome) === paraBusca(etapa.nome)) : undefined;
-  // fora das etapas com o nome de uma parte (o Stand By, o Concluído, o Implantado), todas abertas; o que a próxima etapa pede, também
+  // a parte da etapa: a do mesmo nome ou da mesma raiz (2.4.8: o "Implantado - Em acompanhamento" é da Implantação)
+  const daEtapa = etapa ? partes.find((p) => etapaEhDaParte(etapa.nome, p.nome)) : undefined;
   const temFalta = (p: ParteDoChamado) => p.blocos.some((b) => b.campos.some((c) => faltando.has(chaveDoCampo(c.id))));
+  // a chave com a etapa: mover o card abre a parte da etapa nova
+  if (partes.length > 1) return <AbasDasPartes key={f.etapaId} partes={partes} daEtapa={daEtapa} temFalta={temFalta} />;
+  const p = partes[0]!;
+  return <Parte key={`${p.nome}:${f.etapaId}`} p={p} atual={p === daEtapa} abertaDeInicio />;
+}
+
+const idDaParte = (nome: string) => `parte-${paraBusca(nome).replace(/[^a-z0-9]+/g, '-')}`;
+
+/**
+ * As partes em abas (2.4.8): Curadoria · Configuração · Testes · Implantação, cada uma com a conta (o ✓ quando acabou) e a
+ * bolinha vermelha do que a próxima etapa pede. Abre na parte da etapa; sem uma, na primeira que a próxima etapa pede, ou na
+ * primeira que falta. As setas do teclado andam entre as abas. O "falta: …" da ficha leva ao campo (e abre a aba dele).
+ */
+function AbasDasPartes({ partes, daEtapa, temFalta }: { partes: ParteDoChamado[]; daEtapa: ParteDoChamado | undefined; temFalta: (p: ParteDoChamado) => boolean }) {
+  const inicial = daEtapa ?? partes.find(temFalta) ?? partes.find((p) => p.feitos < p.total) ?? partes[0]!;
+  const [nome, setNome] = useState(inicial.nome);
+  const aba = partes.find((p) => p.nome === nome) ?? partes[0]!;
+  // o aviso do que falta (irParaOCampo) pede a aba do campo antes de rolar até ele
+  useEffect(() => {
+    const mostrar = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      const dona = partes.find((p) => p.blocos.some((b) => b.campos.some((c) => c.id === id)));
+      if (dona) setNome(dona.nome);
+    };
+    window.addEventListener('gestor:mostrar-campo', mostrar);
+    return () => window.removeEventListener('gestor:mostrar-campo', mostrar);
+  }, [partes]);
+  const teclas = (e: KeyboardEvent<HTMLDivElement>) => {
+    const i = partes.indexOf(aba);
+    const j = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? partes.length - 1 : null;
+    if (j === null) return;
+    e.preventDefault();
+    const alvo = partes[(j + partes.length) % partes.length]!;
+    setNome(alvo.nome);
+    document.getElementById(`aba-${idDaParte(alvo.nome)}`)?.focus();
+  };
+  const id = idDaParte(aba.nome);
+  const pct = aba.total ? Math.round((aba.feitos / aba.total) * 100) : 0;
+  const faltam = new Set(aba.faltam.map(chaveDoCampo));
   return (
-    <>
-      {partes.map((p) => (
-        // a chave com a etapa: mover o card abre a parte da etapa nova
-        <Parte key={`${p.nome}:${f.etapaId}`} p={p} atual={p === daEtapa} abertaDeInicio={!daEtapa || p === daEtapa || temFalta(p)} />
-      ))}
-    </>
+    <section className="card min-w-0 scroll-mt-20" aria-label="As partes do card" data-abas-das-partes>
+      <div role="tablist" aria-label="As partes do card" className="flex items-stretch gap-1 overflow-x-auto border-b border-line px-2 pt-1.5" onKeyDown={teclas}>
+        {partes.map((p) => {
+          const sel = p === aba;
+          const feita = p.total > 0 && p.feitos >= p.total;
+          return (
+            <button key={p.nome} type="button" role="tab" id={`aba-${idDaParte(p.nome)}`} aria-selected={sel} aria-controls={idDaParte(p.nome)} tabIndex={sel ? 0 : -1}
+              onClick={() => setNome(p.nome)} data-parte={p.nome}
+              className={`relative shrink-0 flex items-center gap-1.5 px-3 pt-2 pb-2.5 -mb-px border-b-2 text-[13.5px] whitespace-nowrap rounded-t-md transition-colors ${
+                sel ? 'border-accent text-ink font-semibold' : 'border-transparent text-muted hover:text-ink hover:bg-surface-2/60'}`}>
+              {temFalta(p) && <span className="w-1.5 h-1.5 rounded-full bg-bad shrink-0" title="A próxima etapa pede algo daqui" aria-label="falta algo para a próxima etapa" />}
+              {p.nome}
+              {p === daEtapa && <span className="text-[10.5px] font-semibold uppercase tracking-wide text-accent-ink bg-accent-soft rounded px-1 py-px">etapa</span>}
+              {feita
+                ? <span className="inline-grid place-items-center w-4 h-4 rounded-full bg-ok text-white" title={`Tudo feito (${p.total})`} aria-label="tudo feito"><Check size={11} strokeWidth={3} /></span>
+                : p.total > 0 && <span className="text-[11.5px] text-muted tnum font-normal">{p.feitos}/{p.total}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div role="tabpanel" id={id} aria-labelledby={`aba-${id}`} className="px-4 pt-3 pb-4 flex flex-col gap-4">
+        {aba.total > 0 && (
+          <div className="flex items-center gap-2.5 text-[12.5px] text-muted tnum">
+            <span className="flex-1 max-w-[16rem] h-1.5 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
+              <span className={`block h-full rounded-full ${aba.feitos === aba.total ? 'bg-ok' : 'bg-accent'}`} style={{ width: `${pct}%` }} />
+            </span>
+            {aba.feitos} de {aba.total}{aba.feitos === aba.total ? ' · tudo feito' : ''}
+          </div>
+        )}
+        <FaltaNaParte.Provider value={faltam}>
+          {aba.blocos.map((b) => <Bloco key={b.produtoId ?? '-'} b={b} parte={aba.nome} />)}
+        </FaltaNaParte.Provider>
+      </div>
+    </section>
   );
 }
 
 function Parte({ p, atual, abertaDeInicio }: { p: ParteDoChamado; atual: boolean; abertaDeInicio: boolean }) {
   const [aberta, setAberta] = useState(abertaDeInicio);
   const pct = p.total ? Math.round((p.feitos / p.total) * 100) : 0;
-  const id = `parte-${paraBusca(p.nome).replace(/[^a-z0-9]+/g, '-')}`;
+  const id = idDaParte(p.nome);
   // os campos que faltam (2.4.4): a bolinha vermelha antes do nome de cada um
   const faltam = useMemo(() => new Set(p.faltam.map(chaveDoCampo)), [p.faltam]);
   return (
