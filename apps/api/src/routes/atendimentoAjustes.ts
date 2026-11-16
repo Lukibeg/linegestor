@@ -19,7 +19,7 @@ import { eq } from 'drizzle-orm';
 import { ticketFields, ticketSubjects, ticketTags } from '@gestor/db';
 import { z } from 'zod';
 import {
-  AjustesDaNiaSchema, AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CaixinhasGravarSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
+  AjustesDaNiaSchema, AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CaixinhasGravarSchema, CampoGravarSchema, CamposDoSistemaSchema, ChecklistNaImplantacaoSchema, ChaveCriarSchema, EtapasGravarSchema,
   EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, ExperimentarRoboSchema, GruposGravarSchema,
   LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, parametrosDoEndereco, SitesIframeSchema, WebhookGravarSchema,
   EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO,
@@ -168,6 +168,16 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     const r = await ajustes.restaurarCampo(app, req.params.id);
     await app.audit(req, { action: 'restore', entityType: 'ticket_field', entityId: req.params.id, summary: r.resumo, after: r.depois });
     return r.valor;
+  });
+
+  // 2.4.8: a caixinha "Checklist na Implantação" ao lado do campo
+  app.post('/campos/:id/checklist-na-implantacao', {
+    ...peloCampo,
+    schema: { tags, summary: 'Ligar (criar no grupo Implantação o Checklist do card com os itens vindos do campo) ou desligar (mandar esse checklist para os Excluídos)', params: Id, body: ChecklistNaImplantacaoSchema },
+  }, async (req) => {
+    const r = await ajustes.checklistNaImplantacao(app, req.params.id, req.body.ligar);
+    await app.audit(req, { action: 'update', entityType: 'ticket_field', entityId: r.valor?.id ?? req.params.id, summary: r.resumo, before: r.antes, after: r.depois });
+    return { campo: r.valor };
   });
 
   app.put('/paineis/:id/grupos', {

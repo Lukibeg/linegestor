@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  MENSAGEM_DO_TITULO, CARGOS_DE_FABRICA, caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
+  checklistLigadoNaImplantacao, MENSAGEM_DO_TITULO, CARGOS_DE_FABRICA, caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   NIA_PADRAO, resumoDaNia, contaDoCampo,
   type CartaoChamado,
@@ -1612,5 +1612,33 @@ describe('o checklist do card na prévia (2.4.8, como o servidor)', () => {
     expect(f.listas[tel.id]!.map((i) => [i.texto, i.feito])).toEqual([['201 reservas', true], ['203 Restaurante', false]]);
     await entrar('leitor');
     expect((await erroDe(api.listaDoCampo(hotel.id, soft.id, { acao: 'incluir', textos: ['x'] }))).status).toBe(403);
+  });
+});
+
+describe('a caixinha "Checklist na Implantação" na prévia (2.4.8, como o servidor)', () => {
+  it('ligar cria o checklist no grupo Implantação; desligar exclui; ligar de novo traz de volta', async () => {
+    await entrar('admin');
+    let op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const pbx = op.produtos.find((p) => p.nome === 'LinePBX')!.id;
+    const ip = op.campos.find((c) => c.painelId === imp.id && c.nome === 'IP do cliente' && c.produtoId === pbx)!;
+    // a Lista de ramais já está ligada (os Ramais no telefone tiram dela)
+    const ramais = op.campos.find((c) => c.painelId === imp.id && c.nome === 'Lista de ramais' && c.produtoId === pbx)!;
+    expect(checklistLigadoNaImplantacao(ramais, op.campos.filter((c) => c.painelId === imp.id))?.nome).toBe('Ramais no telefone');
+    const r = await api.checklistNaImplantacao(ip.id, { ligar: true });
+    expect(r.campo).toMatchObject({ nome: 'IP do cliente (implantação)', tipo: 'checklist', parte: 'Implantação', produtoId: pbx, origens: [ip.id] });
+    const hotel = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Hotel Beira Mar')!;
+    let f = await api.chamado(hotel.id);
+    expect(f.listas[r.campo!.id]!.map((i) => i.texto)).toEqual(['IP do cliente: 189.45.12.90']);
+    f = await api.listaDoCampo(hotel.id, r.campo!.id, { acao: 'marcar', itemId: f.listas[r.campo!.id]![0]!.id, feito: true });
+    expect((await api.checklistNaImplantacao(ip.id, { ligar: false })).campo).toBeNull();
+    op = await api.opcoes();
+    expect(op.campos.some((c) => c.id === r.campo!.id)).toBe(false);
+    const volta = await api.checklistNaImplantacao(ip.id, { ligar: true });
+    expect(volta.campo!.id).toBe(r.campo!.id);
+    expect((await api.chamado(hotel.id)).listas[r.campo!.id]![0]!.feito).toBe(true);
+    // a data não gera itens
+    const data = op.campos.find((c) => c.painelId === imp.id && c.tipo === 'data');
+    if (data) expect((await erroDe(api.checklistNaImplantacao(data.id, { ligar: true }))).message).toMatch(/não gera itens/);
   });
 });

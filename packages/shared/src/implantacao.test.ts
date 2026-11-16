@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, larguraDoCampo, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type Obrigatorio } from './atendimento.js';
 import {
+  checklistLigadoNaImplantacao, nomeDoChecklistDaImplantacao, podeLigarNaImplantacao,
   ehPainelDaImplantacao, etapaDoFimDaImplantacao, etapaEhDaParte, itensDoChecklist, linhasDaLista, listaDepois, listasEfetivas, partesNoCartao, textosDaOrigem,
   gruposDoPainel, gruposNaLateral, mesmoGrupo,
   MODELO_DA_IMPLANTACAO, opcaoDoModelo, modulosDoChecklist, modulosSemMarcar, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
@@ -623,5 +624,26 @@ describe('o checklist do card gerado de outros campos (2.4.8)', () => {
     expect(m('e3')).toEqual([['Curadoria', 'feita'], ['Configuração', 'ficou'], ['Testes', 'ficou'], ['Implantação', 'da-etapa']]);
     expect(m('e4')).toEqual([['Curadoria', 'feita'], ['Configuração', 'ficou'], ['Testes', 'ficou'], ['Implantação', 'da-etapa']]);
     expect(m('e2')).toEqual([['Curadoria', 'feita'], ['Configuração', 'da-etapa'], ['Testes', 'adiante'], ['Implantação', 'adiante']]);
+  });
+});
+
+// 2.4.8: a caixinha "Checklist na Implantação" ao lado do campo
+describe('o checklist na Implantação ligado pelo campo (2.4.8)', () => {
+  const ramais = campo('ramais', { nome: 'Lista de ramais', tipo: 'texto_longo', parte: 'Curadoria', produtoId: 'pbx' });
+  it('só um texto ou uma lista, fora da Implantação', () => {
+    expect(podeLigarNaImplantacao(ramais)).toBe(true);
+    expect(podeLigarNaImplantacao({ tipo: 'lista_varios', parte: null })).toBe(true);
+    expect(podeLigarNaImplantacao({ tipo: 'data', parte: 'Curadoria' })).toBe(false);
+    expect(podeLigarNaImplantacao({ tipo: 'texto', parte: 'implantacao' })).toBe(false);
+  });
+  it('acha o checklist ligado e dá o nome, com um número se já existe', () => {
+    const chk = campo('chk', { nome: 'Lista de ramais (implantação)', tipo: 'checklist', parte: 'Implantação', origens: ['ramais'], produtoId: 'pbx' });
+    expect(checklistLigadoNaImplantacao(ramais, [ramais, chk])?.id).toBe('chk');
+    expect(checklistLigadoNaImplantacao(ramais, [ramais, { ...chk, parte: 'Configuração' }])).toBeNull();
+    expect(nomeDoChecklistDaImplantacao(ramais, [ramais])).toBe('Lista de ramais (implantação)');
+    expect(nomeDoChecklistDaImplantacao(ramais, [ramais, chk])).toBe('Lista de ramais (implantação) 2');
+    // de outro produto não conta; o nome cabe nas 40 letras
+    expect(nomeDoChecklistDaImplantacao(ramais, [{ ...chk, produtoId: 'chat' }])).toBe('Lista de ramais (implantação)');
+    expect(nomeDoChecklistDaImplantacao({ nome: 'Configurações especiais do cliente xyz', produtoId: null }, [])).toHaveLength(40);
   });
 });

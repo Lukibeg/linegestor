@@ -36,7 +36,8 @@ import {
   textoDoValor, textosDosCampos, valoresVisiveis,
   ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, modulosSemMarcar, AoMoverSchema,
   GruposGravarSchema, gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO, ListaDoCampoSchema, listaDepois, type AcaoNaLista, type ListasDosCampos,
-  itensDoChecklist, listasEfetivas, TIPOS_QUE_GERAM_ITENS,
+  itensDoChecklist, listasEfetivas, TIPOS_QUE_GERAM_ITENS, ChecklistNaImplantacaoSchema, checklistLigadoNaImplantacao, GRUPO_DA_IMPLANTACAO,
+  nomeDoChecklistDaImplantacao, podeLigarNaImplantacao,
   mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES, CondicoesDaNegociacaoSchema, mesDeHoje, type CondicoesDaNegociacao,
   type AssinaturaNoCadastro, type MarcasDosCampos, type NegociacaoNoFim, type OQueAEtapaFaz, type PlanoDaImplantacao, type PlanoDoCadastro, type PedidoDoCliente,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
@@ -3781,6 +3782,47 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     sincronizarModulos();
     return { valor: campoParaTela(volta), resumo: `Restaurou o campo ${nomeDoCampoInteiro(volta)} no painel ${p.nome}`, depois: campoParaAuditoria(volta) };
   }
+  /** A caixinha "Checklist na Implantação" ao lado do campo (2.4.8): como o servidor (`checklistNaImplantacao`). */
+  function checklistNaImplantacao(id: string, ligar: boolean, agora: Date) {
+    const c = A.campos.find((x) => x.id === id);
+    if (!c) throw naoAchado('Campo');
+    const p = linhaDoPainel(c.painelId);
+    const campos = camposDoPainel(p.id);
+    const nomeDoCampo = nomeDoCampoInteiro(c);
+    const ja = checklistLigadoNaImplantacao(c, campos);
+    const minuscula = (t: string) => `${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+    if (!ligar) {
+      if (!ja) return { valor: null, resumo: `O campo ${nomeDoCampo} não tinha checklist na Implantação (nada mudou)` };
+      const resto = (ja.origens ?? []).filter((o) => o !== c.id);
+      if (resto.length) {
+        A.campos.find((x) => x.id === ja.id)!.origens = resto;
+        return { valor: null, resumo: `O checklist ${ja.nome} da Implantação deixou de tirar os itens de ${nomeDoCampo}`, antes: { origens: ja.origens }, depois: { origens: resto } };
+      }
+      const r = excluirCampo(ja.id, agora);
+      return { valor: null, resumo: `Desligou o checklist na Implantação de ${nomeDoCampo}: ${minuscula(r.resumo)}`, antes: r.antes };
+    }
+    if (!podeLigarNaImplantacao(c)) {
+      throw bad(mesmoGrupo(c.parte, GRUPO_DA_IMPLANTACAO) ? `${c.nome} já está na Implantação.` : `${c.nome} (${NOME_TIPO_CAMPO[c.tipo]}) não gera itens: o checklist vem de um texto, um texto longo ou uma lista.`);
+    }
+    if (ja) return { valor: campoParaTela(ja), resumo: `O checklist ${ja.nome} já estava na Implantação (nada mudou)` };
+    const garantirGrupo = () => {
+      if ((p.ajustes.partes ?? []).some((g) => mesmoGrupo(g.nome, GRUPO_DA_IMPLANTACAO))) return false;
+      p.ajustes = { ...p.ajustes, partes: [...(p.ajustes.partes ?? []), { nome: GRUPO_DA_IMPLANTACAO, lugar: 'meio' }] };
+      return true;
+    };
+    const excluido = checklistLigadoNaImplantacao(c, A.excluidos.filter((x) => x.painelId === p.id));
+    if (excluido && !campos.some((x) => paraBusca(x.nome) === paraBusca(excluido.nome) && (x.produtoId ?? null) === (excluido.produtoId ?? null))) {
+      const r = restaurarCampo(excluido.id);
+      const novoGrupo = garantirGrupo();
+      return { valor: r.valor, resumo: `Ligou o checklist na Implantação de ${nomeDoCampo}: restaurou ${r.valor.nome}${novoGrupo ? ' (e criou o grupo Implantação)' : ''}`, depois: r.depois };
+    }
+    const r = criarCampo(p.id, CampoGravarSchema.parse({
+      nome: nomeDoChecklistDaImplantacao(c, campos), tipo: 'checklist', parte: GRUPO_DA_IMPLANTACAO, produtoId: c.produtoId ?? null, origens: [c.id],
+      dica: `Os itens vêm de ${c.nome}${c.parte ? ` (${c.parte})` : ''}: marque conforme fizer na implantação.`,
+    }));
+    const novoGrupo = garantirGrupo();
+    return { valor: r.valor, resumo: `Ligou o checklist na Implantação de ${nomeDoCampo}: ${minuscula(r.resumo)}${novoGrupo ? ' (e criou o grupo Implantação)' : ''}`, depois: r.depois };
+  }
   function gravarGrupos(painelId: string, d: ReturnType<typeof GruposGravarSchema.parse>, agora: Date) {
     const p = linhaDoPainel(painelId);
     const campos = camposDoPainel(painelId);
@@ -4914,6 +4956,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const r = restaurarCampo(campoId);
       auditar('restore', 'ticket_field', r.resumo, campoId, { after: r.depois });
       return r.valor;
+    },
+    async checklistNaImplantacao(campoId, d) {
+      await ctx.wait(150);
+      const dados = ler(ChecklistNaImplantacaoSchema, d);
+      exigirConfigurar(painelDoCampo(campoId)); preparar();
+      const r = checklistNaImplantacao(campoId, dados.ligar, agoraReal());
+      auditar('update', 'ticket_field', r.resumo, r.valor?.id ?? campoId, { before: 'antes' in r ? r.antes : undefined, after: 'depois' in r ? r.depois : undefined });
+      return { campo: r.valor };
     },
     async salvarGrupos(painelId, d) {
       await ctx.wait(150);

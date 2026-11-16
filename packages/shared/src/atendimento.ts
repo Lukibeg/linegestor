@@ -544,6 +544,9 @@ export type CampoPersonalizado = {
    */
   origens?: string[];
 };
+/** Ligar ou desligar o checklist na Implantação de um campo (2.4.8): a caixinha ao lado do campo, em Configurar › Campos. */
+export const ChecklistNaImplantacaoSchema = z.object({ ligar: z.boolean() });
+export type ChecklistNaImplantacaoEntrada = z.input<typeof ChecklistNaImplantacaoSchema>;
 /** Os tipos de campo que podem gerar os itens de um checklist do card (2.4.8). */
 export const TIPOS_QUE_GERAM_ITENS: readonly TipoCampo[] = ['texto', 'texto_longo', 'lista', 'lista_varios'];
 export const MAX_ORIGENS_DO_CHECKLIST = 20;

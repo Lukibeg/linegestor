@@ -25,10 +25,11 @@ import {
   EVENTOS_AVISO, EXEMPLOS_DOS_AVISOS, NOME_EVENTO_AVISO, modeloDoAviso, modelosParaGuardar, preencherAviso, variaveisDesconhecidas,
   type EventoAviso, type ResultadoDaVenda, type TipoDePainel,
   type AjustesDoPainel, type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoDoSistema,
-  type CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
+  CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
   type Painel, type PainelGravarSchema, type TipoEtapa,
   mudancasDasCaixinhas, nomeCompletoDoCampo, opcaoDoModelo, type CaixinhasGravarSchema, type OpcaoDoModelo,
   gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO, type GrupoDeCampos, type GruposGravar,
+  checklistLigadoNaImplantacao, GRUPO_DA_IMPLANTACAO, nomeDoChecklistDaImplantacao, podeLigarNaImplantacao,
   AJUSTES_DO_PAINEL_PESSOAL, ETAPAS_DO_PAINEL_PESSOAL, nomeDoPainelPessoal, siglasDoPainelPessoal,
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../../plugins/errors.js';
@@ -983,6 +984,64 @@ export async function restaurarCampo(app: FastifyInstance, id: string): Promise<
   const c = (await carregarCampos(db, p.id)).find((x) => x.id === id)!;
   const [nome] = await nomesDosCampos(db, [c]);
   return { valor: c, resumo: `Restaurou o campo ${nome} no painel ${p.name}`, depois: campoParaAuditoria(c) };
+}
+
+/**
+ * A caixinha "Checklist na Implantação" ao lado do campo (2.4.8, o Luan: "quero que crie sozinho, quero que tenha um checkbox
+ * … ao lado de um campo de configuração que quando eu clicar automaticamente ele já abra um campo na parte de implantação"):
+ *  - ligar: cria, no grupo Implantação (que nasce no meio da ficha, se não existe), o Checklist do card "<campo> (implantação)",
+ *    do mesmo produto, com os itens vindos do campo. O que já tinha sido ligado e foi para os Excluídos volta (com as marcas
+ *    dos cards). Se já está ligado, nada muda;
+ *  - desligar: o checklist que só tira os itens dele vai para os Excluídos (volta pelo Restaurar, ou ligando de novo); o que
+ *    tira de outros campos também só deixa de tirar deste.
+ */
+export async function checklistNaImplantacao(app: FastifyInstance, id: string, ligar: boolean): Promise<Gravado<CampoPersonalizado | null>> {
+  const db = app.db;
+  const [linha] = await db.select().from(ticketFields).where(and(eq(ticketFields.id, id), isNull(ticketFields.deletedAt))).limit(1);
+  if (!linha) throw new NotFound('Campo');
+  const p = await linhaDoPainel(db, linha.panelId).catch(() => { throw new NotFound('Campo'); });
+  const campos = await carregarCampos(db, p.id);
+  const c = campos.find((x) => x.id === id)!;
+  const [nomeDoCampo] = await nomesDosCampos(db, [c]);
+  const ja = checklistLigadoNaImplantacao(c, campos);
+  if (!ligar) {
+    if (!ja) return { valor: null, resumo: `O campo ${nomeDoCampo} não tinha checklist na Implantação (nada mudou)` };
+    const resto = (ja.origens ?? []).filter((o) => o !== c.id);
+    if (resto.length) {
+      // o checklist também tira de outros campos: só deixa de tirar deste
+      await db.update(ticketFields).set({ sourceFieldIds: resto, updatedAt: new Date() }).where(eq(ticketFields.id, ja.id));
+      return { valor: null, resumo: `O checklist ${ja.nome} da Implantação deixou de tirar os itens de ${nomeDoCampo}`, antes: { origens: ja.origens }, depois: { origens: resto } };
+    }
+    const r = await excluirCampo(app, ja.id);
+    return { valor: null, resumo: `Desligou o checklist na Implantação de ${nomeDoCampo}: ${r.resumo.charAt(0).toLowerCase()}${r.resumo.slice(1)}`, antes: r.antes };
+  }
+  if (!podeLigarNaImplantacao(c)) {
+    throw new BadRequest(mesmoGrupo(c.parte, GRUPO_DA_IMPLANTACAO)
+      ? `${c.nome} já está na Implantação.`
+      : `${c.nome} (${NOME_TIPO_CAMPO[c.tipo]}) não gera itens: o checklist vem de um texto, um texto longo ou uma lista.`);
+  }
+  if (ja) return { valor: ja, resumo: `O checklist ${ja.nome} já estava na Implantação (nada mudou)` };
+  // o grupo Implantação no meio da ficha, se ainda não está nos grupos do painel
+  const ajustes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
+  const garantirGrupo = async () => {
+    if (ajustes.partes.some((g) => mesmoGrupo(g.nome, GRUPO_DA_IMPLANTACAO))) return false;
+    await db.update(ticketPanels).set({ settings: { ...ajustes, partes: [...ajustes.partes, { nome: GRUPO_DA_IMPLANTACAO, lugar: 'meio' }] }, updatedAt: new Date() })
+      .where(eq(ticketPanels.id, p.id));
+    return true;
+  };
+  // o que já tinha sido ligado e foi excluído volta, com as marcas dos cards (se o nome dele ainda está livre)
+  const excluido = checklistLigadoNaImplantacao(c, await carregarCampos(db, p.id, true));
+  if (excluido && !campos.some((x) => paraBusca(x.nome) === paraBusca(excluido.nome) && (x.produtoId ?? null) === (excluido.produtoId ?? null))) {
+    const r = await restaurarCampo(app, excluido.id);
+    const novoGrupo = await garantirGrupo();
+    return { valor: r.valor, resumo: `Ligou o checklist na Implantação de ${nomeDoCampo}: restaurou ${r.valor.nome}${novoGrupo ? ' (e criou o grupo Implantação)' : ''}`, depois: r.depois };
+  }
+  const r = await criarCampo(app, p.id, CampoGravarSchema.parse({
+    nome: nomeDoChecklistDaImplantacao(c, campos), tipo: 'checklist', parte: GRUPO_DA_IMPLANTACAO, produtoId: c.produtoId ?? null, origens: [c.id],
+    dica: `Os itens vêm de ${c.nome}${c.parte ? ` (${c.parte})` : ''}: marque conforme fizer na implantação.`,
+  }));
+  const novoGrupo = await garantirGrupo();
+  return { valor: r.valor, resumo: `Ligou o checklist na Implantação de ${nomeDoCampo}: ${r.resumo.charAt(0).toLowerCase()}${r.resumo.slice(1)}${novoGrupo ? ' (e criou o grupo Implantação)' : ''}`, depois: r.depois };
 }
 
 /**

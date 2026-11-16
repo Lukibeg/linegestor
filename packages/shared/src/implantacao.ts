@@ -385,6 +385,48 @@ export function listasEfetivas(
   return r;
 }
 
+/** O grupo onde nasce o checklist ligado pelo campo (2.4.8): a aba Implantação. */
+export const GRUPO_DA_IMPLANTACAO = 'Implantação';
+
+/**
+ * O campo que pode ligar um checklist na Implantação (2.4.8, o Luan: "quero que tenha um checkbox … ao lado de um campo de
+ * configuração que quando eu clicar automaticamente ele já abra um campo na parte de implantação"): um texto ou uma lista
+ * (os que geram itens), fora da própria Implantação.
+ */
+export function podeLigarNaImplantacao(c: Pick<CampoPersonalizado, 'tipo' | 'parte'>): boolean {
+  return TIPOS_QUE_GERAM_ITENS.includes(c.tipo) && !mesmoGrupo(c.parte, GRUPO_DA_IMPLANTACAO);
+}
+
+/** Onde a caixinha aparece (Configurar › Campos): no painel da implantação, ou no de Gestão que já tem o grupo Implantação. */
+export function painelComImplantacao(
+  painel: Pick<Painel, 'id' | 'tipo' | 'etapas' | 'ajustes'>, paineis: ReadonlyArray<Pick<Painel, 'tipo' | 'etapas' | 'ativo'>>,
+): boolean {
+  if (painel.tipo !== 'gestao') return false;
+  return ehPainelDaImplantacao(painel, paineis) || (painel.ajustes.partes ?? []).some((g) => mesmoGrupo(g.nome, GRUPO_DA_IMPLANTACAO));
+}
+
+/** O checklist da Implantação que o campo ligou: o Checklist do card do grupo Implantação que tira os itens dele. */
+export function checklistLigadoNaImplantacao<C extends Pick<CampoPersonalizado, 'id' | 'tipo' | 'parte' | 'origens'>>(c: Pick<CampoPersonalizado, 'id'>, campos: readonly C[]): C | null {
+  return campos.find((x) => x.id !== c.id && x.tipo === 'checklist' && mesmoGrupo(x.parte, GRUPO_DA_IMPLANTACAO) && (x.origens ?? []).includes(c.id)) ?? null;
+}
+
+/**
+ * O nome do checklist que nasce: o do campo com "(implantação)" ("Lista de ramais (implantação)"), dentro das 40 letras do
+ * nome; se o painel já tiver um com esse nome no mesmo produto, com um número.
+ */
+export function nomeDoChecklistDaImplantacao(
+  c: Pick<CampoPersonalizado, 'nome' | 'produtoId'>, campos: readonly Pick<CampoPersonalizado, 'nome' | 'produtoId'>[],
+): string {
+  const fim = ' (implantação)';
+  const usado = (nome: string) => campos.some((x) => paraBusca(x.nome) === paraBusca(nome) && (x.produtoId ?? null) === (c.produtoId ?? null));
+  for (let n = 1; n < 100; n++) {
+    const numero = n > 1 ? ` ${n}` : '';
+    const nome = `${c.nome.slice(0, 40 - fim.length - numero.length).trim()}${fim}${numero}`;
+    if (!usado(nome)) return nome;
+  }
+  return `${c.nome.slice(0, 20).trim()}${fim}`;
+}
+
 /** O que mexer no checklist do card faz (o mesmo no servidor e na prévia). */
 export type AcaoNaLista =
   | { acao: 'incluir'; textos: string[] } | { acao: 'marcar'; itemId: string; feito: boolean }

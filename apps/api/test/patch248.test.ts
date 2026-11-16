@@ -213,3 +213,76 @@ describe('o checklist do card gerado de outros campos (2.4.8)', () => {
     expect((await ficha(cartao)).listas[implantar.id]).toBeUndefined();
   });
 });
+
+// 2.4.8: a caixinha "Checklist na Implantação" ao lado do campo (o Luan: "quero que crie sozinho, quero que tenha um checkbox …
+// ao lado de um campo de configuração que quando eu clicar automaticamente ele já abra um campo na parte de implantação")
+describe('o checklist na Implantação ligado pelo campo (2.4.8)', () => {
+  let usuarios: CampoPersonalizado;
+  let cartao = '';
+  const ligar = (id: string, ligar: boolean) => s.post(`/atendimento/campos/${id}/checklist-na-implantacao`, { ligar });
+  const camposDoPainel = async () => ((await s.get('/atendimento/opcoes')).json() as OpcoesAtendimento).campos.filter((c) => c.painelId === IMP);
+
+  beforeAll(async () => {
+    usuarios = (await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Usuários', tipo: 'texto_longo', parte: 'Configuração' })).json();
+    cartao = (await s.post('/atendimento/chamados', { painelId: IMP, titulo: 'Implantação do Mercado' })).json().id;
+  });
+
+  it('ligar cria, no grupo Implantação, o checklist com os itens vindos do campo (e o grupo, se não existe)', async () => {
+    const r = await ligar(usuarios.id, true);
+    expect(r.statusCode, r.body).toBe(200);
+    const novo = r.json().campo as CampoPersonalizado;
+    expect(novo).toMatchObject({ nome: 'Usuários (implantação)', tipo: 'checklist', parte: 'Implantação', origens: [usuarios.id], produtoId: null });
+    expect(novo.dica).toBe('Os itens vêm de Usuários (Configuração): marque conforme fizer na implantação.');
+    const o: OpcoesAtendimento = (await s.get('/atendimento/opcoes')).json();
+    expect(o.paineis.find((p) => p.id === IMP)!.ajustes.partes).toContainEqual({ nome: 'Implantação', lugar: 'meio' });
+    const aud = (await s.get(`/admin/audit?entityId=${novo.id}&pageSize=5`)).json().items as Array<{ summary: string }>;
+    expect(aud[0]!.summary).toMatch(/^Ligou o checklist na Implantação de Usuários: criou o campo Usuários \(implantação\)/);
+    // de novo: nada muda
+    const de = await ligar(usuarios.id, true);
+    expect(de.json().campo.id).toBe(novo.id);
+    expect((await camposDoPainel()).filter((c) => c.nome.startsWith('Usuários (implantação)'))).toHaveLength(1);
+    // o card: o que se escreve no campo vira item
+    const f: FichaChamado = (await s.patch(`/atendimento/chamados/${cartao}`, { campos: { [usuarios.id]: 'Ana\nBeto' } })).json();
+    expect(f.listas[novo.id]!.map((i) => i.texto)).toEqual(['Ana', 'Beto']);
+    expect(f.partes.find((p) => p.parte === 'Implantação')).toBeTruthy();
+  });
+
+  it('desligar manda o checklist para os Excluídos; ligar de novo traz de volta, com as marcas', async () => {
+    let f = await ficha(cartao);
+    const chk = (await camposDoPainel()).find((c) => c.nome === 'Usuários (implantação)')!;
+    expect((await lista(cartao, chk.id, { acao: 'marcar', itemId: f.listas[chk.id]![0]!.id, feito: true })).statusCode).toBe(200);
+    const d = await ligar(usuarios.id, false);
+    expect(d.statusCode, d.body).toBe(200);
+    expect(d.json().campo).toBeNull();
+    expect((await camposDoPainel()).some((c) => c.id === chk.id)).toBe(false);
+    expect((await s.get(`/atendimento/paineis/${IMP}/campos/excluidos`)).json().map((c: CampoPersonalizado) => c.id)).toContain(chk.id);
+    const volta = await ligar(usuarios.id, true);
+    expect(volta.json().campo.id).toBe(chk.id);
+    f = await ficha(cartao);
+    expect(f.listas[chk.id]!.map((i) => [i.texto, i.feito])).toEqual([['Ana', true], ['Beto', false]]);
+    // desligar o que não está ligado: nada muda
+    const outro = (await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Observação 248', tipo: 'texto', parte: 'Curadoria' })).json();
+    expect((await ligar(outro.id, false)).json()).toEqual({ campo: null });
+  });
+
+  it('o nome em uso ganha um número; o checklist que tira de outros campos só deixa de tirar deste', async () => {
+    const equipe = (await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Equipe', tipo: 'lista_varios', parte: 'Curadoria', opcoes: [{ nome: 'Ana', ativa: true }] })).json();
+    await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Equipe (implantação)', tipo: 'texto', parte: 'Curadoria' });
+    const chk = (await ligar(equipe.id, true)).json().campo as CampoPersonalizado;
+    expect(chk.nome).toBe('Equipe (implantação) 2');
+    // o checklist passa a tirar também dos Usuários: desligar a Equipe só tira a Equipe dele
+    await s.put(`/atendimento/campos/${chk.id}`, { nome: chk.nome, tipo: 'checklist', parte: 'Implantação', origens: [equipe.id, usuarios.id] });
+    expect((await ligar(equipe.id, false)).statusCode).toBe(200);
+    expect((await camposDoPainel()).find((c) => c.id === chk.id)?.origens).toEqual([usuarios.id]);
+  });
+
+  it('só um texto ou uma lista, fora da Implantação', async () => {
+    const data = (await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Data da ativação', tipo: 'data', parte: 'Configuração' })).json();
+    const r = await ligar(data.id, true);
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toBe('Data da ativação (Data) não gera itens: o checklist vem de um texto, um texto longo ou uma lista.');
+    const naImplantacao = (await s.post(`/atendimento/paineis/${IMP}/campos`, { nome: 'Notas da implantação', tipo: 'texto_longo', parte: 'Implantação' })).json();
+    expect((await ligar(naImplantacao.id, true)).json().error).toBe('Notas da implantação já está na Implantação.');
+    expect((await ligar('campo-que-nao-existe', true)).statusCode).toBe(404);
+  });
+});

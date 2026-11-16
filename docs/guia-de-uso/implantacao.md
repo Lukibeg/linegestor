@@ -60,8 +60,11 @@ Voltar a negociação e mover de novo não abre outro card.
   **cole a lista** (cada linha vira um item; o botão diz **Incluir 3**). Marque conforme faz (cada item mostra quem marcou e
   quando); o lápis corrige o texto e o × tira. A lista vazia conta como uma coisa por fazer na parte; cada item conta como
   um. Pedido numa etapa, o campo só está feito com itens, todos marcados.
+- **O checklist na Implantação, com um clique.** Em Configurar › Campos, marque **Checklist na Implantação** ao lado de um
+  campo (a Lista de ramais, por exemplo): o Gestor cria sozinho, na aba Implantação, o **Lista de ramais (implantação)**, com
+  um item por linha. Desmarcar manda esse checklist para os Excluídos; marcar de novo traz de volta, com as marcas.
 - **Os itens que vêm de outros campos.** Na janela do checklist, **Os itens vêm de**: marque, por exemplo, a **Lista de
-  ramais** da Curadoria. Cada linha dela vira um item no checklist (numa lista de várias, cada opção escolhida; num texto
+  ramais** da Curadoria (e outros campos, se o checklist junta mais de um). Cada linha dela vira um item no checklist (numa lista de várias, cada opção escolhida; num texto
   curto ou numa lista de uma opção, um item com o nome do campo). A Curadoria mudou a lista? O checklist acompanha: o que
   entrou aparece, o que saiu some, e o que já foi marcado continua marcado. Esses itens só se marcam ali: para corrigir ou
   tirar, mude na Lista de ramais.

@@ -360,6 +360,7 @@ export const realApi: Api = {
     excluirCampo: (campoId) => http('DELETE', `/atendimento/campos/${campoId}`),
     camposExcluidos: (painelId) => http('GET', `/atendimento/paineis/${painelId}/campos/excluidos`),
     restaurarCampo: (campoId) => http('POST', `/atendimento/campos/${campoId}/restaurar`),
+    checklistNaImplantacao: (campoId, d) => http('POST', `/atendimento/campos/${campoId}/checklist-na-implantacao`, d),
     salvarGrupos: (painelId, d) => http('PUT', `/atendimento/paineis/${painelId}/grupos`, d),
     incluirOpcaoDoCampo: (campoId, d) => http('POST', `/atendimento/campos/${campoId}/opcoes`, d),
     etiquetas: () => http('GET', '/atendimento/etiquetas'),

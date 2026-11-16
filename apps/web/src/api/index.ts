@@ -405,6 +405,8 @@ export type Api = {
     /** os campos excluídos do painel (2.4), do mais recente para o mais antigo */
     camposExcluidos(painelId: string): Promise<Array<T.CampoPersonalizado & { excluidoEm: string }>>;
     restaurarCampo(campoId: string): Promise<T.CampoPersonalizado>;
+    /** 2.4.8: a caixinha "Checklist na Implantação" ao lado do campo (ligar cria o checklist no grupo Implantação; desligar exclui) */
+    checklistNaImplantacao(campoId: string, d: T.ChecklistNaImplantacaoEntrada): Promise<{ campo: T.CampoPersonalizado | null }>;
     /** os grupos de campos do painel (2.4): a lista inteira, na ordem da ficha; o que não vier é excluído com os campos */
     salvarGrupos(painelId: string, d: T.GruposGravarEntrada): Promise<T.GrupoDeCampos[]>;
     /** incluir uma opção numa lista do painel ali mesmo (2.0.3, só nas listas que incluem na hora: a Indicação) */

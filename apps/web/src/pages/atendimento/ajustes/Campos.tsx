@@ -28,7 +28,7 @@
  *    chamados preencheram fica guardado e volta pelos **Excluídos** (o Restaurar);
  *  - o tipo **Documento** (o arquivo anexado), e o texto que vira documento.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronRight, FolderPlus, ListTree, Pencil, Plus, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
@@ -36,6 +36,7 @@ import {
   camposDoSistemaDoTipo, DICA_CAMPO_DO_SISTEMA, DICA_TIPO_CAMPO, MAX_CAMPOS_DO_PAINEL, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO,
   NOME_LUGAR_DO_GRUPO, OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, TIPOS_QUE_GERAM_ITENS, TIPOS_QUE_TROCAM, nomeCompletoDoCampo, chaveDoCampo, etiquetasUnicas, gruposDoPainel, mesmoGrupo, nomeDoSistemaIgual, paraBusca,
   temOpcoesEscritas, tipoTroca, LARGURAS_DO_CAMPO, NOME_LARGURA_DO_CAMPO, larguraDoCampo,
+  checklistLigadoNaImplantacao, painelComImplantacao, podeLigarNaImplantacao,
   type LarguraDoCampo, type CampoDoSistema, type CampoGravarEntrada, type CampoPersonalizado, type GrupoDoPainel, type GruposGravarEntrada, type LugarDoGrupo, type Painel, type TipoCampo,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -378,6 +379,10 @@ function LinhaDoCampo({ c, painel, primeiro, ultimo, movendo, onMover, onEditar 
   // de onde vêm os itens do checklist do card (2.4.8)
   const opcoes = useOpcoes();
   const origens = (c.origens ?? []).map((id) => opcoes.data?.campos.find((x) => x.id === id)).filter((x): x is CampoPersonalizado => !!x);
+  // a caixinha "Checklist na Implantação" (2.4.8): no painel da implantação, nos textos e nas listas fora da Implantação
+  const doPainel = (opcoes.data?.campos ?? []).filter((x) => x.painelId === painel.id);
+  const mostraImplantacao = painelComImplantacao(painel, opcoes.data?.paineis ?? []) && podeLigarNaImplantacao(c);
+  const ligado = mostraImplantacao ? checklistLigadoNaImplantacao(c, doPainel) : null;
   return (
     <li className="flex items-start gap-1.5 px-2 py-2 sm:px-3" data-campo={c.nome}>
       <span className="flex shrink-0">
@@ -401,10 +406,47 @@ function LinhaDoCampo({ c, painel, primeiro, ultimo, movendo, onMover, onEditar 
         )}
         {c.dica && <span className="block text-[12.5px] text-muted leading-snug break-words">{c.dica}</span>}
       </button>
+      {mostraImplantacao && <ChecklistNaImplantacao c={c} ligado={ligado} />}
       <button type="button" className="btn-ghost btn-sm shrink-0" onClick={onEditar} aria-label={`Editar o campo ${c.nome}`}>
         <Pencil size={14} /><span className="hidden sm:inline">Editar</span>
       </button>
     </li>
+  );
+}
+
+/**
+ * A caixinha "Checklist na Implantação" ao lado do campo (2.4.8, o Luan: "quero que crie sozinho, quero que tenha um checkbox …
+ * ao lado de um campo de configuração que quando eu clicar automaticamente ele já abra um campo na parte de implantação"):
+ * marcar cria, no grupo Implantação, o checklist com os itens vindos deste campo; desmarcar manda esse checklist para os
+ * Excluídos (marcar de novo traz de volta, com as marcas dos cards).
+ */
+function ChecklistNaImplantacao({ c, ligado }: { c: CampoPersonalizado; ligado: CampoPersonalizado | null }) {
+  const depois = useDepoisDeMudar();
+  const [mudando, setMudando] = useState(false);
+  const [erro, setErro] = useState('');
+  // a marca muda na hora; volta ao que o painel diz quando a lista dos campos chega (ou se deu erro)
+  const [otimista, setOtimista] = useState<boolean | null>(null);
+  useEffect(() => { if (otimista !== null && !!ligado === otimista) setOtimista(null); }, [ligado, otimista]);
+  const marcado = otimista ?? !!ligado;
+  const alternar = async (ligar: boolean) => {
+    setMudando(true); setErro(''); setOtimista(ligar);
+    try {
+      await depois(api.atendimento.checklistNaImplantacao(c.id, { ligar }), ligar ? 'Checklist criado na aba Implantação' : 'O checklist da Implantação foi para os Excluídos');
+    } catch (e) { setErro(mensagemErro(e)); setOtimista(null); } finally { setMudando(false); }
+  };
+  return (
+    <span className="shrink-0 flex flex-col items-end max-w-[13rem] pt-0.5" data-checklist-na-implantacao={c.nome}>
+      <label className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12.5px] cursor-pointer select-none ${
+        marcado ? 'border-ok bg-ok-soft text-ok font-medium' : 'border-line text-ink-2 hover:bg-surface-2'}`}
+        title={ligado ? `Ligado: ${ligado.nome}, na aba Implantação. Desmarcar manda para os Excluídos.` : 'Cria sozinho, na aba Implantação, um checklist com um item por linha (ou por opção escolhida) deste campo'}>
+        <input type="checkbox" className="accent-ok" checked={marcado} disabled={mudando} aria-label={`Checklist na Implantação: ${c.nome}`}
+          onChange={(e) => void alternar(e.target.checked)} />
+        {mudando ? <Spinner className="!w-3.5 !h-3.5" /> : null}
+        <span className="whitespace-nowrap">Checklist na Implantação</span>
+      </label>
+      {ligado && <span className="text-[11.5px] text-muted mt-0.5 text-right break-words">→ {ligado.nome}</span>}
+      {erro && <span className="text-[11.5px] text-bad mt-0.5 text-right" role="alert">{erro}</span>}
+    </span>
   );
 }
 
@@ -620,6 +662,11 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
     // 2.4.8: de onde vêm os itens do checklist do card
     origens: campo?.origens ?? [],
   }));
+  // a caixinha "Checklist na Implantação" (2.4.8): como está, e como fica ao salvar
+  const doPainel = (opcoesDoModulo.data?.campos ?? []).filter((c) => c.painelId === painel.id);
+  const comImplantacao = painelComImplantacao(painel, opcoesDoModulo.data?.paineis ?? []);
+  const ligadoAntes = campo ? checklistLigadoNaImplantacao(campo, doPainel) : null;
+  const [naImplantacao, setNaImplantacao] = useState(!!ligadoAntes);
   // as caixinhas, em pastas (2.3)
   const [pastas, setPastas] = useState<PastaRascunho[]>(() => pastasDoEditor(campo?.opcoes ?? []));
   const [erro, setErro] = useState('');
@@ -693,8 +740,12 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
     };
     setSalvando(true); setErro('');
     try {
-      await depois(api.atendimento.salvarCampo(painel.id, campo?.id ?? null, d),
+      const salvo = await depois(api.atendimento.salvarCampo(painel.id, campo?.id ?? null, d),
         !campo ? `Campo ${nome} criado no painel ${painel.nome}` : campo.ativo !== f.ativo ? `Campo ${nome} ${f.ativo ? 'reativado' : 'desativado'}` : `Campo ${nome} salvo`);
+      // o checklist na Implantação (2.4.8), depois do campo gravado (o novo precisa existir)
+      if (comImplantacao && podeLigarNaImplantacao(salvo) && naImplantacao !== !!ligadoAntes) {
+        await depois(api.atendimento.checklistNaImplantacao(salvo.id, { ligar: naImplantacao }), naImplantacao ? 'Checklist criado na aba Implantação' : 'O checklist da Implantação foi para os Excluídos');
+      }
       onFechar();
     } catch (e) {
       setErro(mensagemErro(e));
@@ -805,6 +856,18 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
               {fontes.map((c) => <option key={c.id} value={c.id}>Só os marcados em {c.nome}{c.parte ? ` (${c.parte})` : ''}</option>)}
             </select>
           </Rotulo>
+        )}
+
+        {/* 2.4.8: a mesma caixinha da linha do campo ("quero que crie sozinho … um checkbox … ao lado de um campo") */}
+        {comImplantacao && podeLigarNaImplantacao({ tipo: f.tipo, parte: f.parte.trim() || null }) && (
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer" id="campo-na-implantacao-rotulo">
+            <input type="checkbox" id="campo-na-implantacao" className="mt-[3px] shrink-0" checked={naImplantacao} onChange={(e) => setNaImplantacao(e.target.checked)} />
+            <span>Checklist na Implantação
+              <span className="block text-[12.5px] text-muted">{ligadoAntes
+                ? `Ligado: ${ligadoAntes.nome}, na aba Implantação. Desmarcar manda esse checklist para os Excluídos.`
+                : 'Cria sozinho, na aba Implantação, um checklist com um item por linha (ou por opção escolhida) deste campo.'}</span>
+            </span>
+          </label>
         )}
 
         {/* 2.4.8, o Luan: "quero que os campos de outras etapas que eu selecionar … gere esse checklist na implantação" */}

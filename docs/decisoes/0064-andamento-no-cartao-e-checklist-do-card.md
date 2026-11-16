@@ -17,7 +17,9 @@ O Luan, 13/11, com o print do quadro do Ingline - Implantação:
   depende do cenário do cliente na hora, por exemplo uma lista de ramais que tenho que configurar no telefone e outra no soft
   phone, isso varia, então não pode ser um check list fixo."*
 - Em 16/11: *"Para esse uso vai ser em uma aba, vai ficar curadoria, configuração, testes, implantação, e quero que os campos de
-  outras etapas que eu selecionar em algum lugar gere esse checklist na implantação."*
+  outras etapas que eu selecionar em algum lugar gere esse checklist na implantação."* E, depois: *"Eu quero que crie sozinho,
+  quero que tenha um checkbox ou algo do tipo ao lado de um campo de configuração que quando eu clicar automaticamente ele já
+  abra um campo na parte de implantação."*
 
 ## 1. O andamento de todas as partes no cartão
 
@@ -92,6 +94,19 @@ O Luan, 13/11, com o print do quadro do Ingline - Implantação:
     (Curadoria): para tirar, mude lá.").
   - Coluna `ticket_fields.source_field_ids` (jsonb), na mesma migração **0036**; a origem que é excluída deixa de contar, e o
     Restaurar tira as que já não existem. A auditoria do campo registra as `origens`.
+- **A caixinha "Checklist na Implantação" ao lado do campo** (16/11, à tarde). Em Configurar › Campos, ao lado de cada texto ou
+  lista fora da Implantação (`podeLigarNaImplantacao`), no painel da implantação ou no de Gestão que já tem o grupo
+  Implantação (`painelComImplantacao`); e a mesma caixinha na janela do campo (o campo novo já nasce ligado):
+  - **marcar** cria, no grupo **Implantação** (que entra nos grupos do painel, no meio da ficha, se ainda não está), o
+    Checklist do card **"<campo> (implantação)"** (com um número se o nome está em uso; até 40 letras), do mesmo produto, com
+    as origens só nele e a explicação "Os itens vêm de …". O que já tinha sido ligado e foi para os Excluídos **volta pelo
+    Restaurar**, com as marcas dos cards. Ligado de novo, nada muda;
+  - **desmarcar** manda esse checklist para os Excluídos; se ele também tira de outros campos, só deixa de tirar deste;
+  - a caixinha aparece marcada quando o grupo Implantação tem um checklist que tira deste campo
+    (`checklistLigadoNaImplantacao`) — também o montado à mão pelo "Os itens vêm de" (na prévia, a Lista de ramais aparece
+    ligada aos Ramais no telefone). Não há coluna nova: o estado sai das origens.
+  - A rota: `POST /atendimento/campos/:id/checklist-na-implantacao` (`{ ligar }`), de quem configura o painel; a auditoria
+    diz "Ligou o checklist na Implantação de Lista de ramais (LinePBX): criou o campo …".
 - A rota: `POST /atendimento/chamados/:id/campos/:campoId/lista` (`incluir` com `textos`, `marcar`, `editar`, `tirar`), de quem
   trabalha nos chamados. As regras (`listaDepois`, `linhasDaLista`, `contaDoCampo`) moram no `@gestor/shared`: o servidor e a
   prévia chamam as mesmas.
