@@ -16,10 +16,11 @@ const ctx: ContextoDosRelatorios = {
     { id: 'resolvido', nome: 'Resolvido', tipo: 'resolvido', nivel: null, ordem: 2, ativa: true },
   ],
   assuntos: [
-    { id: 'ramal', paiId: null, nome: 'Ramal', ordem: 0, ativo: true },
+    // os prazos de solução (2.4.8): o Ramal com 4 h úteis (os de dentro herdam), o Financeiro com 8 h
+    { id: 'ramal', paiId: null, nome: 'Ramal', ordem: 0, ativo: true, prazoSolucao: 4 * 60 },
     { id: 'ramal-conf', paiId: 'ramal', nome: 'Configuração', ordem: 0, ativo: true },
     { id: 'ramal-mudo', paiId: 'ramal', nome: 'Sem áudio', ordem: 1, ativo: true },
-    { id: 'fin', paiId: null, nome: 'Financeiro', ordem: 1, ativo: true },
+    { id: 'fin', paiId: null, nome: 'Financeiro', ordem: 1, ativo: true, prazoSolucao: 8 * 60 },
   ],
   campos: [{ id: 'canal', nome: 'Canal', opcoes: [{ id: 'zap', nome: 'WhatsApp' }, { id: 'tel', nome: 'Telefone' }], ativo: true }],
   pessoas: new Map([['luan', 'Luan'], ['marina', 'Marina']]),
@@ -58,8 +59,8 @@ describe('a Visão geral: Hoje', () => {
     expect(k['resolvidos-hoje']).toBe('2');
     // em aberto de qualquer dia: h1, h2 e v1
     expect(k['em-aberto']).toBe('3');
-    // ninguém respondeu o h1 (média, desde as 9h) nem o h2 (crítico, desde as 10h); o v1 passou do prazo de solução
-    expect(k['vencidos']).toBe('3');
+    // o h1 (Ramal, 4 h, desde as 9h) e o v1 (Financeiro, desde o dia 10) passaram do prazo de solução; o h2 não tem assunto (sem prazo)
+    expect(k['vencidos']).toBe('2');
     expect(v.total).toBe(3);
     expect(v.lista.itens.map((x) => x.codigo)).toEqual(['SUP-3', 'SUP-2', 'SUP-1']);
   });

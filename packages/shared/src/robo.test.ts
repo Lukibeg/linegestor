@@ -38,7 +38,7 @@ const painel = (id: string, sigla: string, nome: string, extra: Partial<Painel> 
   id, nome, sigla, descricao: null, cor: 'accent', tipo: 'gestao', ordem: 0, acesso: 'todos', pessoas: [], ajustes: { ...AJUSTES_PAINEL_PADRAO }, etapas: [], ativo: true, abertos: 0, donoId: null, ...extra,
 });
 const assunto = (id: string, nome: string, extra: Partial<Assunto> = {}): Assunto => ({
-  id, painelId: 'p-sup', paiId: null, nome, descricao: null, ativo: true, ordem: 0, checklist: [], dePara: [], ...extra,
+  id, painelId: 'p-sup', paiId: null, nome, descricao: null, ativo: true, ordem: 0, checklist: [], dePara: [], prazoSolucao: null, ...extra,
 });
 const campo = (id: string, nome: string, extra: Partial<CampoPersonalizado> = {}): CampoPersonalizado => ({
   id, painelId: 'p-sup', nome, tipo: 'texto', dica: null, opcoes: [], ativo: true, ordem: 0, incluirNaHora: false, parte: null, produtoId: null, ...extra,

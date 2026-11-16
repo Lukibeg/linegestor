@@ -39,6 +39,8 @@ let linepbx = '';
 let ramal = '';
 let semAudio = '';
 let assuntoDev = '';
+/** o assunto com prazo de solução (2.4.8): 100 minutos */
+let filaParada = '';
 
 const SUP = 'painel-suporte';
 const DEV = 'painel-desenvolvimento';
@@ -109,9 +111,10 @@ beforeAll(async () => {
   aurora = newId();
   await app.db.insert(clients).values({ id: aurora, tradeName: 'Clínica Aurora', legalName: 'Clínica Aurora LTDA', cnpj: '11222333000181' });
   linepbx = (await s.get('/admin/products')).json().find((p: any) => p.code === 'linepbx').id;
-  ramal = newId(); semAudio = newId(); assuntoDev = newId();
+  ramal = newId(); semAudio = newId(); assuntoDev = newId(); filaParada = newId();
   await app.db.insert(ticketSubjects).values([
     { id: ramal, panelId: SUP, name: 'Ramal', checklist: ['Testar o ramal', 'Conferir o registro'] },
+    { id: filaParada, panelId: SUP, name: 'Fila', resolutionMinutes: 100 },
     { id: semAudio, panelId: SUP, parentId: ramal, name: 'Sem áudio' },
     { id: assuntoDev, panelId: DEV, name: 'Correção de tela' },
   ]);
@@ -273,43 +276,46 @@ describe('o relógio: os prazos, o sem responsável e o fechar sozinho', () => {
     await prazos({});
   });
 
-  it('perto de vencer avisa o responsável; vencido, o responsável e os supervisores — uma vez cada', async () => {
-    // conta corrida, para o teste não depender da hora em que roda
-    await prazos({ calendario: CORRIDO, prazos: { ...AJUSTES_PRAZOS_PADRAO.prazos, alta: { resposta: 10, solucao: 100, conta: 'corridas' } }, alertaPercentual: 80 });
-    const r = await abrirComoN8n({ titulo: 'Fila parada', prioridade: 'alta', responsavelId: marinaId });
+  it('perto de vencer avisa o responsável; vencido, o responsável e os supervisores — uma vez cada (2.4.8: o prazo de solução do assunto)', async () => {
+    // nenhum dia de atendimento: o Gestor conta corrido, para o teste não depender da hora em que roda
+    await prazos({ calendario: CORRIDO, alertaPercentual: 80 });
+    // a prioridade não mexe mais no prazo: a Fila tem 100 minutos
+    const r = await abrirComoN8n({ titulo: 'Fila parada', prioridade: 'critica', assuntoId: filaParada, responsavelId: marinaId });
     const t0 = (await linhaDoChamado(r.id)).createdAt.getTime();
 
-    await volta(new Date(t0 + 7 * MINUTO)); // 70%: nada
+    await volta(new Date(t0 + 70 * MINUTO)); // 70%: nada
     expect(await avisos(marinaId, r.id, 'prazo_perto')).toEqual([]);
-    const v = await volta(new Date(t0 + 8.5 * MINUTO)); // 85%: perto
+    const v = await volta(new Date(t0 + 85 * MINUTO)); // 85%: perto
     expect(v!.alertas).toBeGreaterThanOrEqual(1);
     const perto = await avisos(marinaId, r.id, 'prazo_perto');
     expect(perto).toHaveLength(1);
-    expect(perto[0]).toMatch(new RegExp(`^O prazo de resposta do ${r.codigo} está perto de vencer: faltam 1 min \\(vence `));
+    expect(perto[0]).toMatch(new RegExp(`^O prazo de solução do ${r.codigo} está perto de vencer: faltam 15 min úteis \\(vence `));
     expect(await avisos(brunoId, r.id, 'prazo_perto')).toEqual([]);
-    await volta(new Date(t0 + 9 * MINUTO)); // ainda perto: nada de novo
+    await volta(new Date(t0 + 90 * MINUTO)); // ainda perto: nada de novo
     expect(await avisos(marinaId, r.id, 'prazo_perto')).toHaveLength(1);
 
-    await volta(new Date(t0 + 11 * MINUTO)); // vencido
-    expect(await avisos(marinaId, r.id, 'prazo_vencido')).toEqual([`O prazo de resposta do ${r.codigo} venceu`]);
-    expect(await avisos(brunoId, r.id, 'prazo_vencido')).toEqual([`O prazo de resposta do ${r.codigo} venceu`]);
-    await volta(new Date(t0 + 12 * MINUTO));
+    await volta(new Date(t0 + 101 * MINUTO)); // vencido
+    expect(await avisos(marinaId, r.id, 'prazo_vencido')).toEqual([`O prazo de solução do ${r.codigo} venceu`]);
+    expect(await avisos(brunoId, r.id, 'prazo_vencido')).toEqual([`O prazo de solução do ${r.codigo} venceu`]);
+    await volta(new Date(t0 + 110 * MINUTO));
     expect(await avisos(marinaId, r.id, 'prazo_vencido')).toHaveLength(1);
 
-    expect(Object.keys((await linhaDoChamado(r.id)).alertsSent as object).sort()).toEqual(['resposta_perto', 'resposta_vencida']);
+    // a primeira resposta não tem prazo: nenhum alerta dela
+    expect(Object.keys((await linhaDoChamado(r.id)).alertsSent as object).sort()).toEqual(['solucao_perto', 'solucao_vencida']);
     const f = await ficha(r.codigo);
     expect(eventos(f, 'prazo').map((e: any) => [e.por, e.texto])).toEqual([
-      [null, expect.stringMatching(/^o prazo de resposta chegou a 85%: faltam 1 min \(vence /)],
-      [null, 'o prazo de resposta venceu (era de 10 min)'],
+      [null, expect.stringMatching(/^o prazo de solução chegou a 85%: faltam 15 min úteis \(vence /)],
+      [null, 'o prazo de solução venceu (era de 1 h 40 úteis)'],
     ]);
   });
 
-  it('o chamado sem prazo (sem prioridade, ou num painel que não conta prazo) não gera alerta', async () => {
-    const semPrioridade = await abrirComoN8n({ titulo: 'Sem prioridade', responsavelId: marinaId });
+  it('o chamado sem prazo (sem assunto, o assunto sem prazo, ou num painel que não conta prazo) não gera alerta', async () => {
+    const semPrioridade = await abrirComoN8n({ titulo: 'Sem assunto', prioridade: 'critica', responsavelId: marinaId });
+    const semCadastro = await abrirComoN8n({ titulo: 'O Ramal não tem prazo', prioridade: 'critica', assuntoId: ramal, responsavelId: marinaId });
     const doDev = await criarChamado(app, n8n, ChamadoCriarSchema.parse({ painelId: DEV, titulo: 'No Desenvolvimento', prioridade: 'alta', responsavelId: marinaId }), { origem: 'api' });
     const t0 = (await linhaDoChamado(doDev.id)).createdAt.getTime();
     await volta(new Date(t0 + 60 * MINUTO));
-    for (const id of [semPrioridade.id, doDev.id]) {
+    for (const id of [semPrioridade.id, semCadastro.id, doDev.id]) {
       expect(await avisos(marinaId, id, 'prazo_perto')).toEqual([]);
       expect(await avisos(marinaId, id, 'prazo_vencido')).toEqual([]);
     }

@@ -102,7 +102,9 @@ describe('os exemplos da prévia', () => {
     // vencido, perto de vencer e parado esperando
     const abertos = sup.filter((c) => c.situacao === 'aberto');
     expect(abertos.some((c) => c.prazos.solucao.situacao === 'vencido')).toBe(true);
-    expect(abertos.some((c) => c.prazos.resposta.situacao === 'vencido')).toBe(true);
+    // 2.4.8: o prazo vem do assunto; o que não tem prazo cadastrado fica sem prazo (e a primeira resposta não tem prazo)
+    expect(abertos.some((c) => c.prazos.solucao.motivo === 'assunto_sem_prazo')).toBe(true);
+    expect(abertos.every((c) => c.prazos.resposta.situacao === 'sem')).toBe(true);
     expect(abertos.some((c) => c.prazos.solucao.situacao === 'perto')).toBe(true);
     expect(abertos.some((c) => c.prazos.solucao.situacao === 'pausado' && c.espera?.tipo === 'cliente')).toBe(true);
     // o robô do LineChat, o agendado, o reaberto
@@ -283,8 +285,8 @@ describe('as regras do servidor valem na prévia', () => {
     expect(f.alcance).toBeNull();
     expect(f.motivoPrioridade).toBeNull();
     expect(f.criadoPor?.id).toBe(lucio.id);
-    // quem abre na tela já está falando com o cliente: a abertura é a primeira resposta
-    expect(f.prazos.resposta.situacao).toBe('cumprido');
+    // a primeira resposta não tem prazo (2.4.8); o de solução vem do assunto
+    expect(f.prazos.resposta.situacao).toBe('sem');
     // (o aviso da etapa pelo WhatsApp da equipe também entra no histórico; aqui só interessa o resto)
     expect(f.historico.map((e) => e.tipo).filter((t) => t !== 'aviso_equipe')).toEqual(['criado']);
 
@@ -458,7 +460,9 @@ describe('as regras do servidor valem na prévia', () => {
     expect(exemplo.prazos.solucao.venceEm).toBeNull();
 
     // com dona: o Meu dia mostra, em "Esperando o cliente", só os meus
-    const r = await api.criar({ ...(await baseDoSuporte(op, 'Ramal mudo (teste de espera)')), gravidade: 'inoperancia', alcance: 'pessoa', responsavelId: marina.id });
+    // o prazo vem do assunto (2.4.8): um com prazo cadastrado
+    const comPrazo = op.assuntos.find((a) => a.painelId === painel(op, 'SUP').id && a.ativo && a.prazoSolucao)!;
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Ramal mudo (teste de espera)')), assuntoId: comPrazo.id, gravidade: 'inoperancia', alcance: 'pessoa', responsavelId: marina.id });
     const antes = await api.chamado(r.id);
     expect(antes.prazos.solucao.situacao).toBe('no_prazo');
     expect(antes.prazos.solucao.venceEm).not.toBeNull();

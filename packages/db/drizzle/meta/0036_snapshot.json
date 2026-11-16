@@ -1,5 +1,5 @@
 {
-  "id": "1c1dbaa5-5868-41dd-a74f-7f8035c7e80c",
+  "id": "8556efed-47e6-4de1-bb58-efc796a523d1",
   "prevId": "5177c358-ed29-478b-b5fc-73d9868549ad",
   "version": "7",
   "dialect": "postgresql",
@@ -8628,6 +8628,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'"
+        },
+        "resolution_minutes": {
+          "name": "resolution_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

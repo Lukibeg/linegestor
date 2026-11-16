@@ -362,7 +362,7 @@ export function movimentoDeNivel(de: Pick<EtapaPainel, 'nivel'> | null | undefin
  * Desde o 2.1.2 (o Luan: "quero poder editar tbm os campos personalizados do painel pq tem muitos que a depender
  * do painel que eu cria, n vou usar"), o painel de Gestão também desliga o cliente e o contato, o relato do
  * cliente, a solução e a causa e a prioridade — um painel de atividades internas não tem cliente nem prazo. Sem a
- * prioridade, o painel não conta prazo. O problema (ITIL) continua pedindo a solução e a causa para fechar.
+ * prioridade, o painel não contava prazo (desde o 2.4.8, o prazo vem do assunto: sem o assunto, não conta). O problema (ITIL) continua pedindo a solução e a causa para fechar.
  */
 export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras', 'cliente', 'relato', 'solucao', 'prioridade', 'tempo'] as const;
 export type CampoDoSistema = (typeof CAMPOS_DO_SISTEMA)[number];
@@ -377,7 +377,7 @@ export const NOME_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   cliente: 'Cliente e contato', relato: 'Relato do cliente', solucao: 'Solução e causa', prioridade: 'Prioridade', tempo: 'Tempo gasto',
 };
 export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
-  assunto: 'A árvore de assuntos (até 3 níveis), com a descrição, o checklist e o de-para de cada um.',
+  assunto: 'A árvore de assuntos (até 3 níveis), com a descrição, o checklist, o de-para e o prazo de solução de cada um. Desligado, o painel não conta prazo.',
   tipo: '"Que tratativa foi essa?": as opções são deste painel.',
   gravidade: 'Quanto o problema pesa (de Inoperância a Não se aplica). Sugere a prioridade (Ajustes › Prazos).',
   alcance: 'Quantos o problema atinge no cliente (a empresa toda, um setor, uma pessoa). Com a gravidade, sugere a prioridade.',
@@ -386,7 +386,7 @@ export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   cliente: 'A empresa do cadastro e quem pediu (o nome e o WhatsApp). Desligado, o chamado é interno: não tem cliente nem aviso ao cliente.',
   relato: 'O que o cliente contou, com as palavras dele.',
   solucao: 'Como foi resolvido e por que aconteceu. O problema (ITIL) continua pedindo os dois para fechar.',
-  prioridade: 'Baixa, Média, Alta ou Crítica. Desligada, o painel não conta prazo (SLA).',
+  prioridade: 'Baixa, Média, Alta ou Crítica: ordena o quadro e os relatórios (o prazo vem do assunto).',
   // 2.3, o Luan no card da implantação: "n precisa disso"
   tempo: 'Os minutos de trabalho de cada um no chamado (o relatório Tempo gasto). Desligado, a ficha não mostra o Registrar tempo; o que já foi registrado fica guardado.',
 };
@@ -408,8 +408,11 @@ export function prioridadeSugeridaDoPainel(
   if (!campoLigado(ajustes, 'prioridade')) return null;
   return sugestaoPelosCampos({ gravidade: campoLigado(ajustes, 'gravidade'), alcance: campoLigado(ajustes, 'alcance') }, gravidade, alcance, prazos);
 }
-/** O painel conta prazo? Só com o prazo ligado e a prioridade (2.1.2: sem prioridade, não há prazo). */
-export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'>) => ajustes.contaPrazo && campoLigado(ajustes, 'prioridade');
+/**
+ * O painel conta prazo? Só com o prazo ligado e o assunto (2.4.8: o prazo vem do assunto; antes, da
+ * prioridade — 2.1.2). Sem o campo Assunto no painel, não há prazo.
+ */
+export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'>) => ajustes.contaPrazo && campoLigado(ajustes, 'assunto');
 
 /** Os campos que quem cuida dos chamados cria em cada painel. O tipo não muda depois de criado. */
 export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios', 'caixinhas', 'checklist', 'modulos', 'documento'] as const;
@@ -1451,6 +1454,10 @@ export function siglasDoPainelPessoal(nomeDaPessoa: string): string[] {
   return [...new Set(candidatas.filter((s) => /^[A-Z]{2,5}$/.test(s)))];
 }
 
+/** O prazo de solução do assunto (2.4.8): de 15 minutos a 2.000 horas úteis. */
+export const MIN_PRAZO_DO_ASSUNTO = 15;
+export const MAX_PRAZO_DO_ASSUNTO = 2000 * 60;
+
 export const AssuntoGravarSchema = z.object({
   paiId: z.string().nullish().transform((v) => v || null),
   nome: z.string().trim().min(1, 'Dê um nome ao assunto').max(80),
@@ -1459,6 +1466,11 @@ export const AssuntoGravarSchema = z.object({
   checklist: z.array(z.string().trim().min(1).max(160)).max(30).default([]),
   /** de-para: os nomes antigos (da lista atual do LineChat) que viram este assunto */
   dePara: z.array(z.string().trim().min(1).max(120)).max(50).default([]),
+  /**
+   * o prazo de solução, em minutos úteis (2.4.8); nulo: herda do assunto de cima. Sem a chave, ao
+   * alterar, fica o que estava (quem não conhece o prazo não apaga o prazo).
+   */
+  prazoSolucao: z.number().int().min(MIN_PRAZO_DO_ASSUNTO, 'O prazo vai de 15 minutos para cima').max(MAX_PRAZO_DO_ASSUNTO, `O prazo vai até ${MAX_PRAZO_DO_ASSUNTO / 60} horas úteis`).nullable().optional(),
 });
 export const AssuntosColarSchema = z.object({ texto: Texto(50_000) });
 
@@ -2123,7 +2135,11 @@ export const IntegracaoAlterarSchema = ChamadoAlterarSchema.extend({
 
 export type PessoaCurta = { id: string; nome: string };
 export type AssuntoCurto = { id: string; nome: string; caminho: string; ativo: boolean };
-export type Assunto = { id: string; painelId: string; paiId: string | null; nome: string; descricao: string | null; ativo: boolean; ordem: number; checklist: string[]; dePara: string[] };
+export type Assunto = {
+  id: string; painelId: string; paiId: string | null; nome: string; descricao: string | null; ativo: boolean; ordem: number; checklist: string[]; dePara: string[];
+  /** o prazo de solução, em minutos úteis (2.4.8); nulo: herda do assunto de cima (`prazoDoAssunto`) */
+  prazoSolucao: number | null;
+};
 
 /** O chamado no quadro e na lista. */
 export type CartaoChamado = {
@@ -2704,6 +2720,25 @@ export function caminhoDoAssunto(id: string | null | undefined, assuntos: Pick<A
   return partes.join(' › ');
 }
 
+/**
+ * O prazo de solução que vale para o assunto (2.4.8): o dele, ou o do mais próximo acima — o subtópico
+ * sem prazo próprio herda o do assunto de cima. Nulo: ninguém no caminho tem prazo cadastrado.
+ */
+type AssuntoComPrazo = { id: string; paiId: string | null; nome: string; prazoSolucao?: number | null };
+export function prazoDoAssunto(
+  id: string | null | undefined,
+  assuntos: ReadonlyArray<AssuntoComPrazo> | ReadonlyMap<string, AssuntoComPrazo>,
+): { minutos: number; deId: string; deNome: string } | null {
+  if (!id) return null;
+  const porId: ReadonlyMap<string, AssuntoComPrazo> = assuntos instanceof Map ? assuntos : new Map((assuntos as ReadonlyArray<AssuntoComPrazo>).map((a) => [a.id, a]));
+  let atual = porId.get(id);
+  for (let n = 0; atual && n < 5; n++) {
+    if (atual.prazoSolucao) return { minutos: atual.prazoSolucao, deId: atual.id, deNome: atual.nome };
+    atual = atual.paiId ? porId.get(atual.paiId) : undefined;
+  }
+  return null;
+}
+
 /** "Ramal › Configuração", "ramal > configuracao", "Ramal - Configuração": o mesmo caminho. */
 const SEPARADOR_DO_CAMINHO = /\s*[>›»]\s*|\s+-\s+/;
 /** Uma parte do caminho como se compara: sem acento, maiúscula, pontuação nem emoji ("☎️ LinePBX:" = "linepbx"). */
@@ -3186,7 +3221,8 @@ export function csvDosChamados(
     'Aberto em', 'Fechado em', 'Origem', ...cabExtras,
   ] : [
     'Código', 'Título', 'Painel', 'Etapa', 'Situação', 'Cliente', 'Contato', 'Telefone', 'Responsável', 'Assunto', 'Tipo', 'Gravidade', 'Alcance', 'Prioridade', 'Etiquetas', 'Esperando',
-    'Prazo de resposta', 'Prazo de solução', 'Aberto em', 'Resolvido em', 'Fechado em', 'Origem', ...(deVendas.length ? cabVenda : []), ...cabExtras,
+    // 2.4.8: a primeira resposta não tem prazo; o de solução vem do assunto
+    'Prazo de solução', 'Aberto em', 'Resolvido em', 'Fechado em', 'Origem', ...(deVendas.length ? cabVenda : []), ...cabExtras,
   ];
   const linhas = lista.map((c) => (soVendas ? [
     c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome ?? c.empresa, c.contato?.nome, c.contato?.telefone,
@@ -3196,7 +3232,7 @@ export function csvDosChamados(
     c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome ?? c.empresa, c.contato?.nome, c.contato?.telefone,
     c.responsavel?.nome, c.assunto?.caminho, c.tipo, c.gravidade ? NOME_GRAVIDADE[c.gravidade] : '', c.alcance ? NOME_ALCANCE[c.alcance] : '',
     c.prioridade ? NOME_PRIORIDADE[c.prioridade] : '', c.etiquetas.join(', '), c.espera ? NOME_ESPERA[c.espera.tipo] : '',
-    c.prazos.resposta.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.resposta.situacao], c.prazos.solucao.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.solucao.situacao],
+    c.prazos.solucao.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.solucao.situacao],
     dataHora(c.criadoEm), dataHora(c.resolvidoEm), dataHora(c.fechadoEm), NOME_ORIGEM[c.origem],
     ...(deVendas.length ? (nomes.vendas?.(c.painelId) ? venda(c) : cabVenda.map(() => '')) : []), ...valoresExtras(c),
   ]).map(celula).join(';'));

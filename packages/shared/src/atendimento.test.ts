@@ -9,7 +9,7 @@ import {
   PainelGravarSchema, acharCampo, ajustesDoPainelCompletos, chaveDoCampo, faltaParaAbrir, limparObrigatorios, normalizarValorDoCampo, obrigatoriosDoPainel,
   prioridadeSugeridaDoPainel, textoDoValor, textosDosCampos, etiquetasDoPainel, OpcaoIncluirSchema, CAMPOS_DO_PAINEL_DE_VENDAS, tituloQueFica, mensagemDoTitulo, MENSAGEM_DO_TITULO,
   valoresVisiveis, type CampoPersonalizado,
-  caminhoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
+  caminhoDoAssunto, prazoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes,
   pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
   type CartaoChamado, type CartaoParaLista, type DadosObrigatorios, type EtapaPainel, type NoParaGrafo,
@@ -65,12 +65,14 @@ describe('as horas úteis', () => {
   });
 });
 
-describe('os prazos do chamado', () => {
-  const base = { criadoEm: em('2026-10-13', '09:00').toISOString(), prioridade: 'alta' as const, respondidoEm: null, resolvidoEm: null, esperas: [], contaPrazo: true };
-  it('no prazo, perto de vencer e vencido (a resposta da Alta é 30 min)', () => {
-    expect(estadoDosPrazos(base, ajustes, em('2026-10-13', '09:20')).resposta).toMatchObject({ situacao: 'no_prazo', usado: 20, venceEm: em('2026-10-13', '09:30').toISOString() });
-    expect(estadoDosPrazos(base, ajustes, em('2026-10-13', '09:25')).resposta.situacao).toBe('perto');
-    expect(estadoDosPrazos(base, ajustes, em('2026-10-13', '09:40')).resposta.situacao).toBe('vencido');
+describe('os prazos do chamado (2.4.8: a solução pelo prazo do assunto)', () => {
+  // o assunto com 8 h úteis de prazo de solução
+  const base = { criadoEm: em('2026-10-13', '09:00').toISOString(), resolvidoEm: null, esperas: [], contaPrazo: true, assuntoId: 'a1', prazoSolucao: 8 * 60 };
+  const umaHora = { ...base, prazoSolucao: 60 };
+  it('no prazo, perto de vencer e vencido (o assunto com 1 h)', () => {
+    expect(estadoDosPrazos(umaHora, ajustes, em('2026-10-13', '09:20')).solucao).toMatchObject({ situacao: 'no_prazo', usado: 20, venceEm: em('2026-10-13', '10:00').toISOString() });
+    expect(estadoDosPrazos(umaHora, ajustes, em('2026-10-13', '09:50')).solucao.situacao).toBe('perto');
+    expect(estadoDosPrazos(umaHora, ajustes, em('2026-10-13', '10:10')).solucao.situacao).toBe('vencido');
   });
   it('esperando o cliente, o prazo de solução para; esperando a operadora, continua', () => {
     const esperas = [{ tipo: 'cliente' as const, motivo: 'testar', inicio: em('2026-10-13', '10:00').toISOString(), fim: em('2026-10-13', '12:00').toISOString(), porId: null }];
@@ -84,20 +86,43 @@ describe('os prazos do chamado', () => {
     expect(s).toMatchObject({ situacao: 'pausado', usado: 60, venceEm: null });
     expect(textoDoPrazo(s)).toBe('Parado: faltam 7 h úteis');
   });
-  it('respondido a tempo é cumprido; depois, estourou', () => {
-    expect(estadoDosPrazos({ ...base, respondidoEm: em('2026-10-13', '09:10').toISOString() }, ajustes, em('2026-10-13', '11:00')).resposta.situacao).toBe('cumprido');
-    expect(estadoDosPrazos({ ...base, respondidoEm: em('2026-10-13', '09:45').toISOString() }, ajustes, em('2026-10-13', '11:00')).resposta.situacao).toBe('estourou');
+  it('resolvido a tempo é cumprido; depois, estourou', () => {
+    expect(estadoDosPrazos({ ...umaHora, resolvidoEm: em('2026-10-13', '09:50').toISOString() }, ajustes, em('2026-10-13', '11:00')).solucao.situacao).toBe('cumprido');
+    expect(estadoDosPrazos({ ...umaHora, resolvidoEm: em('2026-10-13', '10:30').toISOString() }, ajustes, em('2026-10-13', '11:00')).solucao.situacao).toBe('estourou');
   });
-  it('sem prioridade, ou num painel que não conta prazo, não há prazo', () => {
-    expect(estadoDosPrazos({ ...base, prioridade: null }, ajustes).solucao.situacao).toBe('sem');
-    expect(estadoDosPrazos({ ...base, contaPrazo: false }, ajustes).resposta.situacao).toBe('sem');
+  it('a primeira resposta não tem prazo', () => {
+    expect(estadoDosPrazos(base, ajustes, em('2026-10-13', '18:00')).resposta).toMatchObject({ situacao: 'sem', motivo: 'sem_prazo_de_resposta' });
   });
-  it('os alertas saem uma vez: o perto, e depois o vencido', () => {
-    const perto = estadoDosPrazos(base, ajustes, em('2026-10-13', '09:25'));
-    expect(alertasDevidos(perto, {})).toEqual(['resposta_perto']);
-    expect(alertasDevidos(perto, { resposta_perto: 'x' })).toEqual([]);
-    const vencido = estadoDosPrazos(base, ajustes, em('2026-10-13', '09:40'));
-    expect(alertasDevidos(vencido, { resposta_perto: 'x' })).toEqual(['resposta_vencida']);
+  it('sem assunto, com o assunto sem prazo, ou num painel que não conta prazo: sem prazo, e a frase diz o porquê', () => {
+    const semAssunto = estadoDosPrazos({ ...base, assuntoId: null, prazoSolucao: null }, ajustes).solucao;
+    expect(semAssunto).toMatchObject({ situacao: 'sem', motivo: 'sem_assunto' });
+    expect(textoDoPrazo(semAssunto)).toBe('Sem prazo: o chamado ainda não tem assunto');
+    const semCadastro = estadoDosPrazos({ ...base, prazoSolucao: null }, ajustes).solucao;
+    expect(semCadastro).toMatchObject({ situacao: 'sem', motivo: 'assunto_sem_prazo' });
+    expect(textoDoPrazo(semCadastro)).toBe('Sem prazo: o assunto selecionado não tem prazo cadastrado');
+    expect(estadoDosPrazos({ ...base, contaPrazo: false }, ajustes).solucao).toMatchObject({ situacao: 'sem', motivo: 'painel' });
+  });
+  it('o subtópico sem prazo próprio herda o do assunto de cima', () => {
+    const arvore = [
+      { id: 'r', paiId: null, nome: 'Ramal', prazoSolucao: 480 },
+      { id: 'c', paiId: 'r', nome: 'Configuração', prazoSolucao: null },
+      { id: 'i', paiId: 'c', nome: 'Identidade', prazoSolucao: null },
+      { id: 's', paiId: 'r', nome: 'Sem serviço', prazoSolucao: 120 },
+      { id: 'x', paiId: null, nome: 'Infraestrutura', prazoSolucao: null },
+    ];
+    expect(prazoDoAssunto('i', arvore)).toEqual({ minutos: 480, deId: 'r', deNome: 'Ramal' });
+    expect(prazoDoAssunto('s', arvore)).toEqual({ minutos: 120, deId: 's', deNome: 'Sem serviço' });
+    expect(prazoDoAssunto('x', arvore)).toBeNull();
+    expect(prazoDoAssunto(null, arvore)).toBeNull();
+    // a prioridade não mexe mais no prazo (a 0047 revista): o mesmo assunto, o mesmo prazo
+    expect(estadoDosPrazos({ ...base, prazoSolucao: prazoDoAssunto('i', arvore)!.minutos }, ajustes).solucao.limite).toBe(480);
+  });
+  it('os alertas saem uma vez: o perto, e depois o vencido (só da solução)', () => {
+    const perto = estadoDosPrazos(umaHora, ajustes, em('2026-10-13', '09:50'));
+    expect(alertasDevidos(perto, {})).toEqual(['solucao_perto']);
+    expect(alertasDevidos(perto, { solucao_perto: 'x' })).toEqual([]);
+    const vencido = estadoDosPrazos(umaHora, ajustes, em('2026-10-13', '10:10'));
+    expect(alertasDevidos(vencido, { solucao_perto: 'x' })).toEqual(['solucao_vencida']);
   });
   it('os ajustes guardados antes de um campo novo ganham o padrão', () => {
     const v = ajustesPrazosCompletos({ alertaPercentual: 70 } as Partial<AjustesPrazos>);
@@ -428,7 +453,9 @@ describe('a lista: busca, filtros e ordem', () => {
     const vencido = { situacao: 'vencido' as const, limite: 60, usado: 90, percentual: 150, venceEm: null, cumpridoEm: null, conta: 'uteis' as const };
     const csv = csvDosChamados([cartao({ prazos: { resposta: { ...vencido, situacao: 'cumprido' }, solucao: vencido } })], { painel: () => 'Suporte', etapa: () => 'N1' });
     expect(csv).not.toMatch(/;cumprido;|;vencido;/);
-    expect(csv).toContain(`;${NOME_SITUACAO_PRAZO.cumprido};${NOME_SITUACAO_PRAZO.vencido};`);
+    // 2.4.8: só a coluna do prazo de solução (a primeira resposta não tem prazo)
+    expect(csv).toContain(`;Prazo de solução;Aberto em;`);
+    expect(csv).toContain(`;${NOME_SITUACAO_PRAZO.vencido};13/10/2026`);
   });
   it('"prazo parado" é só quem espera o cliente: esperando a operadora, o prazo corre', () => {
     const espera = (tipo: 'cliente' | 'operadora') => ({ tipo, motivo: 'm', desde: '2026-10-13T12:00:00.000Z' });
@@ -708,7 +735,8 @@ describe('a ordem à mão no quadro (2.1; no painel de Gestão sem prazo, 2.1.3)
   const vendas = { tipo: 'vendas' as const, ajustes: AJUSTES_DO_PAINEL_DE_VENDAS };
   const suporte = { tipo: 'gestao' as const, ajustes: AJUSTES_PAINEL_PADRAO };
   const semPrazo = { tipo: 'gestao' as const, ajustes: { ...AJUSTES_PAINEL_PADRAO, contaPrazo: false } };
-  const semPrioridade = { tipo: 'gestao' as const, ajustes: { ...AJUSTES_PAINEL_PADRAO, camposDesligados: ['alcance', 'prioridade'] as CampoDoSistema[] } };
+  // 2.4.8: o prazo vem do assunto; sem o assunto no painel, não há prazo
+  const semPrioridade = { tipo: 'gestao' as const, ajustes: { ...AJUSTES_PAINEL_PADRAO, camposDesligados: ['assunto'] as CampoDoSistema[] } };
 
   it('no painel de Vendas e no de Gestão que não conta prazo, nas etapas abertas', () => {
     expect(ordemAMao(vendas, { tipo: 'entrada' })).toBe(true);

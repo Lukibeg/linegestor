@@ -1624,6 +1624,11 @@ export const ticketSubjects = pgTable(
     checklist: text('checklist').array().notNull().default([]),
     /** De-para: os nomes da lista antiga que viram este assunto */
     aliases: text('aliases').array().notNull().default([]),
+    /**
+     * O prazo de solução do chamado com este assunto, em minutos úteis (2.4.8). Nulo: herda do assunto de
+     * cima; se ninguém acima tiver, o chamado fica sem prazo.
+     */
+    resolutionMinutes: integer('resolution_minutes'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

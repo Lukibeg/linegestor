@@ -141,9 +141,23 @@ Omniboard - Incidente - Sincronismo de status
 BM - Configuração - Conta do WhatsApp
 BM - Incidente - Meio de pagamento`;
 
-/** O que a equipe já preencheu em alguns assuntos: a descrição, o checklist e o de-para (os nomes antigos do LineChat). */
-export const DETALHES_DOS_ASSUNTOS: Array<{ caminho: string; descricao?: string; checklist?: string[]; dePara?: string[]; ativo?: boolean }> = [
-  { caminho: 'Ramal', descricao: 'Tudo do ramal: criar, configurar e quando ele para de funcionar.' },
+/**
+ * O que a equipe já preencheu em alguns assuntos: a descrição, o checklist, o de-para (os nomes antigos do LineChat) e
+ * o prazo de solução (2.4.8, em minutos úteis: o subtópico sem prazo herda o do de cima). A Infraestrutura do cliente e
+ * o BM ficam sem prazo, para a prévia mostrar o "Sem prazo: o assunto selecionado não tem prazo cadastrado".
+ */
+export const DETALHES_DOS_ASSUNTOS: Array<{ caminho: string; descricao?: string; checklist?: string[]; dePara?: string[]; ativo?: boolean; prazo?: number }> = [
+  { caminho: 'Ramal', descricao: 'Tudo do ramal: criar, configurar e quando ele para de funcionar.', prazo: 16 * 60 },
+  { caminho: 'Ramal › Incidente', prazo: 8 * 60 },
+  { caminho: 'Operadora', prazo: 8 * 60 },
+  { caminho: 'SBC e Tronco', prazo: 8 * 60 },
+  { caminho: 'LinePBX', prazo: 24 * 60 },
+  { caminho: 'Filas', prazo: 16 * 60 },
+  { caminho: 'FOP2', prazo: 16 * 60 },
+  { caminho: 'FOP2 › Incidente › Falha massiva', prazo: 4 * 60 },
+  { caminho: 'Omniboard', prazo: 16 * 60 },
+  { caminho: 'Relatórios', prazo: 24 * 60 },
+  { caminho: 'Equipamentos', prazo: 40 * 60 },
   {
     caminho: 'Ramal › Configuração › Criação', descricao: 'Ramal novo (um ou vários) pedido pelo cliente.',
     checklist: ['Criar o ramal no LinePBX', 'Testar ligação interna', 'Mandar o login ao cliente'], dePara: ['Ramal - Criação'],

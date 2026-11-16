@@ -27,7 +27,7 @@ import {
   dentroDoHorario, diaLocal, estadoDosPrazos, horaLocal, minutosUteisEntre,
   type AjustesPrazos, type Alcance, type Calendario, type Espera, type EstadoPrazo, type Gravidade, type Prioridade,
 } from './atendimento-prazos.js';
-import { NOME_DO_NIVEL, type Nivel, type Origem, type SituacaoDoChamado, type TipoChamado, type TipoEtapa, type ValoresDosCampos } from './atendimento.js';
+import { NOME_DO_NIVEL, prazoDoAssunto, type Nivel, type Origem, type SituacaoDoChamado, type TipoChamado, type TipoEtapa, type ValoresDosCampos } from './atendimento.js';
 import { periodoDeComparacao } from './vendas.js';
 import { paraBusca } from './formatos.js';
 
@@ -59,7 +59,7 @@ export type ItemDoCatalogo = {
 };
 
 export const CATALOGO_DOS_RELATORIOS: readonly ItemDoCatalogo[] = [
-  { id: 'prazo', aba: 'tempo', titulo: 'Prazo cumprido', pergunta: 'Os chamados são respondidos e resolvidos dentro do prazo?', largura: 'metade', precisa: 'prazo' },
+  { id: 'prazo', aba: 'tempo', titulo: 'Prazo cumprido', pergunta: 'Os chamados são resolvidos dentro do prazo do assunto?', largura: 'metade', precisa: 'prazo' },
   { id: 'relogio', aba: 'tempo', titulo: 'Relógio do chamado', pergunta: 'Quanto tempo um chamado leva, do aberto ao resolvido?', largura: 'metade' },
   { id: 'resposta', aba: 'tempo', titulo: 'Primeira resposta', pergunta: 'Quanto o cliente espera até alguém da equipe pegar o chamado?', largura: 'metade' },
   { id: 'escada', aba: 'tempo', titulo: 'A escada N1 → N2 → N3 → DEV', pergunta: 'Quanto o N1 resolve sozinho, e quanto sobe?', largura: 'metade', precisa: 'niveis' },
@@ -178,7 +178,8 @@ export type ChamadoParaRelatorios = {
 };
 
 export type EtapaParaRelatorio = { id: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; ordem: number; ativa: boolean };
-export type AssuntoParaRelatorio = { id: string; paiId: string | null; nome: string; ordem: number; ativo: boolean };
+/** O assunto, com o prazo de solução (2.4.8, em minutos úteis; nulo: herda do de cima). */
+export type AssuntoParaRelatorio = { id: string; paiId: string | null; nome: string; ordem: number; ativo: boolean; prazoSolucao?: number | null };
 /** Um campo de lista do painel; o chamado guarda o id da opção (a que saiu continua no chamado que a tem). */
 export type CampoParaRelatorio = { id: string; nome: string; opcoes: Array<{ id: string; nome: string }>; ativo: boolean; /** a lista de várias opções (2.2, a Visão geral) */ varios?: boolean };
 export type ClienteParaRelatorio = { nome: string; dids: number; aparelhos: number; produtos: string[] };
@@ -283,15 +284,19 @@ export type ChamadoDoRelatorio = {
 /** Uma peça clicável: o número e os chamados por trás dele. */
 export type Peca = { n: number; ids: string[] };
 
-export type LinhaDoPrazo = { prioridade: Prioridade | null; nome: string; resolvidos: number; resposta: { comPrazo: number; noPrazo: number; ids: string[]; foraIds: string[] }; solucao: { comPrazo: number; noPrazo: number; ids: string[]; foraIds: string[] }; limites: { resposta: number; solucao: number; uteis: boolean } | null };
+/**
+ * Uma linha do Prazo cumprido (2.4.8): o assunto que deu o prazo (o do chamado, ou o de cima de quem ele
+ * herdou), quantos resolvidos e quantos no prazo. `prazo` em minutos úteis.
+ */
+export type LinhaDoPrazo = { assuntoId: string; nome: string; prazo: number; resolvidos: number; noPrazo: number; ids: string[]; foraIds: string[] };
 export type PrazoDoPainel = {
   contaPrazo: boolean;
   resolvidos: number;
-  resposta: { comPrazo: number; noPrazo: number; pct: number | null; antes: number | null; foraIds: string[] };
   solucao: { comPrazo: number; noPrazo: number; pct: number | null; antes: number | null; foraIds: string[] };
   vencidosAgora: Peca; pertoAgora: Peca;
-  semPrioridade: number;
-  porPrioridade: LinhaDoPrazo[];
+  /** os resolvidos sem prazo: sem assunto, ou com um assunto sem prazo cadastrado */
+  semPrazo: Peca;
+  porAssunto: LinhaDoPrazo[];
 };
 
 export type FaixaDeTempo = { id: string; rotulo: string; n: number; ids: string[] };
@@ -609,7 +614,11 @@ function derivar(c: ChamadoParaRelatorios, ctx: ContextoDosRelatorios, etapas: M
     minResolver: c.resolvidoEm ? minutosUteisEntre(c.criadoEm, c.resolvidoEm, cal) : null,
     minResposta: c.respondidoEm ? minutosUteisEntre(c.criadoEm, c.respondidoEm, cal) : null,
     nivelMax,
-    prazos: estadoDosPrazos({ criadoEm: c.criadoEm, prioridade: c.prioridade, respondidoEm: c.respondidoEm, resolvidoEm: c.resolvidoEm, esperas: c.esperas, contaPrazo: ctx.painel.contaPrazo }, ctx.prazos, agora),
+    // 2.4.8: o prazo de solução é o do assunto (o dele, ou o herdado do de cima)
+    prazos: estadoDosPrazos({
+      criadoEm: c.criadoEm, resolvidoEm: c.resolvidoEm, esperas: c.esperas, contaPrazo: ctx.painel.contaPrazo,
+      assuntoId: c.assuntoId, prazoSolucao: prazoDoAssunto(c.assuntoId, assuntos)?.minutos ?? null,
+    }, ctx.prazos, agora),
     caminhoIds,
     caminho: caminhoIds.map((id) => assuntos.get(id)?.nome ?? '?'),
   };
@@ -689,49 +698,51 @@ const ateHoje = (p: Preparo, dia: string) => (dia > p.hoje ? p.hoje : dia);
 //  TEMPO
 // =====================================================================
 
-function prazoDoPeriodo(xs: readonly Derivado[]): { resposta: { comPrazo: number; noPrazo: number }; solucao: { comPrazo: number; noPrazo: number } } {
-  const r = { resposta: { comPrazo: 0, noPrazo: 0 }, solucao: { comPrazo: 0, noPrazo: 0 } };
-  for (const d of xs) {
-    const rs = d.prazos.resposta.situacao; const so = d.prazos.solucao.situacao;
-    if (rs === 'cumprido' || rs === 'estourou') { r.resposta.comPrazo++; if (rs === 'cumprido') r.resposta.noPrazo++; }
-    if (so === 'cumprido' || so === 'estourou') { r.solucao.comPrazo++; if (so === 'cumprido') r.solucao.noPrazo++; }
-  }
+const comPrazo = (d: Derivado) => d.prazos.solucao.situacao === 'cumprido' || d.prazos.solucao.situacao === 'estourou';
+
+function prazoDoPeriodo(xs: readonly Derivado[]): { comPrazo: number; noPrazo: number } {
+  const r = { comPrazo: 0, noPrazo: 0 };
+  for (const d of xs) if (comPrazo(d)) { r.comPrazo++; if (d.prazos.solucao.situacao === 'cumprido') r.noPrazo++; }
   return r;
 }
 
+/**
+ * O Prazo cumprido (2.4.8): só a solução (a primeira resposta não tem prazo), separado pelo assunto que
+ * deu o prazo — o do chamado, ou o de cima de quem ele herdou (todo o Ramal › Configuração com as 8 h do
+ * Ramal fica numa linha só, a do Ramal).
+ */
 function prazo(p: Preparo): PrazoDoPainel {
   const resolvidos = resolvidosEm(p);
   const antes = prazoDoPeriodo(resolvidosEm(p, p.anterior.de, p.anterior.ate));
   const agora = prazoDoPeriodo(resolvidos);
-  const fora = (qual: 'resposta' | 'solucao', xs: readonly Derivado[]) => {
-    const ids = xs.filter((d) => d.prazos[qual].situacao === 'estourou').map((d) => d.c.id);
+  const fora = (xs: readonly Derivado[]) => {
+    const ids = xs.filter((d) => d.prazos.solucao.situacao === 'estourou').map((d) => d.c.id);
     citar(p, ids);
     return ids;
   };
   const abertos = abertosAgora(p);
-  const porPrioridade: LinhaDoPrazo[] = [...PRIORIDADES, null].map((pr) => {
-    const xs = resolvidos.filter((d) => d.c.prioridade === pr);
-    const conta = prazoDoPeriodo(xs);
-    const limite = pr ? p.ctx.prazos.prazos[pr] : null;
-    const comPrazoIds = (qual: 'resposta' | 'solucao') => xs.filter((d) => ['cumprido', 'estourou'].includes(d.prazos[qual].situacao)).map((d) => d.c.id);
-    const ids = { resposta: comPrazoIds('resposta'), solucao: comPrazoIds('solucao') };
-    citar(p, [...ids.resposta, ...ids.solucao]);
-    return {
-      prioridade: pr, nome: pr ? NOME_PRIORIDADE[pr] : 'Sem prioridade', resolvidos: xs.length,
-      resposta: { ...conta.resposta, ids: ids.resposta, foraIds: fora('resposta', xs) },
-      solucao: { ...conta.solucao, ids: ids.solucao, foraIds: fora('solucao', xs) },
-      limites: limite ? { resposta: limite.resposta, solucao: limite.solucao, uteis: limite.conta === 'uteis' } : null,
-    };
-  }).filter((l) => l.prioridade !== null || l.resolvidos > 0);
+  const grupos = new Map<string, { prazo: number; nome: string; xs: Derivado[] }>();
+  for (const d of resolvidos) {
+    if (!comPrazo(d)) continue;
+    const dono = prazoDoAssunto(d.c.assuntoId, p.assuntos);
+    if (!dono) continue;
+    const g = grupos.get(dono.deId) ?? { prazo: dono.minutos, nome: caminhoDoAssuntoIds(dono.deId, p.assuntos).map((id) => p.assuntos.get(id)?.nome ?? '?').join(' › '), xs: [] };
+    g.xs.push(d);
+    grupos.set(dono.deId, g);
+  }
+  const porAssunto: LinhaDoPrazo[] = [...grupos.entries()].map(([assuntoId, g]) => {
+    const ids = g.xs.map((d) => d.c.id);
+    citar(p, ids);
+    return { assuntoId, nome: g.nome, prazo: g.prazo, resolvidos: g.xs.length, noPrazo: prazoDoPeriodo(g.xs).noPrazo, ids, foraIds: fora(g.xs) };
+  }).sort((a, b) => b.resolvidos - a.resolvidos || a.nome.localeCompare(b.nome, 'pt-BR'));
   return {
     contaPrazo: p.ctx.painel.contaPrazo,
     resolvidos: resolvidos.length,
-    resposta: { ...agora.resposta, pct: pctOuNada(agora.resposta.noPrazo, agora.resposta.comPrazo), antes: pctOuNada(antes.resposta.noPrazo, antes.resposta.comPrazo), foraIds: fora('resposta', resolvidos) },
-    solucao: { ...agora.solucao, pct: pctOuNada(agora.solucao.noPrazo, agora.solucao.comPrazo), antes: pctOuNada(antes.solucao.noPrazo, antes.solucao.comPrazo), foraIds: fora('solucao', resolvidos) },
+    solucao: { ...agora, pct: pctOuNada(agora.noPrazo, agora.comPrazo), antes: pctOuNada(antes.noPrazo, antes.comPrazo), foraIds: fora(resolvidos) },
     vencidosAgora: peca(p, abertos.filter(prazoVencido)),
     pertoAgora: peca(p, abertos.filter(prazoPerto)),
-    semPrioridade: resolvidos.filter((d) => !d.c.prioridade).length,
-    porPrioridade,
+    semPrazo: peca(p, resolvidos.filter((d) => d.prazos.solucao.situacao === 'sem')),
+    porAssunto,
   };
 }
 
@@ -1136,7 +1147,7 @@ function arvore(p: Preparo): ArvoreDoPainel {
     return {
       id: a.id, nome: a.nome, nivel, ativo: a.ativo, n: doNo.length, ids,
       abertos: doNo.filter((d) => d.c.situacao === 'aberto').length, resolvidos: resolvidos.length,
-      mediana: mediana(resolvidos.map((d) => d.minResolver!)), noPrazo: conta.solucao.noPrazo, comPrazo: conta.solucao.comPrazo,
+      mediana: mediana(resolvidos.map((d) => d.minResolver!)), noPrazo: conta.noPrazo, comPrazo: conta.comPrazo,
       filhos: sub,
     };
   };
@@ -1473,7 +1484,7 @@ function fechamento(p: Preparo): MesDoPainel {
     const naFila = p.base.filter((d) => d.diaCriado <= corte && !(d.diaResolvido && d.diaResolvido <= corte)).length;
     const conta = prazoDoPeriodo(rs);
     const temDado = !!primeiro && primeiro <= ate;
-    return { ch, rs, mediana: mediana(rs.map((d) => d.minResolver ?? 0)), naFila: temDado ? naFila : null, prazo: pctOuNada(conta.solucao.noPrazo, conta.solucao.comPrazo), temDado };
+    return { ch, rs, mediana: mediana(rs.map((d) => d.minResolver ?? 0)), naFila: temDado ? naFila : null, prazo: pctOuNada(conta.noPrazo, conta.comPrazo), temDado };
   };
   const a = doMes(pedido); const b = doMes(anterior);
   const ranking = (chave: (d: Derivado) => string | null, n: number) => {

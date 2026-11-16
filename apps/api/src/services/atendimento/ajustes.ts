@@ -530,7 +530,7 @@ function conferirLugar(todos: Assunto[], id: string | null, d: AssuntoGravar) {
 }
 
 const proximaOrdem = (irmaos: Assunto[]) => Math.max(-1, ...irmaos.map((a) => a.ordem)) + 1;
-const assuntoParaAuditoria = (a: Assunto) => ({ nome: a.nome, paiId: a.paiId, descricao: a.descricao, ativo: a.ativo, checklist: a.checklist, dePara: a.dePara });
+const assuntoParaAuditoria = (a: Assunto) => ({ nome: a.nome, paiId: a.paiId, descricao: a.descricao, ativo: a.ativo, checklist: a.checklist, dePara: a.dePara, prazoSolucao: a.prazoSolucao });
 
 export async function criarAssunto(app: FastifyInstance, painelId: string, d: AssuntoGravar): Promise<Gravado<Assunto>> {
   const db = app.db;
@@ -540,6 +540,7 @@ export async function criarAssunto(app: FastifyInstance, painelId: string, d: As
   const [linha] = await db.insert(ticketSubjects).values({
     id: newId(), panelId: painelId, parentId: d.paiId, name: d.nome, description: d.descricao, active: d.ativo,
     sortOrder: proximaOrdem(todos.filter((a) => a.paiId === d.paiId)), checklist: unicos(d.checklist), aliases: unicos(d.dePara),
+    resolutionMinutes: d.prazoSolucao ?? null,
   }).returning();
   const a = assuntoDaLinha(linha!);
   return { valor: a, resumo: `Criou o assunto ${caminhoDoAssunto(a.id, [...todos, a])} no painel ${p.name}`, depois: assuntoParaAuditoria(a) };
@@ -557,6 +558,8 @@ export async function alterarAssunto(app: FastifyInstance, id: string, d: Assunt
   const mudouDeLugar = antes.paiId !== d.paiId;
   const [nova] = await db.update(ticketSubjects).set({
     parentId: d.paiId, name: d.nome, description: d.descricao, active: d.ativo, checklist: unicos(d.checklist), aliases: unicos(d.dePara),
+    // sem a chave do prazo, o prazo fica (2.4.8)
+    ...(d.prazoSolucao !== undefined ? { resolutionMinutes: d.prazoSolucao } : {}),
     // mudou de lugar na árvore: vai para o fim da lista dos irmãos novos
     ...(mudouDeLugar ? { sortOrder: proximaOrdem(todos.filter((a) => a.paiId === d.paiId && a.id !== id)) } : {}),
     updatedAt: new Date(),

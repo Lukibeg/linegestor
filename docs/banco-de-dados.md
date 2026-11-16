@@ -1124,6 +1124,7 @@ Um ASSUNTO, em árvore (até 3 níveis), de um painel. Só diz "o quê" (o tipo,
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `checklist` | texto | Os passos que entram no checklist do chamado quando ele ganha este assunto | obrigatório · padrão: [] · lista |
 | `aliases` | texto | De-para: os nomes da lista antiga que viram este assunto | obrigatório · padrão: [] · lista |
+| `resolution_minutes` | número inteiro | O prazo de solução do chamado com este assunto, em minutos úteis (2.4.8). Nulo: herda do assunto de cima; se ninguém acima tiver, o chamado fica sem prazo. | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 

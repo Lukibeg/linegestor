@@ -159,7 +159,7 @@ function CamposDoSistema({ painel, nAssuntos, onAssuntos, onTipos }: { painel: P
         <p className="text-[12.5px] text-muted">
           {painel.tipo === 'vendas'
             ? 'Toda negociação tem a empresa, o título, o valor, o responsável e as etiquetas. Estes, cada painel usa ou não:'
-            : 'Todo chamado tem o título, a descrição, o responsável e as etiquetas. Estes, cada painel usa ou não (sem a prioridade, o painel não conta prazo):'}
+            : 'Todo chamado tem o título, a descrição, o responsável e as etiquetas. Estes, cada painel usa ou não (sem o assunto, o painel não conta prazo: o prazo de solução vem do assunto):'}
         </p>
       </header>
       <ul className="divide-y divide-line">

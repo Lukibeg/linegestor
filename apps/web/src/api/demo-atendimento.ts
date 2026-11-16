@@ -31,7 +31,7 @@ import {
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta, renomearEtiqueta,
   faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
   EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO, modeloDoAviso, modelosParaGuardar, variaveisDesconhecidas,
-  alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
+  alertasDevidos, assuntoEDescendentes, prazoDoAssunto, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
   ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, modulosSemMarcar, AoMoverSchema,
@@ -639,9 +639,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   function prazosDe(t: ChamadoRow, agora: Date) {
     const painel = A.paineis.find((p) => p.id === t.painelId);
+    const usaAssunto = !painel || campoLigado(painel.ajustes, 'assunto');
     return estadoDosPrazos({
-      criadoEm: t.criadoEm, prioridade: !painel || campoLigado(painel.ajustes, 'prioridade') ? t.prioridade : null, respondidoEm: t.respondidoEm, resolvidoEm: t.resolvidoEm ?? t.fechadoEm, esperas: t.esperas,
-      // sem a prioridade no painel (2.1.2), não há prazo
+      criadoEm: t.criadoEm, resolvidoEm: t.resolvidoEm ?? t.fechadoEm, esperas: t.esperas,
+      // 2.4.8: o prazo de solução é o do assunto (o dele, ou o herdado do de cima), como o servidor
+      assuntoId: usaAssunto ? t.assuntoId : null,
+      prazoSolucao: usaAssunto ? prazoDoAssunto(t.assuntoId, A.assuntos)?.minutos ?? null : null,
       contaPrazo: painel ? painelContaPrazo(painel.ajustes) : true,
     }, A.prazos, agora);
   }
@@ -2835,7 +2838,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras'), prioridade: usa('prioridade') },
       },
       etapas: A.etapas.filter((e) => e.painelId === painel.id).map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, ativa: !e.deletedAt })),
-      assuntos: A.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo })),
+      assuntos: A.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo, prazoSolucao: a.prazoSolucao })),
       campos: camposDeLista.map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo, varios: c.tipo === 'lista_varios' })),
       pessoas: new Map(S.users.map((u) => [u.id, u.name])),
       clientes,
@@ -3464,7 +3467,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (igual) throw conflito(`Já existe o assunto ${caminhoDoAssunto(igual.id, todos)} neste painel.`);
   }
   const proximaOrdem = (irmaos: Assunto[]) => Math.max(-1, ...irmaos.map((a) => a.ordem)) + 1;
-  const assuntoParaAuditoria = (a: Assunto) => ({ nome: a.nome, paiId: a.paiId, descricao: a.descricao, ativo: a.ativo, checklist: a.checklist, dePara: a.dePara });
+  const assuntoParaAuditoria = (a: Assunto) => ({ nome: a.nome, paiId: a.paiId, descricao: a.descricao, ativo: a.ativo, checklist: a.checklist, dePara: a.dePara, prazoSolucao: a.prazoSolucao });
 
   function criarAssunto(painelId: string, d: ReturnType<typeof AssuntoGravarSchema.parse>) {
     const p = linhaDoPainel(painelId);
@@ -3473,6 +3476,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const a: Assunto = {
       id: novoId(), painelId, paiId: d.paiId, nome: d.nome, descricao: d.descricao ?? null, ativo: d.ativo,
       ordem: proximaOrdem(todos.filter((x) => x.paiId === d.paiId)), checklist: unicos(d.checklist), dePara: unicos(d.dePara),
+      prazoSolucao: d.prazoSolucao ?? null,
     };
     A.assuntos.push(a);
     return { valor: { ...a }, resumo: `Criou o assunto ${caminhoDoAssunto(a.id, A.assuntos)} no painel ${p.nome}`, depois: assuntoParaAuditoria(a) };
@@ -3489,6 +3493,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const mudouDeLugar = antes.paiId !== d.paiId;
     Object.assign(linha, {
       paiId: d.paiId, nome: d.nome, descricao: d.descricao ?? null, ativo: d.ativo, checklist: unicos(d.checklist), dePara: unicos(d.dePara),
+      // sem a chave do prazo, o prazo fica (2.4.8), como o servidor
+      ...(d.prazoSolucao !== undefined ? { prazoSolucao: d.prazoSolucao } : {}),
       ...(mudouDeLugar ? { ordem: proximaOrdem(todos.filter((a) => a.paiId === d.paiId && a.id !== id)) } : {}),
     });
     const caminhoDepois = caminhoDoAssunto(id, A.assuntos);
@@ -3513,7 +3519,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const ordens = new Map<string | null, number>();
     const proxima = (pai: string | null) => { const n = ordens.get(pai) ?? proximaOrdem(todos.filter((a) => a.paiId === pai)); ordens.set(pai, n + 1); return n; };
     const criar = (partes: string[], paiId: string | null, descricao: string | null) => {
-      const a: Assunto = { id: novoId(), painelId, paiId, nome: partes[partes.length - 1]!, descricao, ativo: true, ordem: proxima(paiId), checklist: [], dePara: [] };
+      const a: Assunto = { id: novoId(), painelId, paiId, nome: partes[partes.length - 1]!, descricao, ativo: true, ordem: proxima(paiId), checklist: [], dePara: [], prazoSolucao: null };
       A.assuntos.push(a); porCaminho.set(chave(partes), a.id); novos.push(partes.join(' › ')); criados++;
       return a.id;
     };
@@ -4136,6 +4142,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (det.checklist) a.checklist = [...det.checklist];
       if (det.dePara) a.dePara = [...det.dePara];
       if (det.ativo !== undefined) a.ativo = det.ativo;
+      if (det.prazo !== undefined) a.prazoSolucao = det.prazo;
     }
 
     // ---- o WhatsApp dos chamados ligado (pela chave do LineChat), com a equipe e o número dela ----

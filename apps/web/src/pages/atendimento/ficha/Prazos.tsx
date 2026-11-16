@@ -1,12 +1,13 @@
 /**
- * Os prazos do chamado: a primeira resposta e a solução, cada um com a frase do prazo ("Faltam 2 h
- * úteis (vence às 16:00)"), a barrinha do quanto já correu (verde, laranja, vermelho — sempre com o
- * texto ao lado, nunca só a cor) e a marca de espera: desde quando e por quê. Esperando o cliente, o
- * prazo para; esperando a operadora, continua.
+ * O prazo do chamado (2.4.8): a solução, pelo prazo do assunto (o dele, ou o herdado do assunto de
+ * cima), com a frase do prazo ("Faltam 2 h úteis (vence às 16:00)"), a barrinha do quanto já correu
+ * (verde, laranja, vermelho — sempre com o texto ao lado, nunca só a cor) e a marca de espera: desde
+ * quando e por quê. Esperando o cliente, o prazo para; esperando a operadora, continua. A primeira
+ * resposta não tem prazo. Sem prazo, a frase diz o porquê (sem assunto, ou o assunto sem prazo).
  */
 import { AlarmClock, Hourglass } from 'lucide-react';
-import { duracaoDoPrazo, NOME_CONTA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_PRAZO, textoDoPrazo, type EstadoPrazo } from '@gestor/shared';
-import { haQuanto } from '../comum.js';
+import { caminhoDoAssunto, duracaoDoPrazo, NOME_ESPERA, NOME_SITUACAO_PRAZO, prazoDoAssunto, TEXTO_SEM_PRAZO, textoDoPrazo, type EstadoPrazo } from '@gestor/shared';
+import { haQuanto, useOpcoes } from '../comum.js';
 import { Secao, useAberta } from './base.js';
 import { dataCompleta, emQuando } from './Cabecalho.js';
 
@@ -20,26 +21,35 @@ const SELO: Record<EstadoPrazo['situacao'], string> = {
   vencido: 'bg-bad-soft text-bad', estourou: 'bg-bad-soft text-bad', perto: 'bg-signal-soft text-signal', no_prazo: 'bg-ok-soft text-ok', cumprido: 'bg-ok-soft text-ok',
   pausado: 'bg-surface-2 text-muted', sem: 'bg-surface-2 text-muted',
 };
+/** O que fazer para o chamado ganhar prazo (abaixo da frase do "sem prazo"). */
+const COMO_TER_PRAZO: Partial<Record<NonNullable<EstadoPrazo['motivo']>, string>> = {
+  sem_assunto: 'O prazo vem do assunto: escolha o assunto do chamado.',
+  assunto_sem_prazo: 'Cadastre o prazo de solução do assunto em Configurar › Assuntos (o subtópico sem prazo usa o do assunto de cima).',
+};
 
 export function Prazos() {
   const { f, painel } = useAberta();
-  const { resposta, solucao } = f.prazos;
-  const semPrazo = resposta.situacao === 'sem' && solucao.situacao === 'sem';
+  const opcoes = useOpcoes();
+  const { solucao } = f.prazos;
+  // de qual assunto vem o prazo (o do chamado, ou o de cima, quando o subtópico não tem o seu)
+  const dono = f.assunto ? prazoDoAssunto(f.assunto.id, opcoes.data?.assuntos ?? []) : null;
+  const herdado = dono && f.assunto && dono.deId !== f.assunto.id;
   return (
-    <Secao titulo="Prazos" icone={<AlarmClock size={16} />}>
-      {semPrazo ? (
-        <p className="text-[13px] text-muted">
-          {painel && !painel.ajustes.contaPrazo ? `O painel ${painel.nome} não conta prazo.` : !f.prioridade ? 'Sem prazo: escolha a prioridade (ou a gravidade e o alcance, para o Gestor sugerir).' : 'Sem prazo.'}
-        </p>
+    <Secao titulo="Prazo" icone={<AlarmClock size={16} />}>
+      {solucao.situacao === 'sem' ? (
+        <div className="text-[13px]" id="prazo-sem" data-motivo={solucao.motivo ?? ''}>
+          <p className="text-ink-2">
+            {solucao.motivo === 'painel' && painel ? `Sem prazo: o painel ${painel.nome} não conta prazo.` : TEXTO_SEM_PRAZO[solucao.motivo ?? 'painel']}{solucao.motivo === 'assunto_sem_prazo' && f.assunto ? ` (${f.assunto.caminho})` : ''}.
+          </p>
+          {solucao.motivo && COMO_TER_PRAZO[solucao.motivo] && <p className="text-[12px] text-muted mt-0.5">{COMO_TER_PRAZO[solucao.motivo]}</p>}
+        </div>
       ) : (
-        <div className="flex flex-col gap-3.5">
-          <UmPrazo nome="Primeira resposta" e={resposta} />
+        <div className="flex flex-col gap-2" id="prazo-solucao">
           <UmPrazo nome="Solução" e={solucao} />
-          {f.prioridade && (
-            <p className="text-[11.5px] text-muted">
-              Prioridade {NOME_PRIORIDADE[f.prioridade]}: {duracaoDoPrazo(resposta.limite)} para responder e {duracaoDoPrazo(solucao.limite)} para resolver, em {NOME_CONTA[solucao.conta]}.
-            </p>
-          )}
+          <p className="text-[11.5px] text-muted">
+            {dono ? <>Prazo do assunto {herdado ? <>{f.assunto!.nome}, herdado de <b className="font-medium text-ink-2">{caminhoDoAssunto(dono.deId, opcoes.data?.assuntos ?? [])}</b></> : <b className="font-medium text-ink-2">{dono.deNome}</b>}: </> : 'Prazo do assunto: '}
+            {duracaoDoPrazo(solucao.limite)} úteis para resolver.
+          </p>
         </div>
       )}
       <MarcaDeEspera />

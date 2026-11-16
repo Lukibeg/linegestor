@@ -13,7 +13,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  ajustesDaNiaCompletos, condicoesGuardadas, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, estadoDosPrazos, progressoDasPartes, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
+  ajustesDaNiaCompletos, condicoesGuardadas, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, estadoDosPrazos, prazoDoAssunto, progressoDasPartes, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
   valoresVisiveis,
   type AjustesDaNia, type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
   type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type PessoaCurta, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
@@ -179,7 +179,7 @@ export async function lerPrazos(db: Db): Promise<AjustesPrazos> {
 }
 
 export function assuntoDaLinha(s: typeof ticketSubjects.$inferSelect): Assunto {
-  return { id: s.id, painelId: s.panelId, paiId: s.parentId, nome: s.name, descricao: s.description, ativo: s.active, ordem: s.sortOrder, checklist: s.checklist, dePara: s.aliases };
+  return { id: s.id, painelId: s.panelId, paiId: s.parentId, nome: s.name, descricao: s.description, ativo: s.active, ordem: s.sortOrder, checklist: s.checklist, dePara: s.aliases, prazoSolucao: s.resolutionMinutes ?? null };
 }
 
 export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonalizado {
@@ -297,9 +297,10 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
   const assunto = t.subjectId ? ctx.assuntos.find((a) => a.id === t.subjectId) : undefined;
   const filhos = par.filhos.get(t.id) ?? [];
   const prazos = estadoDosPrazos({
-    criadoEm: t.createdAt.toISOString(), prioridade: usa('prioridade') ? (t.priority as Prioridade | null) ?? null : null,
-    respondidoEm: iso(t.firstResponseAt), resolvidoEm: iso(t.resolvedAt ?? t.closedAt), esperas: waits,
-    // sem a prioridade no painel (2.1.2), não há prazo
+    criadoEm: t.createdAt.toISOString(), resolvidoEm: iso(t.resolvedAt ?? t.closedAt), esperas: waits,
+    // 2.4.8: o prazo de solução é o do assunto (o dele, ou o herdado do de cima); sem o assunto no painel, não há prazo
+    assuntoId: usa('assunto') ? t.subjectId : null,
+    prazoSolucao: usa('assunto') ? prazoDoAssunto(t.subjectId, ctx.assuntos)?.minutos ?? null : null,
     contaPrazo: painel ? painelContaPrazo(painel.ajustes) : true,
   }, ctx.prazos, ctx.agora);
   return {

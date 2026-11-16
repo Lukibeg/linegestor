@@ -344,15 +344,12 @@ export function ChipResultado({ r, motivo, em }: { r: ResultadoDaVenda | null; m
 const TOM_PRAZO: Record<EstadoPrazo['situacao'], TomChip> = { vencido: 'bad', perto: 'signal', no_prazo: 'neutral', pausado: 'muted', cumprido: 'ok', estourou: 'bad', sem: 'muted' };
 
 /**
- * O selo do prazo: o mais urgente entre a primeira resposta (enquanto ninguém respondeu) e a
- * solução. Vencido em vermelho, perto de vencer em laranja, parado em cinza.
+ * O selo do prazo: o da solução (2.4.8: o prazo vem do assunto; a primeira resposta não tem prazo).
+ * Vencido em vermelho, perto de vencer em laranja, parado em cinza. Sem prazo, nada.
  */
 export function SeloPrazo({ c, completo = false }: { c: Pick<CartaoChamado, 'prazos' | 'situacao'>; completo?: boolean }) {
-  const { resposta, solucao } = c.prazos;
   if (c.situacao === 'fechado' && !completo) return null;
-  const pendente = resposta.situacao !== 'cumprido' && resposta.situacao !== 'estourou' && resposta.situacao !== 'sem';
-  const peso = (e: EstadoPrazo) => ({ vencido: 0, perto: 1, no_prazo: 2, pausado: 3, estourou: 4, cumprido: 5, sem: 6 }[e.situacao]);
-  const qual = pendente && peso(resposta) <= peso(solucao) ? { nome: 'Resposta', e: resposta } : { nome: 'Solução', e: solucao };
+  const qual = { nome: 'Solução', e: c.prazos.solucao };
   if (qual.e.situacao === 'sem') return null;
   const icone = qual.e.situacao === 'vencido' ? <TriangleAlert size={12} /> : qual.e.situacao === 'pausado' ? <Hourglass size={12} /> : null;
   return (
@@ -494,7 +491,7 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
   const opcoes = useOpcoes();
   if (ehDeVendas(opcoes.data, c.painelId)) return <CartaoDaNegociacao c={c} cor={cor} mostrarEtapa={mostrarEtapa} nomeDaEtapa={nomeDaEtapa} arrastavel={arrastavel} />;
   return (
-    <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${c.prazos.solucao.situacao === 'vencido' || c.prazos.resposta.situacao === 'vencido' ? 'border-l-4 border-l-bad' : c.prioridade === 'critica' ? 'border-l-4 border-l-signal' : ''} ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+    <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${c.prazos.solucao.situacao === 'vencido' ? 'border-l-4 border-l-bad' : c.prioridade === 'critica' ? 'border-l-4 border-l-signal' : ''} ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}>
       <div className="flex items-center gap-1.5 flex-wrap">
         <CodigoChamado codigo={c.codigo} cor={cor} />
         {c.tipoChamado === 'problema' && <Chip tone="rosa" title="Problema: junta incidentes de várias empresas"><Layers size={12} /> Problema</Chip>}
