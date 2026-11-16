@@ -66,8 +66,8 @@ Voltar a negociação e mover de novo não abre outro card.
 - **Os itens que vêm de outros campos.** Na janela do checklist, **Os itens vêm de**: marque, por exemplo, a **Lista de
   ramais** da Curadoria (e outros campos, se o checklist junta mais de um). Cada linha dela vira um item no checklist (numa lista de várias, cada opção escolhida; num texto
   curto ou numa lista de uma opção, um item com o nome do campo). A Curadoria mudou a lista? O checklist acompanha: o que
-  entrou aparece, o que saiu some, e o que já foi marcado continua marcado. Esses itens só se marcam ali: para corrigir ou
-  tirar, mude na Lista de ramais.
+  entrou aparece, o que saiu some, e o que já foi marcado continua marcado. Para corrigir o texto, mude na Lista de ramais.
+  O **×** tira o item só daquele card (a Lista de ramais não muda): ele vai para **Tirados deste card**, com o **Voltar**.
 - **Todos os produtos.** Cada parte mostra um bloco para cada produto do card; o que ainda não tem campo naquela parte
   (o VoiceNet, por exemplo) aparece vazio, com o aviso.
 - **Os anexos.** Cada campo da Curadoria tem o **Anexar**: imagens, PDF, Word, Excel, até 30 MB cada. A Configuração e os

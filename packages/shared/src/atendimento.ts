@@ -119,6 +119,12 @@ export type ItemChecklist = {
   id: string; texto: string; feito: boolean; porId: string | null; em: string | null; doAssunto: boolean;
   /** no checklist do card (2.4.8): o campo de onde o item veio (a Lista de ramais da Curadoria); nulo, incluído à mão */
   origem?: string | null;
+  /**
+   * o item que veio de outro campo e foi tirado deste card pelo × (2.4.8, o Luan: "tem que ter um xzinho se eu quiser remover
+   * algum item"): fica guardado (senão voltaria na leitura seguinte, porque a linha continua na origem), fora da conta e da
+   * lista, com o Voltar
+   */
+  tirado?: boolean;
 };
 /**
  * Os itens dos campos Checklist do card (2.4.8), pelo id do campo. Diferente das caixinhas (as mesmas em todos os cards do
@@ -935,7 +941,8 @@ function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
   // o campo com um arquivo anexado está preenchido (2.4.4, o Luan: "um documento tem q contar como preenchido o campo")
   if (id) {
     // o checklist do card (2.4.8): com itens, falta enquanto um deles não está marcado; sem nenhum, falta (abaixo)
-    const lista = c.listas?.[id];
+    // os tirados pelo × (2.4.8) não contam
+    const lista = c.listas?.[id]?.filter((i) => !i.tirado);
     if (lista?.length) return lista.some((i) => !i.feito);
     return !valorPreenchido(c.campos[id]) && !c.camposComAnexo?.includes(id);
   }
@@ -1737,6 +1744,8 @@ export const ListaDoCampoSchema = z.discriminatedUnion('acao', [
   z.object({ acao: z.literal('marcar'), itemId: z.string().min(1).max(60), feito: z.boolean() }),
   z.object({ acao: z.literal('editar'), itemId: z.string().min(1).max(60), texto: z.string().trim().min(1, 'Escreva o item').max(MAX_LETRAS_DO_ITEM, `O item vai até ${MAX_LETRAS_DO_ITEM} letras`) }),
   z.object({ acao: z.literal('tirar'), itemId: z.string().min(1).max(60) }),
+  // o que veio de outro campo e foi tirado volta (2.4.8)
+  z.object({ acao: z.literal('voltar'), itemId: z.string().min(1).max(60) }),
 ]);
 export type ListaDoCampoEntrada = z.input<typeof ListaDoCampoSchema>;
 export const ChecklistSchema = z.discriminatedUnion('acao', [
@@ -2502,6 +2511,7 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
       if (d.acao === 'incluiu') return `incluiu ${em}: ${itens}`;
       if (d.acao === 'tirou') return `tirou ${d.campo ? `de ${d.campo}` : 'do checklist'}: ${d.item}`;
       if (d.acao === 'editou') return `corrigiu ${em}: "${d.de}" para "${d.item}"`;
+      if (d.acao === 'voltou') return `trouxe de volta ${em}: ${d.item}`;
       return `${d.feito ? 'marcou' : 'desmarcou'} ${em}: ${d.item}`;
     }
     case 'tempo': return `registrou ${d.duracao ?? `${d.minutos} min`} de trabalho${d.nota ? `: ${d.nota}` : ''}`;

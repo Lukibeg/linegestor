@@ -8,11 +8,12 @@
  * quando; o lápis corrige o texto e o × tira. Marcar muda na tela antes (e volta se o servidor recusar).
  *
  * Os itens que vêm de outros campos (2.4.8, o Luan: "os campos de outras etapas que eu selecionar … gere esse checklist na
- * implantação"): em cima, debaixo do nome do campo de onde vêm ("Da Lista de ramais · Curadoria"); só se marcam aqui — para
- * corrigir ou tirar, é lá. Os incluídos à mão vêm depois ("Incluídos aqui").
+ * implantação"): em cima, debaixo do nome do campo de onde vêm ("Vêm de Lista de ramais · Curadoria"); para corrigir o texto, é
+ * lá. O × tira o item só deste card ("tem que ter um xzinho se eu quiser remover algum item"): ele fica em "Tirados deste card",
+ * com o Voltar. Os incluídos à mão vêm depois ("Incluídos aqui").
  */
 import { useState, type KeyboardEvent } from 'react';
-import { Check, Pencil, Plus, X } from 'lucide-react';
+import { Check, Pencil, Plus, Undo2, X } from 'lucide-react';
 import { linhasDaLista, MAX_LETRAS_DO_ITEM, nomeCompletoDoCampo, type CampoPersonalizado, type ItemChecklist } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
@@ -21,7 +22,10 @@ import { dataCompleta, emQuando } from './Cabecalho.js';
 
 export function ChecklistDoCard({ c }: { c: CampoPersonalizado }) {
   const { f, pode, opcoes } = useAberta();
-  const itens = f.listas?.[c.id] ?? [];
+  const todos = f.listas?.[c.id] ?? [];
+  // os tirados pelo × (os que vêm de outro campo) ficam fora da lista e da conta, com o Voltar
+  const itens = todos.filter((i) => !i.tirado);
+  const tirados = todos.filter((i) => i.tirado);
   // de onde vêm os itens (2.4.8): o nome do campo e a aba ("Lista de ramais · Curadoria")
   const nomeDaOrigem = (id: string) => {
     const o = opcoes.campos.find((x) => x.id === id);
@@ -66,6 +70,7 @@ export function ChecklistDoCard({ c }: { c: CampoPersonalizado }) {
             : aberto ? 'Nenhum item ainda: inclua os deste card abaixo.' : 'Nenhum item.'}
         </p>
       )}
+      {tirados.length > 0 && <TiradosDaLista c={c} itens={tirados} />}
       {aberto && <IncluirNaLista c={c} vazia={!itens.length} />}
     </div>
   );
@@ -123,14 +128,17 @@ function ItemDaLista({ c, i }: { c: CampoPersonalizado; i: ItemChecklist }) {
             </span>
           </label>
         )}
-        {/* o que veio de outro campo muda lá (2.4.8): aqui só se marca */}
-        {pode && !editando && !i.origem && (
-          <span className="flex items-center shrink-0 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
-            <button type="button" className="btn-ghost btn-sm text-muted -my-0.5 !px-1.5" title="Corrigir o texto" aria-label={`Corrigir ${i.texto}`}
-              onClick={() => { setTexto(i.texto); setEditando(true); }}>
-              <Pencil size={13} />
-            </button>
-            <button type="button" className="btn-ghost btn-sm text-muted -my-0.5 !px-1.5" title="Tirar da lista" aria-label={`Tirar ${i.texto}`} disabled={tirar.ocupado}
+        {/* o que veio de outro campo se corrige lá (2.4.8); o × tira só deste card. Sempre à vista (mais claro até passar o mouse) */}
+        {pode && !editando && (
+          <span className="flex items-center shrink-0 sm:opacity-50 sm:group-hover:opacity-100 focus-within:opacity-100">
+            {!i.origem && (
+              <button type="button" className="btn-ghost btn-sm text-muted -my-0.5 !px-1.5" title="Corrigir o texto" aria-label={`Corrigir ${i.texto}`}
+                onClick={() => { setTexto(i.texto); setEditando(true); }}>
+                <Pencil size={13} />
+              </button>
+            )}
+            <button type="button" className="btn-ghost btn-sm text-muted -my-0.5 !px-1.5" title={i.origem ? 'Tirar deste card (a lista de origem não muda)' : 'Tirar da lista'}
+              aria-label={`Tirar ${i.texto}`} disabled={tirar.ocupado}
               onClick={() => void tirar.rodar(() => api.atendimento.listaDoCampo(f.id, c.id, { acao: 'tirar', itemId: i.id }))}>
               {tirar.ocupado ? <Spinner /> : <X size={14} />}
             </button>
@@ -139,6 +147,27 @@ function ItemDaLista({ c, i }: { c: CampoPersonalizado; i: ItemChecklist }) {
       </div>
       <ErroPerto erro={marcar.erro ?? tirar.erro ?? corrigir.erro} className="ml-[26px] !mt-0 mb-1" />
     </li>
+  );
+}
+
+/** Os tirados deste card pelo × (os que vêm de outro campo): cada um com o Voltar. */
+function TiradosDaLista({ c, itens }: { c: CampoPersonalizado; itens: ItemChecklist[] }) {
+  const { f, pode } = useAberta();
+  const voltar = useAcao();
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-muted" data-tirados>
+      <span>Tirados deste card:</span>
+      {itens.map((i) => (
+        pode ? (
+          <button key={i.id} type="button" className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-0.5 hover:bg-surface-2 hover:text-ink line-through"
+            title="Trazer de volta para a lista" aria-label={`Trazer de volta ${i.texto}`} disabled={voltar.ocupado}
+            onClick={() => void voltar.rodar(() => api.atendimento.listaDoCampo(f.id, c.id, { acao: 'voltar', itemId: i.id }))}>
+            <Undo2 size={12} className="no-underline" /> {i.texto}
+          </button>
+        ) : <span key={i.id} className="line-through">{i.texto}</span>
+      ))}
+      <ErroPerto erro={voltar.erro} className="basis-full !mt-0" />
+    </div>
   );
 }
 

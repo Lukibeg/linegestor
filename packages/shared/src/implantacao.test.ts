@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, larguraDoCampo, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type Obrigatorio } from './atendimento.js';
+import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, larguraDoCampo, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type ItemChecklist, type Obrigatorio } from './atendimento.js';
 import {
   checklistLigadoNaImplantacao, nomeDoChecklistDaImplantacao, podeLigarNaImplantacao,
   ehPainelDaImplantacao, etapaDoFimDaImplantacao, etapaEhDaParte, itensDoChecklist, linhasDaLista, listaDepois, listasEfetivas, partesNoCartao, textosDaOrigem,
@@ -586,15 +586,45 @@ describe('o checklist do card gerado de outros campos (2.4.8)', () => {
     expect(itensDoChecklist({ ...imp, origens: [] }, CS, valores, [...lista, { id: 'm2', texto: 'à mão', feito: false, porId: null, em: null, doAssunto: false }]).map((i) => i.texto)).toEqual(['à mão']);
   });
 
-  it('o que veio de outro campo só se marca aqui: corrigir e tirar é lá', () => {
+  it('o que veio de outro campo se corrige lá; incluir à mão o que já veio não repete', () => {
     const lista = itensDoChecklist(imp, CS, valores, []);
     const nome = (id: string) => (id === 'ramais' ? 'Lista de ramais (Curadoria)' : undefined);
-    expect(listaDepois(lista, imp, { acao: 'tirar', itemId: lista[0]!.id }, 'u', 'x', () => 'n', nome))
-      .toEqual({ ok: false, erro: 'Esse item vem de Lista de ramais (Curadoria): para tirar, mude lá.' });
     expect(listaDepois(lista, imp, { acao: 'editar', itemId: lista[0]!.id, texto: 'outro' }, 'u', 'x', () => 'n', nome))
       .toEqual({ ok: false, erro: 'Esse item vem de Lista de ramais (Curadoria): para corrigir, mude lá.' });
-    // incluir à mão o que já veio não repete
     expect(listaDepois(lista, imp, { acao: 'incluir', textos: ['201 RESERVAS'] }, 'u', 'x', () => 'n')).toEqual({ ok: false, erro: 'Esses itens já estão na lista.' });
+  });
+
+  // o Luan: "tem que ter um xzinho se eu quiser remover algum item"
+  it('o × tira do card o que veio de outro campo: fica guardado como tirado, fora da conta, e volta', () => {
+    let lista = itensDoChecklist(imp, CS, valores, []);
+    const r201 = lista[1]!;
+    lista = (listaDepois(lista, imp, { acao: 'marcar', itemId: r201.id, feito: true }, 'u', 'x', () => 'n') as { lista: ItemChecklist[] }).lista;
+    const t = listaDepois(lista, imp, { acao: 'tirar', itemId: r201.id }, 'u', 'x', () => 'n');
+    expect(t.ok && textoDoEvento('checklist', t.evento)).toBe('tirou de O que fazer: 201 Reservas');
+    lista = t.ok ? t.lista : [];
+    expect(lista.find((i) => i.id === r201.id)).toMatchObject({ tirado: true, feito: true });
+    // a leitura seguinte (a linha continua na Lista de ramais) não traz de volta; a conta não conta
+    const relida = itensDoChecklist(imp, CS, valores, lista);
+    expect(relida.find((i) => i.id === r201.id)?.tirado).toBe(true);
+    expect(contaDoCampo(imp, null, null, null, relida)).toEqual({ feitos: 0, total: 5 });
+    // tirado não se marca; o Voltar traz como estava; incluir o mesmo texto também traz de volta
+    expect(listaDepois(relida, imp, { acao: 'marcar', itemId: r201.id, feito: false }, 'u', 'x', () => 'n')).toEqual({ ok: false, erro: 'Esse item foi tirado da lista: traga de volta antes.' });
+    const v = listaDepois(relida, imp, { acao: 'voltar', itemId: r201.id }, 'u', 'x', () => 'n');
+    expect(v.ok && v.lista.find((i) => i.id === r201.id)).toEqual(expect.objectContaining({ feito: true, texto: '201 Reservas' }));
+    expect(v.ok && 'tirado' in v.lista.find((i) => i.id === r201.id)!).toBe(false);
+    expect(v.ok && textoDoEvento('checklist', v.evento)).toBe('trouxe de volta em O que fazer: 201 Reservas');
+    const inc = listaDepois(relida, imp, { acao: 'incluir', textos: ['201 reservas\nNovo'] }, 'u', 'x', () => 'n2');
+    expect(inc.ok && inc.lista.filter((i) => !i.tirado).map((i) => i.texto)).toEqual(['200 Recepção', '201 Reservas', 'IP do cliente: 189.45.12.90', 'Suporte', 'Vendas', 'Plano: Completo', 'Novo']);
+    // a etapa: o tirado não é pedido
+    const dados = {
+      tipoChamado: 'chamado' as const, clienteId: null, contatoNome: null, contatoTelefone: null, relato: null, descricao: null, assuntoId: null, tipo: null,
+      gravidade: null, alcance: null, prioridade: null, produtos: [], operadoras: [], responsavelId: 'u1', solucao: null, causa: null, validacao: null,
+      checklist: [], tempoMinutos: 0, campos: {},
+    };
+    const so201 = [{ ...r201, feito: false, tirado: true }, { id: 'm', texto: 'x', feito: true, porId: 'u', em: 'x', doAssunto: false }];
+    expect(faltaParaEtapa({ ...dados, listas: { imp: so201 } }, { tipo: 'andamento', obrigatorios: ['campo:imp' as Obrigatorio] })).toEqual([]);
+    // sai da origem: some, mesmo tirado
+    expect(itensDoChecklist(imp, CS, { ramais: '200 Recepção' }, lista).some((i) => i.id === r201.id)).toBe(false);
   });
 
   it('a conta da parte e as listas da ficha já trazem os que vieram', () => {

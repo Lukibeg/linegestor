@@ -90,8 +90,13 @@ O Luan, 13/11, com o print do quadro do Ingline - Implantação:
   - **A marca fica com o texto**: o item que veio se acha pelo texto (sem ligar para maiúscula e acento), com um id que é o
     resumo do texto (`g-…`). O que sai da origem some, com a marca; o incluído à mão com o mesmo texto de um que veio passa a
     ser dele. Sem origens, os que tinham vindo saem e ficam os incluídos à mão.
-  - **Só se marcam aqui**: o lápis e o × não aparecem, e o servidor recusa ("Esse item vem de Lista de ramais (LinePBX)
-    (Curadoria): para tirar, mude lá.").
+  - **Corrigir o texto é na origem**: o lápis não aparece, e o servidor recusa ("Esse item vem de Lista de ramais (LinePBX)
+    (Curadoria): para corrigir, mude lá.").
+  - **O × tira só deste card** (16/11, o Luan: *"tem que ter um xzinho se eu quiser remover algum item"*): o item fica
+    guardado com `tirado` (senão voltaria na leitura seguinte, porque a linha continua na origem), com a marca que tinha, fora
+    da lista, da conta e do que a etapa pede; a ficha mostra "Tirados deste card" com o **Voltar** (a ação `voltar`), e incluir
+    o mesmo texto também traz de volta. Se a linha sai da origem, o tirado some junto. O × fica sempre à vista, mais claro
+    até passar o mouse.
   - Coluna `ticket_fields.source_field_ids` (jsonb), na mesma migração **0036**; a origem que é excluída deixa de contar, e o
     Restaurar tira as que já não existem. A auditoria do campo registra as `origens`.
 - **A caixinha "Checklist na Implantação" ao lado do campo** (16/11, à tarde). Em Configurar › Campos, ao lado de cada texto ou

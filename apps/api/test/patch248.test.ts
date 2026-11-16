@@ -195,13 +195,24 @@ describe('o checklist do card gerado de outros campos (2.4.8)', () => {
     expect(cartoes.find((c) => c.id === cartao)?.partes).toContainEqual({ parte: 'Implantação', feitos: 1, total: 4 });
   });
 
-  it('o que veio de outro campo não se corrige nem se tira aqui', async () => {
+  it('o que veio de outro campo se corrige lá; o × tira só deste card, e o Voltar traz', async () => {
     const f = await ficha(cartao);
     const item = f.listas[implantar.id]!.find((i) => i.texto === '202 Governança')!;
+    const ed = await lista(cartao, implantar.id, { acao: 'editar', itemId: item.id, texto: 'x' });
+    expect(ed.statusCode).toBe(400);
+    expect(ed.json().error).toBe('Esse item vem de Lista de ramais (Curadoria): para corrigir, mude lá.');
     const t = await lista(cartao, implantar.id, { acao: 'tirar', itemId: item.id });
-    expect(t.statusCode).toBe(400);
-    expect(t.json().error).toBe('Esse item vem de Lista de ramais (Curadoria): para tirar, mude lá.');
-    expect((await lista(cartao, implantar.id, { acao: 'editar', itemId: item.id, texto: 'x' })).statusCode).toBe(400);
+    expect(t.statusCode, t.body).toBe(200);
+    const tirado: FichaChamado = t.json();
+    expect(tirado.listas[implantar.id]!.find((i) => i.id === item.id)).toMatchObject({ tirado: true });
+    expect(tirado.historico.map((e) => e.texto)).toContain('tirou de O que fazer na implantação: 202 Governança');
+    // fora da conta; a Lista de ramais continua igual
+    expect(tirado.partes.find((p) => p.parte === 'Implantação')).toEqual({ parte: 'Implantação', feitos: 1, total: 3 });
+    expect(tirado.campos[ramais.id]).toBe('200 Recepção\n202 Governança');
+    // o Voltar
+    const v = await lista(cartao, implantar.id, { acao: 'voltar', itemId: item.id });
+    expect(v.statusCode, v.body).toBe(200);
+    expect((v.json() as FichaChamado).listas[implantar.id]!.find((i) => i.id === item.id)?.tirado).toBeUndefined();
     // o incluído à mão, sim
     const mao = f.listas[implantar.id]!.find((i) => i.texto === 'Treinar a recepção')!;
     expect((await lista(cartao, implantar.id, { acao: 'tirar', itemId: mao.id })).statusCode).toBe(200);

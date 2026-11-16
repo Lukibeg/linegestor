@@ -1601,13 +1601,19 @@ describe('o checklist do card na prévia (2.4.8, como o servidor)', () => {
     expect((await erroDe(api.listaDoCampo(hotel.id, op.campos.find((c) => c.painelId === imp.id && c.nome === 'IP do cliente')!.id, { acao: 'incluir', textos: ['x'] }))).status).toBe(400);
     // o alterar não aceita o checklist como valor
     expect((await erroDe(api.alterar(hotel.id, { campos: { [tel.id]: ['200'] } }))).message).toMatch(/inclua os itens pela ficha/);
-    // os ramais do telefone vêm da Curadoria: marcar, sim; tirar e corrigir, lá. A Curadoria muda e o checklist acompanha
+    // os ramais do telefone vêm da Curadoria: marcar, sim; o × tira só deste card (e o Voltar traz). A Curadoria muda e o
+    // checklist acompanha
     const ramais = tel.origens![0]!;
     f = await api.chamado(hotel.id);
     expect(f.listas[tel.id]!.map((i) => i.texto)).toEqual(['200 Recepção (24h)', '201 Reservas', '202 Governança', '210 a 269 Apartamentos']);
     f = await api.listaDoCampo(hotel.id, tel.id, { acao: 'marcar', itemId: f.listas[tel.id]![1]!.id, feito: true });
-    expect((await erroDe(api.listaDoCampo(hotel.id, tel.id, { acao: 'tirar', itemId: f.listas[tel.id]![0]!.id }))).message)
-      .toBe('Esse item vem de Lista de ramais (LinePBX) (Curadoria): para tirar, mude lá.');
+    const r200 = f.listas[tel.id]![0]!;
+    f = await api.listaDoCampo(hotel.id, tel.id, { acao: 'tirar', itemId: r200.id });
+    expect(f.listas[tel.id]!.find((i) => i.id === r200.id)?.tirado).toBe(true);
+    f = await api.listaDoCampo(hotel.id, tel.id, { acao: 'voltar', itemId: r200.id });
+    expect(f.listas[tel.id]!.find((i) => i.id === r200.id)?.tirado).toBeUndefined();
+    expect((await erroDe(api.listaDoCampo(hotel.id, tel.id, { acao: 'editar', itemId: r200.id, texto: 'x' }))).message)
+      .toBe('Esse item vem de Lista de ramais (LinePBX) (Curadoria): para corrigir, mude lá.');
     f = await api.alterar(hotel.id, { campos: { [ramais]: '201 reservas\n203 Restaurante' } });
     expect(f.listas[tel.id]!.map((i) => [i.texto, i.feito])).toEqual([['201 reservas', true], ['203 Restaurante', false]]);
     await entrar('leitor');

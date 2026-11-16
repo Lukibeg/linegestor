@@ -96,7 +96,8 @@ export function contaDoCampo(
   valores?: ValoresDosCampos | null, anexos?: CamposComAnexo | null, itens?: readonly ItemChecklist[] | null,
 ): { feitos: number; total: number } {
   if (c.tipo === 'checklist') {
-    const lista = itens ?? [];
+    // os tirados pelo × (2.4.8) não contam
+    const lista = (itens ?? []).filter((i) => !i.tirado);
     return lista.length ? { feitos: lista.filter((i) => i.feito).length, total: lista.length } : { feitos: 0, total: 1 };
   }
   if (c.tipo === 'modulos' && c.escolhidosEm && c.id) {
@@ -342,7 +343,8 @@ export function textosDaOrigem(o: Pick<CampoPersonalizado, 'nome' | 'tipo' | 'op
  * Os itens do checklist do card como a ficha mostra (2.4.8): primeiro os que vêm dos campos de origem (na ordem das origens e
  * das linhas), com a marca que já tinham — o item se acha pelo texto, sem ligar para maiúscula e acento —; depois os incluídos
  * à mão. O item que veio de um campo e saiu de lá some (com a marca); o incluído à mão com o mesmo texto de um que veio passa a
- * ser dele. Sem origens, os guardados, como estão.
+ * ser dele. Sem origens, os guardados, como estão. O que veio e foi tirado pelo × continua na lista com `tirado` (fora da conta
+ * e da ficha, com o Voltar), para não voltar sozinho na leitura seguinte; some quando sai da origem.
  */
 export function itensDoChecklist(
   c: Pick<CampoPersonalizado, 'id' | 'origens'>, campos: readonly Pick<CampoPersonalizado, 'id' | 'nome' | 'tipo' | 'opcoes' | 'ativo'>[],
@@ -365,7 +367,7 @@ export function itensDoChecklist(
       if (guardado) usados.add(guardado.id);
       gerados.push({
         id: guardado?.id ?? `g-${resumoDoTexto(k)}`, texto, feito: guardado?.feito ?? false, porId: guardado?.porId ?? null, em: guardado?.em ?? null,
-        doAssunto: false, origem: o.id,
+        doAssunto: false, origem: o.id, ...(guardado?.origem && guardado.tirado ? { tirado: true } : {}),
       });
     }
   }
@@ -430,14 +432,15 @@ export function nomeDoChecklistDaImplantacao(
 /** O que mexer no checklist do card faz (o mesmo no servidor e na prévia). */
 export type AcaoNaLista =
   | { acao: 'incluir'; textos: string[] } | { acao: 'marcar'; itemId: string; feito: boolean }
-  | { acao: 'editar'; itemId: string; texto: string } | { acao: 'tirar'; itemId: string };
+  | { acao: 'editar'; itemId: string; texto: string } | { acao: 'tirar'; itemId: string } | { acao: 'voltar'; itemId: string };
 export type ListaDepois =
   | { ok: true; mudou: boolean; lista: ItemChecklist[]; evento: Record<string, unknown>; resumo: string }
   | { ok: false; erro: string };
 
 /**
  * A lista do campo depois de uma ação: incluir (os que já estão na lista, sem ligar para maiúscula e acento, não entram de
- * novo), marcar (com quem e quando; desmarcar tira), corrigir o texto e tirar. `evento`: o que vai para o histórico ("incluiu
+ * novo; o que veio de outro campo e foi tirado volta), marcar (com quem e quando; desmarcar tira), corrigir o texto e tirar.
+ * O que veio de outro campo (2.4.8) não se corrige aqui; tirar esconde só deste card (`tirado`), e o voltar traz de volta. `evento`: o que vai para o histórico ("incluiu
  * em Ramais no telefone: 201, 202"). Marcar o que já está marcado (o clique duplo) não muda nada.
  */
 export function listaDepois(
@@ -447,38 +450,55 @@ export function listaDepois(
   const lista = [...(atual ?? [])];
   const achar = (id: string) => lista.findIndex((i) => i.id === id);
   if (d.acao === 'incluir') {
-    const ja = new Set(lista.map((i) => paraBusca(i.texto)));
+    const ja = new Set(lista.filter((i) => !i.tirado).map((i) => paraBusca(i.texto)));
     const novos: string[] = [];
+    const voltam: string[] = [];
     for (const t of linhasDaLista(d.textos)) {
       const k = paraBusca(t);
       if (ja.has(k)) continue;
-      ja.add(k); novos.push(t);
+      ja.add(k);
+      // o que veio de outro campo e foi tirado: volta, em vez de entrar repetido
+      const tirado = lista.findIndex((i) => i.tirado && paraBusca(i.texto) === k);
+      if (tirado >= 0) { const { tirado: _, ...volta } = lista[tirado]!; lista[tirado] = volta; voltam.push(volta.texto); continue; }
+      novos.push(t);
     }
-    if (!novos.length) return linhasDaLista(d.textos).length ? { ok: false, erro: 'Esses itens já estão na lista.' } : { ok: false, erro: 'Escreva o item.' };
-    if (lista.length + novos.length > MAX_ITENS_DA_LISTA) return { ok: false, erro: `A lista vai até ${MAX_ITENS_DA_LISTA} itens (já tem ${lista.length}).` };
+    if (!novos.length && !voltam.length) return linhasDaLista(d.textos).length ? { ok: false, erro: 'Esses itens já estão na lista.' } : { ok: false, erro: 'Escreva o item.' };
+    const visiveis = lista.filter((i) => !i.tirado).length;
+    if (visiveis + novos.length > MAX_ITENS_DA_LISTA) return { ok: false, erro: `A lista vai até ${MAX_ITENS_DA_LISTA} itens (já tem ${visiveis}).` };
     for (const t of novos) lista.push({ id: novoId(), texto: t, feito: false, porId: null, em: null, doAssunto: false });
+    const todos = [...voltam, ...novos];
     return {
-      ok: true, mudou: true, lista, evento: { acao: 'incluiu', campo: campo.nome, itens: novos },
-      resumo: novos.length === 1 ? `Incluiu "${novos[0]}" em ${campo.nome}` : `Incluiu ${novos.length} itens em ${campo.nome}`,
+      ok: true, mudou: true, lista, evento: { acao: 'incluiu', campo: campo.nome, itens: todos },
+      resumo: todos.length === 1 ? `Incluiu "${todos[0]}" em ${campo.nome}` : `Incluiu ${todos.length} itens em ${campo.nome}`,
     };
   }
   const i = achar(d.itemId);
   if (i < 0) return { ok: false, erro: 'Esse item não está mais na lista (alguém tirou?). Atualize a ficha.' };
   const item = lista[i]!;
-  // o item que veio de outro campo (2.4.8) muda lá: aqui só se marca
-  if (item.origem && (d.acao === 'tirar' || d.acao === 'editar')) {
+  // o item que veio de outro campo (2.4.8) se corrige lá
+  if (item.origem && d.acao === 'editar') {
     const de = nomeDaOrigem(item.origem);
-    return { ok: false, erro: `Esse item vem ${de ? `de ${de}` : 'de outro campo do card'}: ${d.acao === 'tirar' ? 'para tirar' : 'para corrigir'}, mude lá.` };
+    return { ok: false, erro: `Esse item vem ${de ? `de ${de}` : 'de outro campo do card'}: para corrigir, mude lá.` };
   }
+  if (d.acao === 'voltar') {
+    if (!item.tirado) return { ok: true, mudou: false, lista, evento: {}, resumo: '' };
+    const { tirado: _, ...volta } = item;
+    lista[i] = volta;
+    return { ok: true, mudou: true, lista, evento: { acao: 'voltou', campo: campo.nome, item: item.texto }, resumo: `Trouxe de volta "${item.texto}" em ${campo.nome}` };
+  }
+  if (item.tirado) return { ok: false, erro: 'Esse item foi tirado da lista: traga de volta antes.' };
   if (d.acao === 'tirar') {
-    lista.splice(i, 1);
+    // o que veio de outro campo fica guardado como tirado, com a marca (senão voltaria, porque a linha continua lá; e o Voltar
+    // traz como estava); o incluído à mão sai
+    if (item.origem) lista[i] = { ...item, tirado: true };
+    else lista.splice(i, 1);
     return { ok: true, mudou: true, lista, evento: { acao: 'tirou', campo: campo.nome, item: item.texto }, resumo: `Tirou "${item.texto}" de ${campo.nome}` };
   }
   if (d.acao === 'editar') {
     const texto = linhasDaLista(d.texto).join(' ').slice(0, MAX_LETRAS_DO_ITEM).trim();
     if (!texto) return { ok: false, erro: 'Escreva o item.' };
     if (texto === item.texto) return { ok: true, mudou: false, lista, evento: {}, resumo: '' };
-    if (lista.some((x, k) => k !== i && paraBusca(x.texto) === paraBusca(texto))) return { ok: false, erro: `"${texto}" já está na lista.` };
+    if (lista.some((x, k) => k !== i && !x.tirado && paraBusca(x.texto) === paraBusca(texto))) return { ok: false, erro: `"${texto}" já está na lista.` };
     lista[i] = { ...item, texto };
     return { ok: true, mudou: true, lista, evento: { acao: 'editou', campo: campo.nome, de: item.texto, item: texto }, resumo: `Corrigiu "${item.texto}" para "${texto}" em ${campo.nome}` };
   }
