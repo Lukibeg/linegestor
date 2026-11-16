@@ -23,7 +23,7 @@ import {
   Ban, Bell, Building2, CalendarDays, Check, Copy, Link2, MapPin, Pencil, Repeat, StickyNote, Ticket, Trash2, Undo2, Users, X,
 } from 'lucide-react';
 import {
-  diaPorExtenso, diasEntre, fimQueAcompanha, EventoGravarSchema, lerCodigo, NOME_QUEM_RECEBE_O_LEMBRETE, NOME_SITUACAO_DO_EVENTO, pessoasPossiveis, QUEM_RECEBE_O_LEMBRETE,
+  paineisParaOEvento, diaPorExtenso, diasEntre, fimQueAcompanha, EventoGravarSchema, lerCodigo, NOME_QUEM_RECEBE_O_LEMBRETE, NOME_SITUACAO_DO_EVENTO, pessoasPossiveis, QUEM_RECEBE_O_LEMBRETE,
   SITUACOES_DO_EVENTO, somarDias, textoDoHorario, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tituloSugerido,
   ESCOPOS_DA_SERIE, FREQUENCIAS_DA_REPETICAO, NOME_DA_FREQUENCIA, NOME_DO_ESCOPO, textoDaRepeticao, DIAS_DA_SEMANA_DA_REPETICAO, diaDaSemana, diaValido,
   type EscopoDaSerie, type Repeticao,
@@ -82,10 +82,11 @@ function horarioDoNovo(n: NovoEvento, tipo: { daEquipe: boolean } | undefined): 
   };
 }
 
-function novoRascunho(n: NovoEvento, opcoes: CalendarioOpcoes, nomes: ReadonlyMap<string, string>): Rascunho {
+function novoRascunho(n: NovoEvento, opcoes: CalendarioOpcoes, nomes: ReadonlyMap<string, string>, eu?: string): Rascunho {
   const ativos = opcoes.tipos.filter((t) => t.ativo);
   const tipo = ativos.find((t) => t.id === n.tipoId) ?? ativos.find((t) => !t.daEquipe) ?? ativos[0];
-  const paineisAtivos = opcoes.paineis.filter((p) => p.ativo);
+  // os pessoais dos outros não contam (2.4.8): o evento novo nunca nasce num deles
+  const paineisAtivos = paineisParaOEvento(opcoes.paineis, [], eu);
   const inicio = n.inicio ?? opcoes.hoje;
   return {
     // o título já vem sugerido ("Visita — Clínica Aurora") e acompanha o tipo, o cliente e as pessoas até a pessoa escrever o dela
@@ -133,14 +134,14 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
   const [evento, setEvento] = useState<EventoDoCalendario | null>('evento' in abertura ? abertura.evento : null);
   const [modo, setModo] = useState<'ver' | 'editar' | 'novo'>('evento' in abertura ? 'ver' : 'novo');
   const nomes = useNomesDasPessoas(opcoes);
-  const [rascunho, setRascunho] = useState<Rascunho>(() => ('evento' in abertura ? doEvento(abertura.evento) : novoRascunho(abertura.novo, opcoes, nomes)));
+  const { user } = useAuth();
+  const [rascunho, setRascunho] = useState<Rascunho>(() => ('evento' in abertura ? doEvento(abertura.evento) : novoRascunho(abertura.novo, opcoes, nomes, user?.id)));
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
   const [excluir, setExcluir] = useState(false);
   const toast = useToast();
   const recarregar = useRecarregarCalendario();
   const clientes = useClientesParaFiltro();
-  const { user } = useAuth();
   const qc = useQueryClient();
 
   const editando = modo !== 'ver';
@@ -386,8 +387,10 @@ function Formulario({ r, mudar, opcoes, nomes, existente, onSalvar }: {
 
   // os tipos: os ativos (e o do evento, mesmo desativado)
   const tipos = opcoes.tipos.filter((t) => t.ativo || t.id === r.tipoId);
-  // os painéis: os que a pessoa vê (o desativado só se o evento já estava nele)
-  const paineis = opcoes.paineis.filter((p) => p.ativo || r.paineis.includes(p.id));
+  // os painéis: os que a pessoa vê (o desativado só se o evento já estava nele). Dos pessoais, só o dela (2.4.8, o Luan: "N tem q
+  // aparecer os pessoais do outros aqui, só do meu" — o administrador vê os pessoais de todos na tela Painéis, mas o evento não
+  // vai para o pessoal de outra pessoa); o de outra pessoa só aparece se o evento já estava nele
+  const paineis = paineisParaOEvento(opcoes.paineis, r.paineis, user?.id);
   const escondidos = r.paineis.filter((id) => !opcoes.paineis.some((p) => p.id === id)).length;
   const possiveis = useMemo(() => pessoasPossiveis(opcoes.paineis, r.paineis), [opcoes.paineis, r.paineis]);
   // as pessoas: quem vê um dos painéis escolhidos (e quem já está no evento, para poder tirar)

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  paineisParaOEvento,
   chaveDoLembrete, comecoDoEvento, diaPorExtenso, diasDaGradeDoMes, emUnidade, EventoGravarSchema, eventosDoDia, eventoVisivel, filtrarEventos,
   FILTRO_DO_CALENDARIO_VAZIO, LembretesSchema, lembretesAoGravar, lembretesDevidos, paineisDepoisDaEdicao, pessoasPossiveis, quemEstaFora,
   quemRecebeOLembrete, textoDoAntes, textoDoHorario, textoDoLembrete, textoDoMes, textoDoPeriodo, textoDosLembretes, TIPOS_DE_EVENTO_PADRAO,
@@ -465,5 +466,18 @@ describe('repetir em dias da semana (2.4.7: "toda terça e quinta")', () => {
     expect(p.mesmaRegra).toBe(false);
     expect(p.mudar.map((x) => x.inicio)).toEqual(['2026-11-12', '2026-11-17']);
     expect(p.criar).toEqual(['2026-11-19', '2026-11-24', '2026-11-26']);
+  });
+});
+
+// 2.4.8, o Luan: "N tem q aparecer os pessoais do outros aqui, só do meu"
+describe('os painéis da janela do evento (2.4.8)', () => {
+  const p = (id: string, donoId: string | null = null, ativo = true) => ({ id, ativo, donoId });
+  const PAINEIS = [p('sup'), p('dev'), p('luan', 'u-luan'), p('miguel', 'u-miguel'), p('velho', null, false)];
+  it('os da equipe e só o meu pessoal; o desativado e o de outra pessoa, só se o evento já está nele', () => {
+    expect(paineisParaOEvento(PAINEIS, [], 'u-luan').map((x) => x.id)).toEqual(['sup', 'dev', 'luan']);
+    expect(paineisParaOEvento(PAINEIS, [], 'u-miguel').map((x) => x.id)).toEqual(['sup', 'dev', 'miguel']);
+    expect(paineisParaOEvento(PAINEIS, ['miguel', 'velho'], 'u-luan').map((x) => x.id)).toEqual(['sup', 'dev', 'luan', 'miguel', 'velho']);
+    // sem saber quem é: nenhum pessoal
+    expect(paineisParaOEvento(PAINEIS, [], undefined).map((x) => x.id)).toEqual(['sup', 'dev']);
   });
 });

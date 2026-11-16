@@ -634,6 +634,11 @@ export type Moldura = {
   /** sem o aviãozinho do envio diário */
   semEnvio?: boolean;
   /**
+   * no papel (o PDF do envio diário, 2.4.8): a pizza já vem com os menores desdobrados (o papel não tem o clique em "Outros")
+   * e os nomes quebram a linha em vez de cortar ("Ramal › Configuração › WebRTC" inteiro)
+   */
+  noPapel?: boolean;
+  /**
    * o aviãozinho marca para o envio de um painel (2.4.5: a Visão geral dos Relatórios de cada painel), com o id do
    * gráfico lá (o da tela leva o painel junto); sem isto, o Legado do Helena, com o id da tela
    */
@@ -812,6 +817,7 @@ export function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = fal
           partes={mostrados.map((x) => ({ id: x.valor, rotulo: x.rotulo, n: x.n, neutro: x.valor === VAZIO, selecionado: x.selecionado, grupo: !!x.grupo, dica: dicaGrupo(x) }))}
           rotuloCentro={multiplo ? 'marcações' : mostrados.length ? 'chamados' : ''}
           aoClicar={clicar}
+          desdobrada={!!m.noPapel}
           vazio="Nenhum chamado aqui."
         />
       ) : (
@@ -823,7 +829,7 @@ export function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = fal
               rotulo: (
                 <span className="flex items-center gap-1.5 min-w-0">
                   {x.cor && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.cor }} aria-hidden />}
-                  <span className={`truncate ${x.valor === VAZIO ? 'text-muted italic' : ''}`}>{x.rotulo}</span>
+                  <span className={`truncate ${x.valor === VAZIO ? 'text-muted italic' : ''}`} data-rotulo-do-valor>{x.rotulo}</span>
                   {x.grupo && <Layers size={12} className="shrink-0 text-muted" aria-label="grupo" />}
                 </span>
               ),

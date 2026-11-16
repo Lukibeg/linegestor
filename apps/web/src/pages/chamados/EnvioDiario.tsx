@@ -122,7 +122,12 @@ function GraficosDoPainel({ p }: { p: PacoteDoPainel }) {
   return (
     <div className="grid gap-4 grid-cols-1 md:grid-cols-2 min-w-0">
       {p.graficos.map(({ id, titulo, item, grafico }) => {
-        const m = { ...fixa({ ...item, id: `visao:${p.painel.id}:${id}`, grupos: grafico?.grupos } as ItemPainel), semEnvio: true };
+        // 2.4.8, o Luan: "aqui tem que ter os subtópicos, não Ramal resumido e sim Ramal - Configuração etc.": no PDF, cada valor
+        // aparece separado (o papel não tem o "separar"), mesmo no gráfico que a Visão geral abre com os grupos juntos. O id é do
+        // envio (e não o da Visão geral), para a prévia não pegar a escolha de quem olha (pizza ou barras): sai como o robô faz.
+        // O gráfico que tem grupos (o Por assunto) ocupa a linha inteira: os nomes inteiros ("Ramal › Configuração › WebRTC") cabem
+        const largura = grafico?.grupos?.length ? 'inteira' : item.largura;
+        const m = { ...fixa({ ...item, id: `envio:${p.painel.id}:${id}`, grupos: grafico?.grupos, agrupar: false, largura } as ItemPainel), semEnvio: true, noPapel: true };
         if (id === 'serie') return <Cartao key={id} m={m} titulo={p.serie.titulo} sub={p.serie.sub}><Colunas pontos={p.serie.pontos} vazio="Nenhum chamado chegou hoje ainda." /></Cartao>;
         if (!grafico) return null;
         return <GraficoLista key={id} m={m} titulo={titulo} sub={grafico.sub} itens={grafico.itens} semOrdenar={grafico.naOrdem} multiplo={grafico.multiplo} aoClicar={nada} />;

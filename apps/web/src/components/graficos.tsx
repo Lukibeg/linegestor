@@ -265,16 +265,19 @@ export type FatiaPizza = {
 const MAX_FATIAS = 6;
 const OUTROS = '__outros__';
 
-export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Nada aqui.', tamanho = 164 }: {
+export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Nada aqui.', tamanho = 164, desdobrada = false }: {
   partes: FatiaPizza[];
   /** o que o número do centro conta ("chamados"; "marcações" quando um card entra em mais de uma fatia) */
   rotuloCentro?: string;
   aoClicar?: (id: string, ev: MouseEvent) => void;
   vazio?: string;
   tamanho?: number;
+  /** já com os menores desdobrados, sem "Outros" (o papel, 2.4.8) */
+  desdobrada?: boolean;
 }) {
   const [ativo, setAtivo] = useState<string | null>(null);
-  const [desdobrar, setDesdobrar] = useState(false);
+  // 2.4.8: no PDF do envio diário, já desdobrada (o papel não tem o clique em "Outros")
+  const [desdobrar, setDesdobrar] = useState(desdobrada);
   const soma = partes.reduce((a, x) => a + x.n, 0);
   // as maiores primeiro; o que passa de 6 é somado em "Outros" (ou desdobrado, em cinza)
   const reais = partes.filter((x) => !x.neutro && x.n > 0).sort((a, b) => b.n - a.n);
@@ -361,7 +364,7 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
                 title={f.outros ? 'Mostrar cada um dos que foram somados em Outros' : [f.dica, aoClicar ? (f.selecionado ? 'Clique para desfazer o filtro' : 'Clique para filtrar (Ctrl+clique soma outro)') : ''].filter(Boolean).join(' — ') || undefined}
               >
                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: f.cor }} aria-hidden />
-                <span className={`flex-1 min-w-0 truncate ${f.neutro ? 'italic text-muted' : ''} ${f.selecionado && !f.outros ? 'font-semibold' : ''}`}>
+                <span className={`flex-1 min-w-0 truncate ${f.neutro ? 'italic text-muted' : ''} ${f.selecionado && !f.outros ? 'font-semibold' : ''}`} data-rotulo-do-valor>
                   {f.rotulo}
                   {f.grupo && <Layers size={12} className="inline ml-1 -mt-0.5 text-muted" aria-label="grupo" />}
                 </span>
