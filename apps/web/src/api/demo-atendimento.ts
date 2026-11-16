@@ -4077,6 +4077,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           escolhidosEm: null, anexos: false, origens: k === 0 && listaDeRamais ? [listaDeRamais.id] : [],
           dica: k === 0 ? 'Os ramais da Lista de ramais da Curadoria: marque conforme configurar cada telefone.' : 'Quem usa o softphone (no computador ou no celular).',
         }));
+        // o Concluído pede os ramais do telefone (só na prévia): o card nos Testes mostra "Para ir para Concluído, falta
+        // preencher: Ramais no telefone", e o clique abre a aba Implantação e vai até ele
+        const tel = A.campos.find((c) => c.painelId === PAINEL_DA_IMPLANTACAO && c.nome === 'Ramais no telefone');
+        const concluido = A.etapas.find((e) => e.painelId === PAINEL_DA_IMPLANTACAO && e.nome === 'Concluído' && !e.deletedAt);
+        if (tel && concluido) concluido.obrigatorios = [...concluido.obrigatorios, chaveDoCampo(tel.id)];
       }
     }
 
