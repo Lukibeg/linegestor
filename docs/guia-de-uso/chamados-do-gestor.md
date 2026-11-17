@@ -391,8 +391,10 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    dentro, cada pessoa entra uma vez com o login do Gestor. O Safari (e navegador que bloqueia cookie de
    outro site) pode pedir o login de novo.
 7. **O link da conversa**: o endereço da conversa no LineChat com `{sessao}` no lugar do número — é o
-   que põe o link "Conversa no LineChat" na ficha, e o que acha a sessão no link colado à mão (o
-   chamado ativo, 2.1). Sem ele, o link colado vale pelo código da sessão que estiver nele.
+   que põe o link "Conversa no LineChat" na ficha (e deixa o código da sessão clicável), e o que acha a sessão no link colado à
+   mão (o chamado ativo, 2.1). Desde o 2.4.10, basta colar o endereço de uma conversa aberta: o número dela vira o `{sessao}`
+   sozinho; e, na ficha de um chamado com sessão, quem administra tem o **Pôr o link do LineChat**, que abre este cartão. Sem o
+   modelo, o link colado vale pelo código da sessão que estiver nele.
 
 **Na virada**, desligue (ou religue no Gestor) os dois fluxos do n8n que olham o Helena (IA Preenche
 Chamado e Atualização de Card), para ninguém receber aviso em dobro.

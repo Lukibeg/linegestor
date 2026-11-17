@@ -146,7 +146,9 @@ export function VisaoDoPainel({ painel, opcoes, parte }: { painel: Painel; opcoe
   /** Clicar num valor de um gráfico (ou num grupo: no assunto, a pasta): filtra por ele; de novo, desfaz. */
   const clicarGrafico = (g: GraficoDaVisao, valores: string[]) => {
     let alvo = valores[0];
-    if (valores.length > 1) alvo = g.grupos?.find((x) => x.valores.length === valores.length && x.valores.every((y) => valores.includes(y)))?.id;
+    // o grupo clicado pode ser de qualquer nível do Agrupar (2.4.10: "Ramal › Incidentes" ou "Ramal")
+    const todos = [...(g.niveis ?? []).flatMap((n) => n.grupos), ...(g.grupos ?? [])];
+    if (valores.length > 1) alvo = todos.find((x) => x.valores.length === valores.length && x.valores.every((y) => valores.includes(y)))?.id;
     if (!alvo) return;
     const param = alvo !== VAZIO ? alvo
       : g.filtro === 'campo' ? `${g.id.slice('campo:'.length)}:`
@@ -265,6 +267,7 @@ export function VisaoDoPainel({ painel, opcoes, parte }: { painel: Painel; opcoe
               aoAbrirGrupos: () => undefined,
               // o aviãozinho marca o gráfico para o envio diário deste painel (2.4.5)
               envio: { origem: painel.id, id: item.id }, semGrupos: true,
+              niveis: porId.get(item.id)?.niveis,
             };
             // a chave muda ao salvar: os gráficos releem a escolha de cada pessoa (pizza ou barras, o Agrupar)
             const chave = `${idTela}:${arrumacao.data?.atualizadoEm ?? ''}`;

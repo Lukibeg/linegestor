@@ -24,10 +24,10 @@
  * (`ChamadoParaRelatorios` e `ContextoDosRelatorios`).
  */
 import { z } from 'zod';
-import { VAZIO, diasEntre, somarDias, type GrupoGrafico, type ItemRanking, type PontoSerie } from './chamados.js';
+import { VAZIO, diasEntre, somarDias, type GrupoGrafico, type ItemRanking, type NivelDoAgrupar, type PontoSerie } from './chamados.js';
 import { mesCurto } from './relatorios.js';
 import { GRAVIDADES, NOME_GRAVIDADE, NOME_PRIORIDADE, PRIORIDADES, diaLocal, horaLocal, type Gravidade, type Prioridade } from './atendimento-prazos.js';
-import { NOME_ORIGEM, ORIGENS, type Origem } from './atendimento.js';
+import { MAX_NIVEL_ASSUNTO, NOME_ORIGEM, ORIGENS, type Origem } from './atendimento.js';
 import {
   RESPONSAVEL_NINGUEM, assuntoComOsDeBaixo, chamadoComPrazoVencido, derivarChamado, linhaDoChamadoDoRelatorio, valoresDoCampoDoChamado,
   type ChamadoDerivado, type ChamadoDoRelatorio, type ChamadoParaRelatorios, type ContextoDosRelatorios, type ItemDaVisao,
@@ -99,11 +99,12 @@ export type KpiDaVisao = {
 
 /**
  * Um gráfico de lista. `filtro`: o nome do filtro do endereço que ele escolhe; o "não preenchido" vem como `VAZIO` (a
- * tela troca pelo valor do filtro: `sem`, `ninguem` ou `<campo>:`). `grupos`: no assunto, as pastas do 1º nível.
+ * tela troca pelo valor do filtro: `sem`, `ninguem` ou `<campo>:`). `grupos`: no assunto, as pastas do 1º nível; `niveis`
+ * (2.4.10): os níveis do Agrupar, do mais fino ("Ramal › Incidentes", o 2) ao de cima ("Ramal", o 1) — cada clique sobe um.
  */
 export type GraficoDaVisao = {
   id: string; titulo: string; sub?: string; multiplo: boolean; naOrdem?: boolean; filtro: string;
-  itens: ItemRanking[]; grupos?: GrupoGrafico[];
+  itens: ItemRanking[]; grupos?: GrupoGrafico[]; niveis?: NivelDoAgrupar[];
 };
 
 export type VisaoDoPainel = {
@@ -400,12 +401,28 @@ function graficos(p: Prep): GraficoDaVisao[] {
     };
     // com uma pasta no filtro, tudo o que está dentro dela fica em destaque
     const marcados = !f.assunto ? new Set<string>() : f.assunto === S ? new Set([VAZIO]) : p.assuntoSet ?? new Set<string>();
-    const raizes = ctx.assuntos.filter((a) => !a.paiId).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
-    const grupos: GrupoGrafico[] = raizes
-      .map((r) => ({ id: r.id, nome: r.nome, valores: [...assuntoComOsDeBaixo(r.id, ctx.assuntos)] }))
-      .filter((g) => g.valores.length > 1);
+    // o Agrupar por níveis (2.4.10): cada pasta (o assunto com outros embaixo) junta ela e o que está dentro; o nível 1 são
+    // as de cima ("Ramal"), o 2 as de baixo delas ("Ramal › Incidentes"). Só entra o nível que tem pasta.
+    const profundidade = new Map<string, number>();
+    const nivelDe = (id: string): number => {
+      const ja = profundidade.get(id);
+      if (ja !== undefined) return ja;
+      let n = 0; const vistos = new Set<string>();
+      for (let a = assuntos.get(id); a && !vistos.has(a.id); a = a.paiId ? assuntos.get(a.paiId) : undefined) { vistos.add(a.id); n++; }
+      profundidade.set(id, n);
+      return n;
+    };
+    const emOrdem = [...ctx.assuntos].sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
+    const niveis: NivelDoAgrupar[] = [];
+    for (let n = MAX_NIVEL_ASSUNTO - 1; n >= 1; n--) {
+      const grupos: GrupoGrafico[] = emOrdem.filter((a) => nivelDe(a.id) === n)
+        .map((a) => ({ id: a.id, nome: caminho(a.id), valores: [...assuntoComOsDeBaixo(a.id, ctx.assuntos)] }))
+        .filter((g) => g.valores.length > 1);
+      if (grupos.length) niveis.push({ nivel: n, grupos });
+    }
+    const grupos = niveis.find((n) => n.nivel === 1)?.grupos ?? [];
     out.push({
-      id: 'assunto', titulo: 'Por assunto', multiplo: false, filtro: 'assunto', grupos,
+      id: 'assunto', titulo: 'Por assunto', multiplo: false, filtro: 'assunto', grupos, niveis,
       itens: ranking(para('assunto', !!f.assunto), (d) => (d.c.assuntoId ? [d.c.assuntoId] : []), marcados, (k) => (k === VAZIO ? 'Sem assunto' : caminho(k))),
     });
   }

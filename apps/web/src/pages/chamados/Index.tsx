@@ -34,8 +34,8 @@ import {
   Headset, Layers, LayoutGrid, ListFilter, MousePointerClick, PieChart, RefreshCw, Search, Tag, TriangleAlert, UserRound, X,
 } from 'lucide-react';
 import {
-  agruparItens, montarPainel, painelPadrao, quandoValidos, rotuloQuando, rotuloSituacao, SITUACOES, VAZIO,
-  type AbaChamados, type GrupoGrafico, type SituacaoChamado,
+  agruparItens, montarPainel, nivelDoAgrupar, painelPadrao, proximoAgrupar, quandoValidos, rotuloQuando, rotuloSituacao, SITUACOES, VAZIO,
+  type AbaChamados, type Agrupar, type GrupoGrafico, type NivelDoAgrupar, type SituacaoChamado,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import type { FormaGrafico, ItemPainel, ItemRanking, KpiChamados, LinhaChamado, OpcoesChamados, ResumoChamados } from '../../api/types.js';
@@ -645,6 +645,11 @@ export type Moldura = {
   envio?: { origem: string; id: string };
   /** sem o botão Grupos no Organizar (na Visão geral, as pastas do assunto são os grupos) */
   semGrupos?: boolean;
+  /**
+   * os níveis do Agrupar (2.4.10, no assunto da Visão geral: "Ramal › Incidentes", depois "Ramal"), do mais fino ao de
+   * cima; sem eles, os `grupos` do item são um nível só (liga e desliga)
+   */
+  niveis?: NivelDoAgrupar[];
 };
 
 /**
@@ -764,14 +769,34 @@ export function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = fal
   const grupos = m.item.grupos ?? [];
   const daEquipe: FormaGrafico = m.item.forma ?? 'pizza';
   const [minhaForma, setMinhaForma] = useEscolha<FormaGrafico>(CHAVE_FORMAS, m.item.id, daEquipe);
-  const [meuAgrupar, setMeuAgrupar] = useEscolha<boolean>(CHAVE_AGRUPAR, m.item.id, !!m.item.agrupar);
+  const [meuAgrupar, setMeuAgrupar] = useEscolha<Agrupar>(CHAVE_AGRUPAR, m.item.id, m.item.agrupar ?? false);
   // organizando, a escolha é a da equipe (é ela que está sendo arrumada)
   const forma = m.organizando ? daEquipe : minhaForma;
-  const agrupado = grupos.length > 0 && (m.organizando ? !!m.item.agrupar : meuAgrupar);
+  // os níveis do Agrupar (2.4.10): cada clique sobe um ("Ramal › Incidentes", depois "Ramal", depois separa tudo); os
+  // grupos da equipe (o Legado) são um nível só, que liga e desliga
+  const niveis: NivelDoAgrupar[] = m.niveis?.length ? m.niveis : grupos.length ? [{ nivel: 1, grupos }] : [];
+  const variosNiveis = niveis.length > 1;
+  const escolha = m.organizando ? m.item.agrupar : meuAgrupar;
+  const iNivel = nivelDoAgrupar(niveis, escolha);
+  const agrupado = iNivel >= 0;
   const trocarForma = (f: FormaGrafico) => (m.organizando ? m.aoMudar({ forma: f }) : setMinhaForma(f));
-  const trocarAgrupar = () => (m.organizando ? m.aoMudar({ agrupar: !m.item.agrupar }) : setMeuAgrupar(!meuAgrupar));
+  const trocarAgrupar = () => {
+    const prox = proximoAgrupar(niveis, escolha);
+    if (m.organizando) m.aoMudar({ agrupar: prox }); else setMeuAgrupar(prox);
+  };
+  /** a dica do botão: o que o próximo clique faz */
+  const dicaDoAgrupar = (() => {
+    const equipe = m.organizando ? ' (a equipe abre assim)' : '';
+    if (!variosNiveis) {
+      return agrupado ? `Separar os grupos (${grupos.map((g) => g.nome).join(', ')})` : `Juntar os grupos: ${grupos.map((g) => g.nome).join(', ')}${equipe}`;
+    }
+    const prox = niveis[iNivel + 1];
+    if (!prox) return 'Separar tudo de novo';
+    const exemplo = prox.grupos.slice(0, 2).map((g) => g.nome).join(', ');
+    return `${agrupado ? 'Juntar mais' : 'Juntar'}: até o ${prox.nivel}º nível (${exemplo}${prox.grupos.length > 2 ? '…' : ''})${equipe}`;
+  })();
 
-  const mostrados = agrupado ? agruparItens(itens, grupos, semOrdenar) : itens;
+  const mostrados = agrupado ? agruparItens(itens, niveis[iNivel]!.grupos, semOrdenar) : itens;
   const clicar = (valor: string, ev: MouseEvent) => {
     const g = mostrados.find((x) => x.valor === valor)?.grupo;
     aoClicar(g ? g.valores : [valor], ev);
@@ -791,13 +816,13 @@ export function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = fal
   );
   const extra = (
     <div className="flex items-center gap-1.5 shrink-0">
-      {grupos.length > 0 && (
+      {niveis.length > 0 && (
         <button
-          type="button" onClick={trocarAgrupar} aria-pressed={agrupado}
-          title={agrupado ? `Separar os grupos (${grupos.map((g) => g.nome).join(', ')})` : `Juntar os grupos: ${grupos.map((g) => g.nome).join(', ')}${m.organizando ? ' (a equipe abre assim)' : ''}`}
-          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12.5px] font-semibold ${agrupado ? 'bg-accent-soft text-accent-ink ring-1 ring-accent' : 'bg-surface-2 text-ink-2 hover:text-ink'}`}
+          type="button" onClick={trocarAgrupar} aria-pressed={agrupado} title={dicaDoAgrupar} data-nivel-do-agrupar={agrupado ? niveis[iNivel]!.nivel : undefined}
+          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12.5px] font-semibold whitespace-nowrap ${agrupado ? 'bg-accent-soft text-accent-ink ring-1 ring-accent' : 'bg-surface-2 text-ink-2 hover:text-ink'}`}
         >
           <Layers size={14} /> Agrupar
+          {variosNiveis && agrupado && <span className="font-normal opacity-80">· {niveis[iNivel]!.nivel}º nível</span>}
         </button>
       )}
       <div className="flex items-center gap-0.5 rounded-lg bg-surface-2 p-0.5" role="group" aria-label="Como mostrar">
@@ -807,7 +832,8 @@ export function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = fal
     </div>
   );
   const nValores = mostrados.length;
-  const contagem = nValores ? `${nValores} ${nValores === 1 ? 'valor' : 'valores'}${agrupado ? ', com os grupos juntos' : ''}` : '';
+  const juntos = !agrupado ? '' : variosNiveis ? `, juntos até o ${niveis[iNivel]!.nivel}º nível` : ', com os grupos juntos';
+  const contagem = nValores ? `${nValores} ${nValores === 1 ? 'valor' : 'valores'}${juntos}` : '';
   // "na ordem do Kanban" só vale nas barras: a pizza põe a maior fatia primeiro
   const legenda = sub && !(semOrdenar && forma === 'pizza') ? sub : contagem;
   return (

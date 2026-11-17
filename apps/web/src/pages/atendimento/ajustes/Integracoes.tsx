@@ -17,11 +17,12 @@
  * ({{telefone_do_contato}}…) são exemplos: a documentação dele só garante a do telefone, e o nome das
  * outras se confere na própria tela do LineChat — a tela diz isso ao lado de cada uma.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { AppWindow, Bot, KeyRound, Link2, MousePointerClick, Pencil, Plus, Send, ShieldCheck, Trash2, TriangleAlert, WandSparkles, Webhook, X } from 'lucide-react';
 import {
-  EVENTOS_WEBHOOK, linkDaConversa, MENSAGEM_DO_ROBO_PADRAO, NOME_EVENTO_WEBHOOK, respostaAoRobo, respostaDoRoboQueFalhou,
+  EVENTOS_WEBHOOK, linkDaConversa, MENSAGEM_DO_ROBO_PADRAO, modeloDoLinkDaConversa, NOME_EVENTO_WEBHOOK, respostaAoRobo, respostaDoRoboQueFalhou,
   type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type NiaAcoesTela, type TesteDaNia, type WebhookGravarEntrada, type WebhookTela,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -734,12 +735,21 @@ function CartaoLinkConversa({ inicial }: { inicial: string }) {
   const [modelo, setModelo] = useState(inicial);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const t = modelo.trim();
+  // o endereço de uma conversa aberta também serve: o código dela vira o {sessao} (2.4.10)
+  const t = modeloDoLinkDaConversa(modelo);
+  const achou = t !== modelo.trim();
   const mudou = t !== inicial;
   const exemplo = linkDaConversa(t, '8f3c2a10');
+  // a ficha do chamado manda para cá ("Pôr o link do LineChat", 2.4.10): o cartão aparece com o campo pronto para colar
+  const [sp] = useSearchParams();
+  useEffect(() => {
+    if (sp.get('ver') !== 'link') return;
+    document.getElementById('integ-link')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.getElementById('integ-link-modelo')?.focus({ preventScroll: true });
+  }, [sp]);
 
   const salvar = async () => {
-    if (t && (!/^https:\/\//i.test(t) || !t.includes('{sessao}'))) { setErro('Use um endereço com https:// e o {sessao} no lugar do número da conversa.'); return; }
+    if (t && (!/^https:\/\//i.test(t) || !t.includes('{sessao}'))) { setErro('Cole o endereço de uma conversa aberta no LineChat (com https://), ou use o {sessao} no lugar do número da conversa.'); return; }
     setSalvando(true); setErro(null);
     try {
       const r = await api.atendimento.salvarLinkConversa(t);
@@ -757,9 +767,9 @@ function CartaoLinkConversa({ inicial }: { inicial: string }) {
       <Explicacao>
         <p>
           É o que faz a ficha do chamado ter o link <b>"Conversa no LineChat"</b> (quando o chamado sabe a conversa: o robô, o botão,
-          ou o link colado à mão no chamado ativo). Abra uma conversa no LineChat, copie o endereço da barra e troque o número da
-          conversa por <span className="font-mono">{'{sessao}'}</span>. Vazio, a ficha não mostra o link (o link colado continua
-          valendo pelo código da sessão que estiver nele).
+          ou o link colado à mão no chamado ativo). Abra uma conversa no LineChat, copie o endereço da barra e cole aqui: o número
+          da conversa vira <span className="font-mono">{'{sessao}'}</span> sozinho. Vazio, a ficha não mostra o link (o link colado
+          continua valendo pelo código da sessão que estiver nele).
         </p>
       </Explicacao>
       <form autoComplete="off" className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
@@ -769,7 +779,10 @@ function CartaoLinkConversa({ inicial }: { inicial: string }) {
         </Campo>
         {t && (
           <p className="text-[12.5px] text-muted break-all">
-            {exemplo ? <>Com a conversa <span className="font-mono">8f3c2a10</span>, o link fica: <span className="font-mono text-ink-2">{exemplo}</span></> : <span className="text-signal">Falta o {'{sessao}'}: é onde entra o número da conversa.</span>}
+            {exemplo ? <>
+              {achou && <span className="block text-ok mb-0.5" id="integ-link-achou">Achei o número da conversa no endereço: ele vira o {'{sessao}'} ao salvar.</span>}
+              Com a conversa <span className="font-mono">8f3c2a10</span>, o link fica: <span className="font-mono text-ink-2">{exemplo}</span>
+            </> : <span className="text-signal">Não achei o número da conversa: cole o endereço de uma conversa aberta no LineChat, ou ponha o {'{sessao}'} onde ele entra.</span>}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">

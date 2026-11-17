@@ -23,7 +23,8 @@ Em cima, as três partes, como no Legado do Helena:
   continua inteiro, com o escolhido em destaque; clique de novo para desfazer. O "não preenchido" também se clica. Os
   filtros aparecem escritos embaixo do período, com o X, e são os mesmos dos Relatórios (vão junto para lá).
 - **Pizza ou barras**: os dois botões no canto de cada gráfico, só para você. No assunto, o **Agrupar** junta pelas
-  pastas (Ramal, Operadora…); clicar numa pasta filtra ela e o que está dentro.
+  pastas, um nível por clique (2.4.10): o primeiro junta no 2º nível ("Ramal › Incidentes"), o segundo no 1º ("Ramal", "Operadora"…)
+  e o terceiro separa tudo de novo. O botão mostra o nível; clicar numa pasta filtra ela e o que está dentro.
 - **Organizar** (quem cuida dos chamados): arraste os gráficos pela alça (ou use as setas), escolha metade ou a linha
   inteira, esconda o que não usa e escolha como cada um abre (pizza ou barras, o assunto agrupado). Nada muda antes do
   **Salvar para todos**.

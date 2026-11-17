@@ -100,6 +100,38 @@ describe('a Visão geral: Hoje', () => {
     expect(a.itens.find((x) => x.valor === 'ramal-conf')!.rotulo).toBe('Ramal › Configuração');
   });
 
+  it('o Agrupar por níveis (2.4.10): primeiro "Ramal › Incidentes", depois "Ramal"', () => {
+    // a árvore com o 3º nível: Ramal › Incidentes › Sem serviço e › Mudo; Ramal › Configuração › Criação
+    const fundo: ContextoDosRelatorios = {
+      ...ctx,
+      assuntos: [
+        ...ctx.assuntos,
+        { id: 'ramal-inc', paiId: 'ramal', nome: 'Incidentes', ordem: 2, ativo: true },
+        { id: 'inc-servico', paiId: 'ramal-inc', nome: 'Sem serviço', ordem: 0, ativo: true },
+        { id: 'inc-mudo', paiId: 'ramal-inc', nome: 'Mudo', ordem: 1, ativo: true },
+        { id: 'conf-criacao', paiId: 'ramal-conf', nome: 'Criação', ordem: 0, ativo: true },
+      ],
+    };
+    const chamados = [
+      ...CHAMADOS,
+      chamadoParaRelatorios({ id: 'f1', codigo: 'SUP-7', etapaId: 'n1', criadoEm: em('2026-10-22', '12:00'), assuntoId: 'inc-servico' }),
+      chamadoParaRelatorios({ id: 'f2', codigo: 'SUP-8', etapaId: 'n1', criadoEm: em('2026-10-22', '12:30'), assuntoId: 'inc-mudo' }),
+      chamadoParaRelatorios({ id: 'f3', codigo: 'SUP-9', etapaId: 'n1', criadoEm: em('2026-10-22', '13:00'), assuntoId: 'conf-criacao' }),
+    ];
+    const a = visaoDoPainel(chamados, fundo, FiltroDaVisaoSchema.parse({ painel: 'sup' }), AGORA).graficos.find((g) => g.id === 'assunto')!;
+    expect(a.niveis!.map((x) => x.nivel)).toEqual([2, 1]);
+    // o 2º nível: as pastas de baixo do Ramal, com o caminho
+    expect(a.niveis![0]!.grupos).toEqual([
+      { id: 'ramal-conf', nome: 'Ramal › Configuração', valores: ['ramal-conf', 'conf-criacao'] },
+      { id: 'ramal-inc', nome: 'Ramal › Incidentes', valores: ['ramal-inc', 'inc-servico', 'inc-mudo'] },
+    ]);
+    // o 1º: as de cima, os mesmos grupos de antes
+    expect(a.niveis![1]!.grupos).toEqual(a.grupos);
+    expect(a.grupos![0]!.valores.sort()).toEqual(['conf-criacao', 'inc-mudo', 'inc-servico', 'ramal', 'ramal-conf', 'ramal-inc', 'ramal-mudo'].sort());
+    // a árvore sem o 3º nível tem um nível só (o Agrupar liga e desliga, como antes)
+    expect(grafico(ver(), 'assunto').niveis!.map((x) => x.nivel)).toEqual([1]);
+  });
+
   it('"Resolvidos" troca a régua: o dia em que foi resolvido', () => {
     const v = ver({ situacao: 'resolvidos' });
     expect(v.lista.itens.map((x) => x.codigo)).toEqual(['SUP-3', 'SUP-5']);

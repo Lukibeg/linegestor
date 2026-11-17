@@ -2103,8 +2103,21 @@ export const WebhookGravarSchema = z.object({
 });
 export const ChaveCriarSchema = z.object({ nome: z.string().trim().min(1, 'Dê um nome (ex.: n8n, robô do LineChat)').max(60) });
 /** Os sites que podem abrir o Gestor dentro deles (o menu do LineChat, outros programas). */
+/**
+ * O modelo do link da conversa a partir do que foi colado (2.4.10, o Luan: "adicionar o link direto para o email/sessão do
+ * linechat"): com o {sessao}, fica como está; o endereço de uma conversa aberta no LineChat (com o código dela, um uuid) vira o
+ * modelo sozinho — o código dá lugar ao {sessao}. O resto fica como veio (e a validação diz o que falta).
+ */
+export function modeloDoLinkDaConversa(texto: string): string {
+  const t = texto.trim();
+  if (!t || t.includes('{sessao}')) return t;
+  const uuids = [...new Set(t.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [])];
+  return uuids.length === 1 ? t.split(uuids[0]!).join('{sessao}') : t;
+}
+
 export const LinkConversaSchema = z.object({
-  linkConversa: z.string().trim().max(300).refine((s) => !s || (/^https:\/\//i.test(s) && s.includes('{sessao}')), 'Use um endereço com https:// e o {sessao} no lugar do número da conversa'),
+  linkConversa: z.string().trim().max(300).transform(modeloDoLinkDaConversa)
+    .refine((s) => !s || (/^https:\/\//i.test(s) && s.includes('{sessao}')), 'Cole o endereço de uma conversa aberta no LineChat (com https://), ou use o {sessao} no lugar do número da conversa'),
 });
 export const SitesIframeSchema = z.object({
   sites: z.array(z.string().trim().max(200).transform((s) => s.replace(/\/+$/, '')).refine((s) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(s), 'Use só o endereço do site, com https:// e sem caminho (ex.: https://app.inglinechat.com.br)')).max(20),

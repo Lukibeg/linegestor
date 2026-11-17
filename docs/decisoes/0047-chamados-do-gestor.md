@@ -656,3 +656,20 @@ painel da implantação dele já tinha 30. Avisado de que mudava o limite desta 
 (`MAX_CAMPOS_DO_PAINEL`): sobra um checklist por campo de configuração, com o painel crescendo. Os desativados continuam
 contando; os excluídos, não. As 50 opções por lista não mudaram.
 
+## Revisto no 2.4.10 (17/11/2026): o link da conversa fácil de pôr
+
+O Luan, com o print do cartão do contato (a "sessão email:…" sem link): *"Adicionar o link direto para o email/sessão do
+linechat"*. A ficha já mostrava o link desde o 2.0 — **quando o modelo do link está em Painéis › Ajustes › Integrações**, e na
+produção ele não estava. Para não depender de saber disso:
+
+- **Colar o endereço de uma conversa aberta já basta**: o código dela (um uuid) vira o `{sessao}` sozinho
+  (`modeloDoLinkDaConversa`, no `LinkConversaSchema`: vale no servidor, na prévia e na tela, que avisa "Achei o número da conversa
+  no endereço").
+- **Na ficha, sem o modelo**, quem administra (`admin.manage`) vê **Pôr o link do LineChat** ao lado da sessão, que abre as
+  Integrações no cartão, com o campo pronto para colar (`?aba=integracoes&ver=link`).
+- **O código da sessão também abre a conversa**, e o link sai do modelo das opções (o mesmo `linkDaConversa` do servidor): pôr ou
+  trocar o modelo já vale na ficha aberta.
+
+Em aberto: as conversas de e-mail chegam do robô com a sessão `email:…`, que não é um uuid. O link delas sai do mesmo modelo; se
+o LineChat abrir essas conversas por outro endereço, falta o endereço de uma delas para conferir.
+

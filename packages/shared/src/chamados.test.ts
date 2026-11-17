@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   agruparItens, aplicarFiltros, atualizarPainelGuardado, comFechamento, diaEmBrasilia, etapasDaEquipe, FiltrosChamadosSchema, horaEmBrasilia,
-  ItemPainelSchema, listarChamados, ListaChamadosSchema, montarPainel, PainelChamadosSchema, painelPadrao, PREFIXO_GRUPO, resumirChamados,
+  ItemPainelSchema, listarChamados, ListaChamadosSchema, montarPainel, nivelDoAgrupar, PainelChamadosSchema, painelPadrao, PREFIXO_GRUPO, proximoAgrupar, resumirChamados,
   rotuloQuando, sugerirGrupos, textoDoCard, VAZIO, type Chamado, type ContextoChamados, type ItemPainel, type ItemRanking, type MovimentoChamado,
 } from './chamados.js';
+import { ItemDaVisaoSchema } from './atendimento-relatorios.js';
 
 const etapas = [
   { id: 'novo', title: 'Novos Suporte', position: 1, isInitial: true, isFinal: false, archived: false },
@@ -357,3 +358,31 @@ describe('grupos num gráfico', () => {
     expect(sugerirGrupos(opcoes, new Set(['Ramal - Criação'])).map((g) => g.nome)).toEqual(['Linechat']);
   });
 });
+
+describe('o Agrupar por níveis (2.4.10)', () => {
+  const g = (id: string) => ({ id, nome: id, valores: [id, `${id}-filho`] });
+  const DOIS = [{ nivel: 2, grupos: [g('ramal-inc')] }, { nivel: 1, grupos: [g('ramal')] }];
+  const UM = [{ nivel: 1, grupos: [g('ramal')] }];
+  it('cada clique sobe um nível: separado → 2º → 1º → separado', () => {
+    expect(nivelDoAgrupar(DOIS, false)).toBe(-1);
+    expect(proximoAgrupar(DOIS, false)).toBe(2);
+    expect(nivelDoAgrupar(DOIS, 2)).toBe(0);
+    expect(proximoAgrupar(DOIS, 2)).toBe(1);
+    expect(nivelDoAgrupar(DOIS, 1)).toBe(1);
+    expect(proximoAgrupar(DOIS, 1)).toBe(false);
+  });
+  it('o true de antes é o de cima; o nível que sumiu cai no de cima mais perto', () => {
+    expect(nivelDoAgrupar(DOIS, true)).toBe(1);
+    expect(proximoAgrupar(DOIS, true)).toBe(false);
+    expect(nivelDoAgrupar(UM, 2)).toBe(0);
+    expect(nivelDoAgrupar([], true)).toBe(-1);
+  });
+  it('com um nível só, liga e desliga como sempre (os grupos do Legado)', () => {
+    expect(proximoAgrupar(UM, false)).toBe(true);
+    expect(proximoAgrupar(UM, true)).toBe(false);
+    expect(ItemPainelSchema.parse({ id: 'etapa', largura: 'metade', agrupar: 2 }).agrupar).toBe(2);
+    expect(ItemDaVisaoSchema.parse({ id: 'assunto', largura: 'metade', agrupar: 2 }).agrupar).toBe(2);
+    expect(ItemDaVisaoSchema.safeParse({ id: 'assunto', largura: 'metade', agrupar: 0 }).success).toBe(false);
+  });
+});
+

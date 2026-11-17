@@ -194,3 +194,15 @@ no alto dos Relatórios do Suporte (e pela frase do subtítulo), como já abria.
 relatórios de lá), o menu marca **Suporte › Relatórios**. As telas, as contas, o endereço (`/chamados`) e o envio do
 Legado não mudam. Os detalhes estão na **0062** (seção 6).
 
+## Revisto no 2.4.10 (17/11/2026): o Agrupar por níveis
+
+O Luan, com o print do Por assunto: *"O agrupamento tem q ser por níveis tipo: se eu clicar em agrupar teria ramal – incidentes,
+ramal – configuração. Se clicar mais uma, ai sim que ele ia apenas para ramal"*. Na Visão geral, o Agrupar do assunto deixou de
+ser liga e desliga: cada clique sobe um nível — separado → o 2º nível ("Ramal › Incidentes", as pastas de baixo das de cima) → o
+1º ("Ramal") → separado. Só entra o nível que tem pasta (a árvore sem o 3º nível continua liga e desliga). O botão mostra o nível
+("Agrupar · 2º nível"), a legenda diz "juntos até o 2º nível", e clicar num grupo de qualquer nível filtra a pasta (ela e o que
+está dentro). A escolha guardada (a de cada pessoa e a da equipe, no Organizar) passou a aceitar o número do nível
+(`AgruparSchema`): o `true` de antes é o 1º nível, e a Visão continua abrindo assim. As regras em `packages/shared/src/chamados.ts`
+(`nivelDoAgrupar`, `proximoAgrupar`) e `atendimento-visao.ts` (os `niveis` do gráfico do assunto); os grupos do Legado do Helena
+(um nível só) e o PDF do envio diário (sempre separado) não mudam.
+

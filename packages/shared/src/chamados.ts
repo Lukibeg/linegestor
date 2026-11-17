@@ -757,6 +757,38 @@ export const GrupoGraficoSchema = z.object({
 });
 export type GrupoGrafico = z.infer<typeof GrupoGraficoSchema>;
 
+/**
+ * O Agrupar de um gráfico: `false` separa tudo; `true`, junta no grupo de cima (o Agrupar de sempre, que no assunto junta
+ * na pasta do 1º nível); um número é o nível em que junta (2.4.10, o Luan: "o agrupamento tem q ser por níveis tipo: se eu
+ * clicar em agrupar teria ramal – incidentes, ramal – configuração. Se clicar mais uma, ai sim que ele ia apenas para ramal").
+ */
+export const AgruparSchema = z.union([z.boolean(), z.number().int().min(1).max(9)]);
+export type Agrupar = z.infer<typeof AgruparSchema>;
+/** Um nível do Agrupar: o 1 junta na pasta de cima ("Ramal"); o 2, na de baixo dela ("Ramal › Incidentes"). */
+export type NivelDoAgrupar = { nivel: number; grupos: GrupoGrafico[] };
+
+/**
+ * O nível escolhido, como índice em `niveis` (que vêm do mais fino, o número maior, ao de cima, o 1); -1 = separado. O
+ * `true` de antes é o de cima; o número que não existe mais (a árvore mudou) cai no de cima mais perto dele.
+ */
+export function nivelDoAgrupar(niveis: readonly NivelDoAgrupar[], escolha: Agrupar | null | undefined): number {
+  if (!niveis.length || !escolha) return -1;
+  if (escolha === true) return niveis.length - 1;
+  const i = niveis.findIndex((n) => n.nivel <= escolha);
+  return i >= 0 ? i : niveis.length - 1;
+}
+
+/**
+ * O próximo clique no Agrupar: separado → o nível mais fino → … → o de cima → separado. Com um nível só (os grupos
+ * montados pela equipe no Legado, ou a árvore com um nível de pastas), liga e desliga, como sempre.
+ */
+export function proximoAgrupar(niveis: readonly NivelDoAgrupar[], escolha: Agrupar | null | undefined): Agrupar {
+  const i = nivelDoAgrupar(niveis, escolha);
+  if (niveis.length <= 1) return i < 0;
+  if (i === niveis.length - 1) return false;
+  return niveis[i + 1]!.nivel;
+}
+
 const IdGrafico = z.string().trim().regex(/^(serie|etapa|responsavel|etiqueta|campo:.{1,100})$/, 'Gráfico desconhecido');
 export const ItemPainelSchema = z
   .object({
@@ -764,8 +796,8 @@ export const ItemPainelSchema = z
     largura: z.enum(LARGURAS_PAINEL),
     oculto: z.boolean().default(false),
     forma: z.enum(FORMAS_GRAFICO).optional(),
-    /** abre com os grupos juntos (a escolha da equipe; cada pessoa ainda pode separar para si) */
-    agrupar: z.boolean().optional(),
+    /** abre com os grupos juntos (a escolha da equipe; cada pessoa ainda pode separar para si); desde o 2.4.10, o nível */
+    agrupar: AgruparSchema.optional(),
     grupos: z.array(GrupoGraficoSchema).max(100).optional(),
   })
   .superRefine((it, ctx) => {

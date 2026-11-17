@@ -11,7 +11,7 @@ import {
   valoresVisiveis, type CampoPersonalizado,
   caminhoDoAssunto, prazoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes,
-  pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
+  pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa, LinkConversaSchema, modeloDoLinkDaConversa,
   type CartaoChamado, type CartaoParaLista, type DadosObrigatorios, type EtapaPainel, type NoParaGrafo,
   chaveDaEtiqueta, corDaEtiqueta, etiquetasUnicas, renomearEtiqueta, EtiquetaEditarPeloNomeSchema,
   AvisosChamadosSchema, EVENTOS_AVISO, ModeloAprovadoSchema, faltaNoModeloAprovado, mensagemAoCliente, mensagemPreenchida, parametrosDoModelo, textoDoModelo,
@@ -519,6 +519,18 @@ describe('a IA e o histórico', () => {
   it('o link da conversa só existe com o modelo das Integrações', () => {
     expect(linkDaConversa('https://app.exemplo.com.br/chat/{sessao}', 'abc 1')).toBe('https://app.exemplo.com.br/chat/abc%201');
     expect(linkDaConversa('', 'abc')).toBeNull();
+  });
+  it('o endereço de uma conversa aberta vira o modelo sozinho (2.4.10)', () => {
+    const U = '8385c1e2-7f4a-4b1c-9d2e-0a1b2c3d4e5f';
+    expect(modeloDoLinkDaConversa(`https://app.inglinechat.com.br/chat2/sessions/${U}`)).toBe('https://app.inglinechat.com.br/chat2/sessions/{sessao}');
+    // o mesmo código duas vezes no endereço: os dois viram o {sessao}
+    expect(modeloDoLinkDaConversa(`https://x.com.br/s/${U}?abrir=${U}`)).toBe('https://x.com.br/s/{sessao}?abrir={sessao}');
+    // com o {sessao}, fica como está; sem código (ou com dois diferentes), fica como veio e a validação recusa
+    expect(modeloDoLinkDaConversa(' https://x.com.br/c/{sessao} ')).toBe('https://x.com.br/c/{sessao}');
+    expect(modeloDoLinkDaConversa('https://x.com.br/c/')).toBe('https://x.com.br/c/');
+    expect(LinkConversaSchema.parse({ linkConversa: `https://app.inglinechat.com.br/chat2/sessions/${U}` }).linkConversa).toBe('https://app.inglinechat.com.br/chat2/sessions/{sessao}');
+    expect(LinkConversaSchema.safeParse({ linkConversa: 'https://app.inglinechat.com.br/chat' }).success).toBe(false);
+    expect(LinkConversaSchema.parse({ linkConversa: '' }).linkConversa).toBe('');
   });
 });
 
