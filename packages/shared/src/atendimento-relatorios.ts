@@ -20,7 +20,7 @@
  *  - **dia e hora são os de Brasília**, como em todo o sistema.
  */
 import { z } from 'zod';
-import { diasEntre, somarDias } from './chamados.js';
+import { AgruparSchema, diasEntre, somarDias } from './chamados.js';
 import { diaDaSemana, inicioDaSemana, mediana, mesCurto, nomeDoMes, percentil, somarMeses } from './relatorios.js';
 import {
   GRAVIDADES, NOME_GRAVIDADE, NOME_PRIORIDADE, PRIORIDADES,
@@ -102,7 +102,8 @@ export const ItemDaVisaoSchema = z.object({
   largura: z.enum(['metade', 'inteira']),
   oculto: z.boolean().default(false),
   forma: z.enum(['barras', 'pizza']).optional(),
-  agrupar: z.boolean().optional(),
+  /** no assunto: `true`, as pastas de cima juntas; um número, o nível em que junta (2.4.10) */
+  agrupar: AgruparSchema.optional(),
 });
 export type ItemDaVisao = z.infer<typeof ItemDaVisaoSchema>;
 

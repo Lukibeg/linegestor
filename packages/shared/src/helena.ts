@@ -892,7 +892,7 @@ const MOTIVO_SEM_USO = 'nenhuma negociação usa';
  * Os campos do Helena no painel do Gestor: o que tem o mesmo nome usa o campo que existe (a lista ganha as
  * opções que faltam); o resto é criado com o tipo de lá. Ficam de fora a mensalidade e a ativação de cada
  * produto (viram os valores), os produtos (viram os produtos da negociação), o observador (vira os
- * observadores), a área de atuação, o que nenhum card usa e o que não cabe mais (o painel vai até 30 campos).
+ * observadores), a área de atuação, o que nenhum card usa e o que não cabe mais (o painel vai até `MAX_CAMPOS_DO_PAINEL` campos).
  */
 export function planoDosCampos(
   helena: readonly CampoDoHelena[], gestor: readonly CampoPersonalizado[], cards: readonly Pick<CardDoHelena, 'campos'>[],

@@ -647,3 +647,29 @@ prioridade em cima e as etiquetas embaixo, e a caixa das etiquetas e a prioridad
 no chamado (o 2.0.3 dizia: "A caixa das etiquetas e o Na agenda continuam embaixo"). O que sobra no cartão se chama
 **Detalhes**; quem só lê continua vendo tudo no cartão Classificação; na negociação e no painel sem prioridade, o botão
 continua Etiquetas. Os detalhes estão na **0062** (seção 4).
+
+## Revisto no 2.4.9 (17/11/2026): o painel vai até 80 campos
+
+O Luan, com o print do erro ao marcar o **Checklist na Implantação** no campo Números: *"fui habilitar aqui e deu isso"* — "Um
+painel vai até 30 campos (os desativados contam)". Cada caixinha cria um campo (o checklist "<campo> (implantação)", 0064), e o
+painel da implantação dele já tinha 30. Avisado de que mudava o limite desta decisão (até 30 por painel), escolheu **80**
+(`MAX_CAMPOS_DO_PAINEL`): sobra um checklist por campo de configuração, com o painel crescendo. Os desativados continuam
+contando; os excluídos, não. As 50 opções por lista não mudaram.
+
+## Revisto no 2.4.10 (17/11/2026): o link da conversa fácil de pôr
+
+O Luan, com o print do cartão do contato (a "sessão email:…" sem link): *"Adicionar o link direto para o email/sessão do
+linechat"*. A ficha já mostrava o link desde o 2.0 — **quando o modelo do link está em Painéis › Ajustes › Integrações**, e na
+produção ele não estava. Para não depender de saber disso:
+
+- **Colar o endereço de uma conversa aberta já basta**: o código dela (um uuid) vira o `{sessao}` sozinho
+  (`modeloDoLinkDaConversa`, no `LinkConversaSchema`: vale no servidor, na prévia e na tela, que avisa "Achei o número da conversa
+  no endereço").
+- **Na ficha, sem o modelo**, quem administra (`admin.manage`) vê **Pôr o link do LineChat** ao lado da sessão, que abre as
+  Integrações no cartão, com o campo pronto para colar (`?aba=integracoes&ver=link`).
+- **O código da sessão também abre a conversa**, e o link sai do modelo das opções (o mesmo `linkDaConversa` do servidor): pôr ou
+  trocar o modelo já vale na ficha aberta.
+
+Em aberto: as conversas de e-mail chegam do robô com a sessão `email:…`, que não é um uuid. O link delas sai do mesmo modelo; se
+o LineChat abrir essas conversas por outro endereço, falta o endereço de uma delas para conferir.
+

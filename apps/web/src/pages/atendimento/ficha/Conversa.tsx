@@ -9,10 +9,12 @@
  * O botão da NIA, quando o chamado não tem conversa, pede para ligar uma aqui (`pedirParaLigarAConversa`).
  */
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ExternalLink, MessagesSquare, Pencil } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { CheckCircle2, ExternalLink, Link2, MessagesSquare, Pencil } from 'lucide-react';
 import { linkDaConversa, MAX_LETRAS_DO_LINK_DA_CONVERSA, sessaoDaConversa } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Copiar, Spinner } from '../../../components/ui/index.js';
+import { usePode } from '../comum.js';
 import { ErroPerto, useAberta, useAcao } from './base.js';
 
 const LIGAR_A_CONVERSA = 'gestor:ficha-ligar-conversa';
@@ -24,6 +26,9 @@ export function pedirParaLigarAConversa() {
 
 export function ConversaDoChamado() {
   const { f, opcoes, pode } = useAberta();
+  const { integrar } = usePode();
+  // o link sai do modelo das opções (o mesmo do servidor): pôr o modelo em Integrações já vale na ficha aberta (2.4.10)
+  const url = f.sessaoId ? linkDaConversa(opcoes.linkConversa, f.sessaoId) : f.conversaUrl;
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState('');
   const acao = useAcao();
@@ -108,7 +113,7 @@ export function ConversaDoChamado() {
     );
   }
 
-  if (!f.conversaUrl && !f.sessaoId) {
+  if (!url && !f.sessaoId) {
     if (!pode) return null;
     return (
       <div className="mt-2 text-[12.5px]" id="ficha-conversa">
@@ -122,15 +127,26 @@ export function ConversaDoChamado() {
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]" id="ficha-conversa">
-      {f.conversaUrl && (
-        <a href={f.conversaUrl} target="_blank" rel="noreferrer noopener" className="link inline-flex items-center gap-1.5 font-semibold">
+      {url && (
+        <a href={url} target="_blank" rel="noreferrer noopener" className="link inline-flex items-center gap-1.5 font-semibold">
           <MessagesSquare size={14} /> Conversa no LineChat <ExternalLink size={12} />
         </a>
       )}
       {f.sessaoId && (
-        <span className="inline-flex items-center gap-1 text-muted min-w-0" title="A sessão da conversa no LineChat">
-          sessão <span className="font-mono text-ink-2 truncate max-w-[150px]">{f.sessaoId}</span><Copiar texto={f.sessaoId} titulo="Copiar a sessão" />
+        <span className="inline-flex items-center gap-1 text-muted min-w-0" title={url ? 'Abrir a conversa no LineChat' : 'A sessão da conversa no LineChat'}>
+          sessão {url
+            // o código também abre a conversa (2.4.10, "o link direto para o email/sessão do linechat")
+            ? <a href={url} target="_blank" rel="noreferrer noopener" className="font-mono link truncate max-w-[150px]" id="ficha-conversa-sessao">{f.sessaoId}</a>
+            : <span className="font-mono text-ink-2 truncate max-w-[150px]">{f.sessaoId}</span>}
+          <Copiar texto={f.sessaoId} titulo="Copiar a sessão" />
         </span>
+      )}
+      {f.sessaoId && !url && integrar && (
+        // sem o modelo do link (Integrações), a ficha não sabe o endereço: quem administra põe dali mesmo (2.4.10)
+        <Link to="/atendimento/ajustes?aba=integracoes&ver=link" className="link inline-flex items-center gap-1 text-[12px]" id="ficha-conversa-por-link"
+          title="A ficha mostra o link da conversa quando o endereço do LineChat está em Painéis › Ajustes › Integrações: cole lá o endereço de uma conversa aberta">
+          <Link2 size={12} /> Pôr o link do LineChat
+        </Link>
       )}
       {pode && (
         <button type="button" className="btn-ghost btn-sm -my-1 text-[12px] text-muted" id="ficha-conversa-trocar" onClick={abrir} title="Ligar outra conversa (ou tirar)">
