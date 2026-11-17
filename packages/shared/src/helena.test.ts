@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { instanteLocal } from './atendimento-prazos.js';
-import { AJUSTES_DO_PAINEL_DE_VENDAS, textoDoEvento, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
+import { AJUSTES_DO_PAINEL_DE_VENDAS, MAX_CAMPOS_DO_PAINEL, textoDoEvento, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
 import {
   aplicarPlanilhaDoHelena, centavosDoHelena, chaveDoNome, corDaEtiquetaDoHelena, diaDaPlanilha, empresaDoCard, empresaDoTitulo, fimDaEtapaDoHelena, historicoDoCard,
   historicoDoCardDeGestao, lerCsvSimples, planoDasEtapasDeGestao, tipoParaOPainelDoHelena,
@@ -292,8 +292,8 @@ describe('os campos do painel', () => {
     expect(por('grupo-1')).toMatchObject({ acao: 'fora', motivo: null });
   });
 
-  it('o painel vai até 30 campos; o nome de um campo do sistema não vira campo', () => {
-    const cheio = Array.from({ length: 29 }, (_, i) => campoDoGestor({ id: `f${i}`, nome: `Campo ${i}`, tipo: 'texto' }));
+  it('o painel vai até 80 campos (30 até o 2.4.8); o nome de um campo do sistema não vira campo', () => {
+    const cheio = Array.from({ length: MAX_CAMPOS_DO_PAINEL - 1 }, (_, i) => campoDoGestor({ id: `f${i}`, nome: `Campo ${i}`, tipo: 'texto' }));
     const helena: CampoDoHelena[] = [
       { chave: 'a', nome: 'Primeiro', tipo: 'TEXT', posicao: 1, opcoes: [] },
       { chave: 'b', nome: 'Segundo', tipo: 'TEXT', posicao: 2, opcoes: [] },
@@ -301,7 +301,7 @@ describe('os campos do painel', () => {
     ];
     const p = planoDosCampos(helena, cheio, [{ campos: { a: 'x', b: 'y', c: 'z' } }]);
     expect(p.map((c) => [c.chave, c.acao])).toEqual([['a', 'cria'], ['b', 'fora'], ['c', 'fora']]);
-    expect(p[1]!.motivo).toBe('o painel chegou a 30 campos');
+    expect(p[1]!.motivo).toBe('o painel chegou a 80 campos');
     expect(p[2]!.motivo).toBe('tem o nome de um campo do sistema');
   });
 

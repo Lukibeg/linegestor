@@ -647,3 +647,12 @@ prioridade em cima e as etiquetas embaixo, e a caixa das etiquetas e a prioridad
 no chamado (o 2.0.3 dizia: "A caixa das etiquetas e o Na agenda continuam embaixo"). O que sobra no cartão se chama
 **Detalhes**; quem só lê continua vendo tudo no cartão Classificação; na negociação e no painel sem prioridade, o botão
 continua Etiquetas. Os detalhes estão na **0062** (seção 4).
+
+## Revisto no 2.4.9 (17/11/2026): o painel vai até 80 campos
+
+O Luan, com o print do erro ao marcar o **Checklist na Implantação** no campo Números: *"fui habilitar aqui e deu isso"* — "Um
+painel vai até 30 campos (os desativados contam)". Cada caixinha cria um campo (o checklist "<campo> (implantação)", 0064), e o
+painel da implantação dele já tinha 30. Avisado de que mudava o limite desta decisão (até 30 por painel), escolheu **80**
+(`MAX_CAMPOS_DO_PAINEL`): sobra um checklist por campo de configuração, com o painel crescendo. Os desativados continuam
+contando; os excluídos, não. As 50 opções por lista não mudaram.
+

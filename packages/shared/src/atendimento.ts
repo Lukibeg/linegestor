@@ -452,7 +452,12 @@ export const ehCaixinhas = (t: TipoCampo) => t === 'caixinhas' || t === 'modulos
 export const temOpcoesEscritas = (t: TipoCampo) => ehLista(t) || t === 'caixinhas';
 /** O valor do campo é uma lista de opções marcadas (a lista de várias e as caixinhas). */
 export const marcaVarias = (t: TipoCampo) => t === 'lista_varios' || ehCaixinhas(t);
-export const MAX_CAMPOS_DO_PAINEL = 30;
+/**
+ * Até quantos campos um painel tem (os desativados contam; os excluídos, não). Eram 30 (0047); no 2.4.9, 80: no painel da
+ * implantação, cada caixinha "Checklist na Implantação" cria um campo, e o painel do Luan chegou aos 30 ("fui habilitar aqui
+ * e deu isso", 17/11).
+ */
+export const MAX_CAMPOS_DO_PAINEL = 80;
 export const MAX_OPCOES_DO_CAMPO = 50;
 /** Até quantas letras cabem no texto curto e no longo. */
 export const MAX_LETRAS_DO_CAMPO = { texto: 300, texto_longo: 5000 } as const;
