@@ -1624,6 +1624,11 @@ export const ticketSubjects = pgTable(
     checklist: text('checklist').array().notNull().default([]),
     /** De-para: os nomes da lista antiga que viram este assunto */
     aliases: text('aliases').array().notNull().default([]),
+    /**
+     * O prazo de solução do chamado com este assunto, em minutos úteis (2.4.8). Nulo: herda do assunto de
+     * cima; se ninguém acima tiver, o chamado fica sem prazo.
+     */
+    resolutionMinutes: integer('resolution_minutes'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -1670,6 +1675,11 @@ export const ticketFields = pgTable(
     acceptsAttachments: boolean('accepts_attachments').notNull().default(false),
     /** A largura no grupo do meio da ficha (2.4.7): metade ou inteiro; nulo, pelo tipo (o texto longo, a linha inteira; o curto, metade) */
     width: text('width'),
+    /**
+     * De onde vêm os itens do Checklist do card (2.4.8): os ids dos campos deste painel cujo conteúdo vira item (cada linha da
+     * Lista de ramais da Curadoria). Vazio nos outros tipos e no checklist só com itens incluídos à mão.
+     */
+    sourceFieldIds: jsonb('source_field_ids').$type<string[]>().notNull().default([]),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     /**
@@ -1811,6 +1821,12 @@ export const tickets = pgTable(
      * do campo (as marcadas) continua em `custom_fields`; desmarcar tira a marca.
      */
     fieldMarks: jsonb('field_marks').$type<Record<string, Record<string, { porId: string | null; porNome: string | null; em: string }>>>().notNull().default({}),
+    /**
+     * Os itens dos campos Checklist do card (2.4.8), pelo id do campo: {campo: [{id, texto, feito, porId, em, doAssunto}]}. Cada
+     * card monta a sua lista (os ramais do telefone mudam de cliente para cliente), ao contrário das caixinhas, que são as mesmas
+     * em todos os cards do painel. O valor do campo em `custom_fields` fica vazio.
+     */
+    fieldLists: jsonb('field_lists').$type<Record<string, Array<{ id: string; texto: string; feito: boolean; porId: string | null; em: string | null; doAssunto: boolean }>>>().notNull().default({}),
     /**
      * A negociação que abriu este card na implantação (2.3, a etapa que abre a implantação no painel de Vendas). Uma
      * negociação abre um card só (fora da lixeira).

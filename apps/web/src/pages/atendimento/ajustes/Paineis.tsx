@@ -176,7 +176,7 @@ function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: Pe
     a.supervisores.length ? `Supervisão: ${listaDeNomes(a.supervisores.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Sem supervisores',
   ] : [
     usados.length ? `Campos: ${usados.join(', ')}` : 'Sem campos além dos do chamado',
-    painelContaPrazo(a) ? 'Conta prazo' : a.contaPrazo ? 'Não conta prazo (sem a prioridade)' : 'Não conta prazo',
+    painelContaPrazo(a) ? 'Conta prazo' : a.contaPrazo ? 'Não conta prazo (sem o assunto)' : 'Não conta prazo',
     a.fecharSozinhoDias ? `O Resolvido fecha sozinho em ${a.fecharSozinhoDias} ${a.fecharSozinhoDias === 1 ? 'dia útil' : 'dias úteis'}` : 'O Resolvido não fecha sozinho',
     paraAbrir.length ? `Para abrir: ${paraAbrir.join(', ')}` : 'Abre sem exigir nenhum campo',
     a.paiEsperaFilhos ? 'O pai espera os filhos fecharem' : 'O pai fecha sem esperar os filhos',
@@ -345,7 +345,8 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   // o que pode ser obrigatório neste painel (o painel novo usa os campos do sistema do tipo dele)
   // (2.1.2) os campos desligados na própria janela já saem do que pode ser pedido
   const validos = useMemo(() => obrigatoriosQueValem({ camposDesligados: f.desligados }, campos, f.tipo), [f.desligados, campos, f.tipo]);
-  const semPrioridade = f.desligados.includes('prioridade');
+  // 2.4.8: o prazo vem do assunto (antes, da prioridade)
+  const semAssunto = f.desligados.includes('assunto');
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [fechar, setFechar] = useState(false);
@@ -661,10 +662,10 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
             </>
           )}
 
-          {!vendas && <label className={`flex items-start gap-2.5 text-sm ${semPrioridade ? 'opacity-60' : 'cursor-pointer'}`}>
-            <Toggle checked={f.contaPrazo && !semPrioridade} disabled={semPrioridade} onChange={(v) => mudar({ contaPrazo: v })} />
+          {!vendas && <label className={`flex items-start gap-2.5 text-sm ${semAssunto ? 'opacity-60' : 'cursor-pointer'}`}>
+            <Toggle checked={f.contaPrazo && !semAssunto} disabled={semAssunto} onChange={(v) => mudar({ contaPrazo: v })} />
             {/* 13/10, o Luan: "essa parte do conta prazo, não entendi para que serve" — a dica diz o que muda */}
-            <span>Conta prazo <span className="block text-[12.5px] text-muted">Ligado, cada chamado deste painel tem um prazo para a primeira resposta e outro para a solução, conforme a prioridade (os tempos ficam em Ajustes › Prazos). O cartão mostra quanto falta, e o Gestor avisa quando o prazo está perto de vencer e quando vence. Desligado, o painel não tem prazo, como o Desenvolvimento.{semPrioridade && <b className="block text-ink-2 font-medium">Sem a prioridade (em Os campos), o painel não conta prazo.</b>}</span></span>
+            <span>Conta prazo <span className="block text-[12.5px] text-muted">Ligado, cada chamado deste painel tem um prazo de solução, o do assunto escolhido (cada assunto tem o seu, cadastrado na árvore de assuntos, em horas úteis). O cartão mostra quanto falta, e o Gestor avisa quando o prazo está perto de vencer e quando vence. Desligado, o painel não tem prazo, como o Desenvolvimento.{semAssunto && <b className="block text-ink-2 font-medium">Sem o assunto (em Os campos), o painel não conta prazo.</b>}</span></span>
           </label>}
 
           {!vendas && <div className="flex flex-col gap-1.5">

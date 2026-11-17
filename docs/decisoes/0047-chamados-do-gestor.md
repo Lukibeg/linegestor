@@ -160,7 +160,8 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   chega só com o telefone (o robô, o botão da conversa) acha o cliente e o nome pelos contatos — o
   mesmo número em dois clientes não é adivinhado — e, depois, pelo que o Gestor aprendeu dos chamados.
   Incluem e editam quem cuida do cadastro e quem trabalha nos chamados.
-- **Os prazos** (o pedido do Carlos): resposta e solução por prioridade, em **horas úteis**, com o
+- **Os prazos** (o pedido do Carlos; **revisto no 2.4.8 pela 0065**: o prazo de solução vem do assunto, e a primeira
+  resposta não tem prazo): resposta e solução por prioridade, em **horas úteis**, com o
   horário de atendimento e os **feriados** (os de Salvador e da Bahia já cadastrados); **esperando o
   cliente, o prazo para**; esperando a operadora, **continua correndo**. O relógio do Gestor avisa
   perto de vencer e quando vence (o responsável; vencido, também os supervisores), avisa o chamado
@@ -555,7 +556,8 @@ o Contato, o Relato do cliente, a Solução e a Causa e a Prioridade, numa aba d
   cartão, sai das regras (para abrir e das etapas, `OBRIGATORIOS_DO_CAMPO`), o que vier pela API, pelo robô ou pelo
   agendado fica de fora (`criar`, `alterar`) e o que já estava guardado volta ao ligar de novo.
 - **Sem a prioridade, não há prazo** (`painelContaPrazo`: o "conta prazo" e a prioridade ligada; nenhuma
-  prioridade sugerida). O "conta prazo" fica guardado e volta junto com a prioridade.
+  prioridade sugerida). O "conta prazo" fica guardado e volta junto com a prioridade. (Desde o 2.4.8, a 0065: o prazo
+  vem do assunto, e é **sem o assunto** que o painel não conta prazo.)
 - **O problema (ITIL)** continua com a solução e a causa (e pedindo as duas para fechar), mesmo no painel que as
   desligou.
 - **A aba "Os campos"** na janela do painel (novo ou editar), entre As etapas e As regras: um botão por campo, com

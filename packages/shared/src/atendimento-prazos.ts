@@ -324,8 +324,22 @@ export const NOME_SITUACAO_PRAZO: Record<SituacaoPrazo, string> = {
   sem: 'Sem prazo', no_prazo: 'No prazo', perto: 'Perto de vencer', vencido: 'Vencido', pausado: 'Parado (esperando o cliente)', cumprido: 'Cumprido', estourou: 'Cumprido depois do prazo',
 };
 
+/**
+ * Por que o chamado está sem prazo (2.4.8): o painel não conta prazo, o chamado ainda não tem assunto,
+ * ou o assunto (e os de cima dele) não tem prazo cadastrado. A primeira resposta não tem prazo.
+ */
+export type MotivoSemPrazo = 'painel' | 'sem_assunto' | 'assunto_sem_prazo' | 'sem_prazo_de_resposta';
+export const TEXTO_SEM_PRAZO: Record<MotivoSemPrazo, string> = {
+  painel: 'Sem prazo: este painel não conta prazo',
+  sem_assunto: 'Sem prazo: o chamado ainda não tem assunto',
+  assunto_sem_prazo: 'Sem prazo: o assunto selecionado não tem prazo cadastrado',
+  sem_prazo_de_resposta: 'Sem prazo',
+};
+
 export type EstadoPrazo = {
   situacao: SituacaoPrazo;
+  /** sem prazo, o porquê (2.4.8) */
+  motivo?: MotivoSemPrazo;
   /** o prazo, em minutos (úteis ou corridos) */
   limite: number;
   /** quanto já correu (sem o tempo esperando o cliente) */
@@ -342,12 +356,14 @@ export type EstadoPrazo = {
 /** O que a conta precisa saber do chamado. */
 export type BaseDoPrazo = {
   criadoEm: string;
-  prioridade: Prioridade | null;
-  respondidoEm: string | null;
   resolvidoEm: string | null;
   esperas: Espera[];
   /** o painel conta prazo? (o Desenvolvimento, por exemplo, pode não contar) */
   contaPrazo: boolean;
+  /** o assunto do chamado (nulo: ainda sem assunto) */
+  assuntoId: string | null;
+  /** o prazo de solução do assunto, em minutos úteis (`prazoDoAssunto`: o dele ou o herdado); nulo: sem prazo cadastrado */
+  prazoSolucao: number | null;
 };
 
 const SEM: Omit<EstadoPrazo, 'conta'> = { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null };
@@ -371,16 +387,20 @@ function umPrazo(c: BaseDoPrazo, limite: number, conta: ContaPrazo, alvo: string
 }
 
 /**
- * Os dois prazos do chamado, agora. A prioridade de agora vale desde a abertura: trocar a prioridade
- * refaz a conta (é o que o documento combinou: o prazo é o da prioridade).
+ * O prazo do chamado, agora (2.4.8, revê a 0047): **a solução vem do assunto** — o prazo cadastrado no
+ * assunto (ou herdado do de cima), em horas úteis, pelo horário de atendimento e os feriados dos Ajustes ›
+ * Prazos. A prioridade não mexe mais no prazo. Sem assunto, ou com um assunto sem prazo cadastrado, o
+ * chamado fica sem prazo (e a tela diz o porquê). O assunto de agora vale desde a abertura: trocar o
+ * assunto refaz a conta. A primeira resposta não tem prazo (fica sempre "sem"; a forma continua para
+ * quem lê os dois).
  */
 export function estadoDosPrazos(c: BaseDoPrazo, a: AjustesPrazos, agora: Date = new Date()): { resposta: EstadoPrazo; solucao: EstadoPrazo } {
-  if (!c.contaPrazo || !c.prioridade) return { resposta: { ...SEM, conta: 'uteis' }, solucao: { ...SEM, conta: 'uteis' } };
-  const p = a.prazos[c.prioridade];
-  return {
-    resposta: umPrazo(c, p.resposta, p.conta, c.respondidoEm, a, agora),
-    solucao: umPrazo(c, p.solucao, p.conta, c.resolvidoEm, a, agora),
-  };
+  const resposta: EstadoPrazo = { ...SEM, conta: 'uteis', motivo: 'sem_prazo_de_resposta' };
+  const sem = (motivo: MotivoSemPrazo): EstadoPrazo => ({ ...SEM, conta: 'uteis', motivo });
+  if (!c.contaPrazo) return { resposta, solucao: sem('painel') };
+  if (!c.assuntoId) return { resposta, solucao: sem('sem_assunto') };
+  if (!c.prazoSolucao || c.prazoSolucao < 1) return { resposta, solucao: sem('assunto_sem_prazo') };
+  return { resposta, solucao: umPrazo(c, c.prazoSolucao, 'uteis', c.resolvidoEm, a, agora) };
 }
 
 /** "15 min", "2 h", "3 h 20". */
@@ -396,7 +416,7 @@ export function textoDoPrazo(e: EstadoPrazo, agora: Date = new Date()): string {
   const falta = Math.max(0, e.limite - e.usado);
   const unidade = e.conta === 'uteis' ? ' úteis' : '';
   switch (e.situacao) {
-    case 'sem': return 'Sem prazo';
+    case 'sem': return e.motivo ? TEXTO_SEM_PRAZO[e.motivo] : 'Sem prazo';
     case 'cumprido': return 'Cumprido no prazo';
     case 'estourou': return `Cumprido ${duracaoDoPrazo(e.usado - e.limite)}${unidade} depois do prazo`;
     case 'pausado': return `Parado: faltam ${duracaoDoPrazo(falta)}${unidade}`;

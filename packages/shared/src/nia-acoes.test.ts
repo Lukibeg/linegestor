@@ -100,7 +100,7 @@ describe('os campos do card', () => {
 
 describe('as folhas do assunto', () => {
   const a = (id: string, nome: string, paiId: string | null, ativo = true, painelId = 'p1'): Assunto =>
-    ({ id, painelId, paiId, nome, descricao: null, ativo, ordem: 0, checklist: [], dePara: [] });
+    ({ id, painelId, paiId, nome, descricao: null, ativo, ordem: 0, checklist: [], dePara: [], prazoSolucao: null });
   const assuntos = [
     a('lc', 'Linechat', null), a('cfg', 'Configuração', 'lc'), a('eq', 'Equipes', 'cfg'), a('fila', 'Filas', 'cfg'),
     a('ra', 'Ramal', null), a('inc', 'Incidentes', 'ra'), a('mudo', 'Mudo', 'inc'),

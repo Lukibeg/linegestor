@@ -31,11 +31,13 @@ import {
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta, renomearEtiqueta,
   faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
   EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO, modeloDoAviso, modelosParaGuardar, variaveisDesconhecidas,
-  alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
+  alertasDevidos, assuntoEDescendentes, prazoDoAssunto, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
   ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, modulosSemMarcar, AoMoverSchema,
-  GruposGravarSchema, gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO,
+  GruposGravarSchema, gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO, ListaDoCampoSchema, listaDepois, type AcaoNaLista, type ListasDosCampos,
+  itensDoChecklist, listasEfetivas, TIPOS_QUE_GERAM_ITENS, ChecklistNaImplantacaoSchema, checklistLigadoNaImplantacao, GRUPO_DA_IMPLANTACAO,
+  nomeDoChecklistDaImplantacao, podeLigarNaImplantacao,
   mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES, CondicoesDaNegociacaoSchema, mesDeHoje, type CondicoesDaNegociacao,
   type AssinaturaNoCadastro, type MarcasDosCampos, type NegociacaoNoFim, type OQueAEtapaFaz, type PlanoDaImplantacao, type PlanoDoCadastro, type PedidoDoCliente,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
@@ -182,6 +184,8 @@ type ChamadoRow = {
   origem: Origem; responsavelId: string | null; assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null;
   prioridade: Prioridade | null; motivoPrioridade: string | null; produtos: string[]; operadoras: string[]; etiquetas: string[];
   paiId: string | null; problemaId: string | null; checklist: ItemChecklist[];
+  /** os itens dos campos Checklist do card (2.4.8), pelo id do campo (como o `field_lists` do servidor) */
+  listas?: ListasDosCampos;
   /** os valores dos campos do painel (pelo id do campo; o de um campo desativado fica guardado) */
   campos: ValoresDosCampos;
   solucao: string | null; causa: string | null; contorno: string | null; validacao: string | null;
@@ -635,9 +639,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   function prazosDe(t: ChamadoRow, agora: Date) {
     const painel = A.paineis.find((p) => p.id === t.painelId);
+    const usaAssunto = !painel || campoLigado(painel.ajustes, 'assunto');
     return estadoDosPrazos({
-      criadoEm: t.criadoEm, prioridade: !painel || campoLigado(painel.ajustes, 'prioridade') ? t.prioridade : null, respondidoEm: t.respondidoEm, resolvidoEm: t.resolvidoEm ?? t.fechadoEm, esperas: t.esperas,
-      // sem a prioridade no painel (2.1.2), não há prazo
+      criadoEm: t.criadoEm, resolvidoEm: t.resolvidoEm ?? t.fechadoEm, esperas: t.esperas,
+      // 2.4.8: o prazo de solução é o do assunto (o dele, ou o herdado do de cima), como o servidor
+      assuntoId: usaAssunto ? t.assuntoId : null,
+      prazoSolucao: usaAssunto ? prazoDoAssunto(t.assuntoId, A.assuntos)?.minutos ?? null : null,
       contaPrazo: painel ? painelContaPrazo(painel.ajustes) : true,
     }, A.prazos, agora);
   }
@@ -667,7 +674,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Os campos do painel, na ordem dos Ajustes (todos, ou só os ativos). */
   const camposDoPainel = (painelId: string, soAtivos = false) =>
     A.campos.filter((c) => c.painelId === painelId && (!soAtivos || c.ativo)).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
-  const campoParaTela = (c: CampoPersonalizado): CampoPersonalizado => ({ ...c, opcoes: c.opcoes.map((o) => ({ ...o })) });
+  const campoParaTela = (c: CampoPersonalizado): CampoPersonalizado => ({ ...c, opcoes: c.opcoes.map((o) => ({ ...o })), ...(c.origens ? { origens: [...c.origens] } : {}) });
 
   /** O chamado no quadro e na lista: sem o que o painel desligou (fica guardado) e com os campos ativos dele. */
   function cartao(t: ChamadoRow, par: Parentes, agora: Date): CartaoChamado {
@@ -711,7 +718,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       // o lugar que a equipe escolheu arrastando (2.1: só vale onde a ordem é à mão)
       ordemNoQuadro: t.ordemNoQuadro ?? null,
       // as partes da ficha (2.3, a implantação), com a conta de cada uma (como o servidor)
-      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos, p?.ajustes.partes ?? [], camposComAnexo(t.id)),
+      partes: progressoDasPartes(camposDoPainel(t.painelId, true), usa('produtos') ? t.produtos : [], t.campos, p?.ajustes.partes ?? [], camposComAnexo(t.id), t.listas ?? {}),
     };
   }
 
@@ -877,6 +884,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
       solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id), campos: t.campos,
       camposComAnexo: camposComAnexo(t.id),
+      listas: listasEfetivas(camposDoPainel(t.painelId, true), t.campos, t.listas),
       valor: t.valor, ativacao: t.ativacao, empresa: t.empresa, motivoPerda: t.motivoPerda,
     };
   }
@@ -2257,6 +2265,31 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return { ...nada(t), resumo };
   }
 
+  /** O checklist do card (2.4.8): como o servidor (`mexerNaListaDoCampo`), pelas mesmas regras (`listaDepois`). */
+  function mexerNaListaDoCampo(ator: Ator, ref: string, campoId: string, d: AcaoNaLista, agora: Date = agoraReal()): Feito {
+    exigirTrabalhar(ator);
+    const e = carregar(ator, ref, agora);
+    const { t } = e;
+    const c = camposDoPainel(t.painelId, true).find((x) => x.id === campoId);
+    if (!c) throw naoAchado('Campo do painel');
+    if (c.tipo !== 'checklist') throw bad(`${c.nome} não é um checklist do card.`);
+    const produtos = S.products.filter((x) => !x.deletedAt).map((x) => ({ id: x.id, nome: x.name }));
+    const nome = nomeCompletoDoCampo(c, produtos);
+    // a lista como a ficha mostra: com os itens que vêm de outros campos (2.4.8), que aqui só se marcam
+    const campos = camposDoPainel(t.painelId, true);
+    const atual = itensDoChecklist(c, campos, t.campos, t.listas?.[c.id]);
+    const nomeDaOrigem = (id: string) => { const o = campos.find((x) => x.id === id); return o ? `${nomeCompletoDoCampo(o, produtos)}${o.parte ? ` (${o.parte})` : ''}` : undefined; };
+    const r = listaDepois(atual, { nome }, d, pessoaDoAtor(ator), iso(agora), novoId, nomeDaOrigem);
+    if (!r.ok) throw bad(r.erro);
+    if (!r.mudou) return nada(t);
+    const novas: ListasDosCampos = { ...(t.listas ?? {}) };
+    if (r.lista.length) novas[c.id] = r.lista; else delete novas[c.id];
+    t.listas = novas; tocar(t, agora);
+    registrarEvento(t.id, 'checklist', ator, r.evento, e.quando());
+    camposAosObservadores(ator, t, [nome], agora);
+    return { ...nada(t), resumo: `${r.resumo} (${t.codigo})` };
+  }
+
   function registrarTempo(ator: Ator, ref: string, d: { minutos: number; nota?: string | null; dia?: string | null }, agora: Date = agoraReal()): Feito {
     exigirTrabalhar(ator);
     const e = carregar(ator, ref, agora);
@@ -2805,7 +2838,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras'), prioridade: usa('prioridade') },
       },
       etapas: A.etapas.filter((e) => e.painelId === painel.id).map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, ativa: !e.deletedAt })),
-      assuntos: A.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo })),
+      assuntos: A.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo, prazoSolucao: a.prazoSolucao })),
       campos: camposDeLista.map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo, varios: c.tipo === 'lista_varios' })),
       pessoas: new Map(S.users.map((u) => [u.id, u.name])),
       clientes,
@@ -3052,6 +3085,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       outrosContatos: campoLigado(painel.ajustes, 'cliente') ? t.outrosContatos ?? [] : [],
       outrasConversas: (t.outrasSessoes ?? []).map((sessaoId) => ({ sessaoId, url: linkDaConversa(A.integ.linkConversa, sessaoId) })),
       checklist: t.checklist.map((i) => ({ ...i })),
+      listas: Object.fromEntries(Object.entries(listasEfetivas(camposDoPainel(t.painelId, true), t.campos, t.listas)).map(([k, v]) => [k, v.map((i) => ({ ...i }))])),
       observadores: t.observadores.map((id) => pessoaCurta(id)!),
       citaveis: quemVeOPainel(painel),
       criadoPor: pessoaCurta(t.criadoPorId),
@@ -3433,7 +3467,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (igual) throw conflito(`Já existe o assunto ${caminhoDoAssunto(igual.id, todos)} neste painel.`);
   }
   const proximaOrdem = (irmaos: Assunto[]) => Math.max(-1, ...irmaos.map((a) => a.ordem)) + 1;
-  const assuntoParaAuditoria = (a: Assunto) => ({ nome: a.nome, paiId: a.paiId, descricao: a.descricao, ativo: a.ativo, checklist: a.checklist, dePara: a.dePara });
+  const assuntoParaAuditoria = (a: Assunto) => ({ nome: a.nome, paiId: a.paiId, descricao: a.descricao, ativo: a.ativo, checklist: a.checklist, dePara: a.dePara, prazoSolucao: a.prazoSolucao });
 
   function criarAssunto(painelId: string, d: ReturnType<typeof AssuntoGravarSchema.parse>) {
     const p = linhaDoPainel(painelId);
@@ -3442,6 +3476,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const a: Assunto = {
       id: novoId(), painelId, paiId: d.paiId, nome: d.nome, descricao: d.descricao ?? null, ativo: d.ativo,
       ordem: proximaOrdem(todos.filter((x) => x.paiId === d.paiId)), checklist: unicos(d.checklist), dePara: unicos(d.dePara),
+      prazoSolucao: d.prazoSolucao ?? null,
     };
     A.assuntos.push(a);
     return { valor: { ...a }, resumo: `Criou o assunto ${caminhoDoAssunto(a.id, A.assuntos)} no painel ${p.nome}`, depois: assuntoParaAuditoria(a) };
@@ -3458,6 +3493,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const mudouDeLugar = antes.paiId !== d.paiId;
     Object.assign(linha, {
       paiId: d.paiId, nome: d.nome, descricao: d.descricao ?? null, ativo: d.ativo, checklist: unicos(d.checklist), dePara: unicos(d.dePara),
+      // sem a chave do prazo, o prazo fica (2.4.8), como o servidor
+      ...(d.prazoSolucao !== undefined ? { prazoSolucao: d.prazoSolucao } : {}),
       ...(mudouDeLugar ? { ordem: proximaOrdem(todos.filter((a) => a.paiId === d.paiId && a.id !== id)) } : {}),
     });
     const caminhoDepois = caminhoDoAssunto(id, A.assuntos);
@@ -3482,7 +3519,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const ordens = new Map<string | null, number>();
     const proxima = (pai: string | null) => { const n = ordens.get(pai) ?? proximaOrdem(todos.filter((a) => a.paiId === pai)); ordens.set(pai, n + 1); return n; };
     const criar = (partes: string[], paiId: string | null, descricao: string | null) => {
-      const a: Assunto = { id: novoId(), painelId, paiId, nome: partes[partes.length - 1]!, descricao, ativo: true, ordem: proxima(paiId), checklist: [], dePara: [] };
+      const a: Assunto = { id: novoId(), painelId, paiId, nome: partes[partes.length - 1]!, descricao, ativo: true, ordem: proxima(paiId), checklist: [], dePara: [], prazoSolucao: null };
       A.assuntos.push(a); porCaminho.set(chave(partes), a.id); novos.push(partes.join(' › ')); criados++;
       return a.id;
     };
@@ -3504,6 +3541,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const campoParaAuditoria = (c: CampoPersonalizado) => ({
     nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes.map((o) => ({ ...o })), ativo: c.ativo, incluirNaHora: c.incluirNaHora,
     ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}), ...(c.anexos ? { anexos: true } : {}),
+    ...(c.origens?.length ? { origens: [...c.origens] } : {}),
   });
   /**
    * Incluir uma opção numa lista do painel ali mesmo (2.0.3, a Indicação), como o servidor: só nas listas marcadas;
@@ -3567,6 +3605,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (doSistema) throw conflito(`Todo chamado do painel ${p.nome} já tem o campo ${doSistema}: escolha outro nome.`);
     // os módulos são os do produto: trocar o produto trocaria as opções do que já foi marcado
     if (atual?.tipo === 'modulos' && atual.produtoId !== d.produtoId) throw bad(`O produto dos módulos não muda depois de criado (${atual.nome}). Crie outro campo e desative este.`);
+    // de onde vêm os itens do checklist do card (2.4.8): campos deste painel que geram itens, e não ele mesmo
+    for (const id of d.origens) {
+      const o = camposDoPainel(p.id).find((c) => c.id === id);
+      if (!o || o.id === atual?.id) throw bad('Os itens do checklist vêm de outros campos deste painel.');
+      if (!TIPOS_QUE_GERAM_ITENS.includes(o.tipo)) throw bad(`${o.nome} (${NOME_TIPO_CAMPO[o.tipo]}) não gera itens: escolha um texto, um texto longo ou uma lista.`);
+    }
     // o checklist dos módulos (2.3): segue um campo de módulos deste painel, do mesmo produto, que seja a escolha
     if (d.escolhidosEm) {
       if (d.tipo !== 'modulos') throw bad('Só os módulos do produto seguem outro campo.');
@@ -3654,6 +3698,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const c: CampoPersonalizado = {
       id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, incluirNaHora: d.tipo === 'lista' && d.incluirNaHora,
       parte: d.parte, produtoId: d.produtoId, escolhidosEm: d.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos, largura: d.largura,
+      ...(d.tipo === 'checklist' ? { origens: d.origens } : {}),
     };
     A.campos.push(c);
     sincronizarModulos();
@@ -3673,6 +3718,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     conferirProdutoDoCampo(d.produtoId);
     const opcoes = conferirCampo(p, d, antes);
     Object.assign(c, { nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos, largura: d.largura });
+    if (c.tipo === 'checklist') c.origens = d.origens; else delete c.origens;
     sincronizarModulos();
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
@@ -3734,10 +3780,54 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (igual) throw conflito(`O painel ${p.nome} já tem um campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}: renomeie ou exclua esse antes de restaurar.`);
     if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw bad(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos: exclua um antes de restaurar.`);
     A.excluidos.splice(i, 1);
-    const volta: CampoPersonalizado = { ...c, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, escolhidosEm: c.escolhidosEm && outros.some((x) => x.id === c.escolhidosEm) ? c.escolhidosEm : null };
+    const volta: CampoPersonalizado = {
+      ...c, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, escolhidosEm: c.escolhidosEm && outros.some((x) => x.id === c.escolhidosEm) ? c.escolhidosEm : null,
+      ...(c.origens ? { origens: c.origens.filter((o) => outros.some((x) => x.id === o)) } : {}),
+    };
     A.campos.push(volta);
     sincronizarModulos();
     return { valor: campoParaTela(volta), resumo: `Restaurou o campo ${nomeDoCampoInteiro(volta)} no painel ${p.nome}`, depois: campoParaAuditoria(volta) };
+  }
+  /** A caixinha "Checklist na Implantação" ao lado do campo (2.4.8): como o servidor (`checklistNaImplantacao`). */
+  function checklistNaImplantacao(id: string, ligar: boolean, agora: Date) {
+    const c = A.campos.find((x) => x.id === id);
+    if (!c) throw naoAchado('Campo');
+    const p = linhaDoPainel(c.painelId);
+    const campos = camposDoPainel(p.id);
+    const nomeDoCampo = nomeDoCampoInteiro(c);
+    const ja = checklistLigadoNaImplantacao(c, campos);
+    const minuscula = (t: string) => `${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+    if (!ligar) {
+      if (!ja) return { valor: null, resumo: `O campo ${nomeDoCampo} não tinha checklist na Implantação (nada mudou)` };
+      const resto = (ja.origens ?? []).filter((o) => o !== c.id);
+      if (resto.length) {
+        A.campos.find((x) => x.id === ja.id)!.origens = resto;
+        return { valor: null, resumo: `O checklist ${ja.nome} da Implantação deixou de tirar os itens de ${nomeDoCampo}`, antes: { origens: ja.origens }, depois: { origens: resto } };
+      }
+      const r = excluirCampo(ja.id, agora);
+      return { valor: null, resumo: `Desligou o checklist na Implantação de ${nomeDoCampo}: ${minuscula(r.resumo)}`, antes: r.antes };
+    }
+    if (!podeLigarNaImplantacao(c)) {
+      throw bad(mesmoGrupo(c.parte, GRUPO_DA_IMPLANTACAO) ? `${c.nome} já está na Implantação.` : `${c.nome} (${NOME_TIPO_CAMPO[c.tipo]}) não gera itens: o checklist vem de um texto, um texto longo ou uma lista.`);
+    }
+    if (ja) return { valor: campoParaTela(ja), resumo: `O checklist ${ja.nome} já estava na Implantação (nada mudou)` };
+    const garantirGrupo = () => {
+      if ((p.ajustes.partes ?? []).some((g) => mesmoGrupo(g.nome, GRUPO_DA_IMPLANTACAO))) return false;
+      p.ajustes = { ...p.ajustes, partes: [...(p.ajustes.partes ?? []), { nome: GRUPO_DA_IMPLANTACAO, lugar: 'meio' }] };
+      return true;
+    };
+    const excluido = checklistLigadoNaImplantacao(c, A.excluidos.filter((x) => x.painelId === p.id));
+    if (excluido && !campos.some((x) => paraBusca(x.nome) === paraBusca(excluido.nome) && (x.produtoId ?? null) === (excluido.produtoId ?? null))) {
+      const r = restaurarCampo(excluido.id);
+      const novoGrupo = garantirGrupo();
+      return { valor: r.valor, resumo: `Ligou o checklist na Implantação de ${nomeDoCampo}: restaurou ${r.valor.nome}${novoGrupo ? ' (e criou o grupo Implantação)' : ''}`, depois: r.depois };
+    }
+    const r = criarCampo(p.id, CampoGravarSchema.parse({
+      nome: nomeDoChecklistDaImplantacao(c, campos), tipo: 'checklist', parte: GRUPO_DA_IMPLANTACAO, produtoId: c.produtoId ?? null, origens: [c.id],
+      dica: `Os itens vêm de ${c.nome}${c.parte ? ` (${c.parte})` : ''}: marque conforme fizer na implantação.`,
+    }));
+    const novoGrupo = garantirGrupo();
+    return { valor: r.valor, resumo: `Ligou o checklist na Implantação de ${nomeDoCampo}: ${minuscula(r.resumo)}${novoGrupo ? ' (e criou o grupo Implantação)' : ''}`, depois: r.depois };
   }
   function gravarGrupos(painelId: string, d: ReturnType<typeof GruposGravarSchema.parse>, agora: Date) {
     const p = linhaDoPainel(painelId);
@@ -4022,6 +4112,25 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         deletedAt: null, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro,
       }));
       camposDeFabricaDoPainel(PAINEL_DA_IMPLANTACAO, 'gestao', true);
+      // o checklist do card (2.4.8), na aba Implantação: os ramais no telefone vêm da Lista de ramais da Curadoria; os do
+      // softphone, cada card inclui. Só na prévia (o modelo não traz: cada equipe cria o grupo e os campos em Configurar › Campos)
+      const pbx = S.products.find((x) => x.code === 'linepbx' && !x.deletedAt)?.id ?? null;
+      const imp = A.paineis.find((x) => x.id === PAINEL_DA_IMPLANTACAO);
+      const depois = Math.max(-1, ...A.campos.filter((c) => c.painelId === PAINEL_DA_IMPLANTACAO).map((c) => c.ordem)) + 1;
+      const listaDeRamais = A.campos.find((c) => c.painelId === PAINEL_DA_IMPLANTACAO && c.nome === 'Lista de ramais' && c.produtoId === pbx);
+      if (pbx && imp) {
+        imp.ajustes = { ...imp.ajustes, partes: [...(imp.ajustes.partes ?? []), { nome: 'Implantação', lugar: 'meio' }] };
+        ['Ramais no telefone', 'Ramais no softphone'].forEach((nome, k) => A.campos.push({
+          id: novoId(), painelId: PAINEL_DA_IMPLANTACAO, nome, tipo: 'checklist', ordem: depois + k, incluirNaHora: false, opcoes: [], ativo: true, parte: 'Implantação', produtoId: pbx,
+          escolhidosEm: null, anexos: false, origens: k === 0 && listaDeRamais ? [listaDeRamais.id] : [],
+          dica: k === 0 ? 'Os ramais da Lista de ramais da Curadoria: marque conforme configurar cada telefone.' : 'Quem usa o softphone (no computador ou no celular).',
+        }));
+        // o Concluído pede os ramais do telefone (só na prévia): o card nos Testes mostra "Para ir para Concluído, falta
+        // preencher: Ramais no telefone", e o clique abre a aba Implantação e vai até ele
+        const tel = A.campos.find((c) => c.painelId === PAINEL_DA_IMPLANTACAO && c.nome === 'Ramais no telefone');
+        const concluido = A.etapas.find((e) => e.painelId === PAINEL_DA_IMPLANTACAO && e.nome === 'Concluído' && !e.deletedAt);
+        if (tel && concluido) concluido.obrigatorios = [...concluido.obrigatorios, chaveDoCampo(tel.id)];
+      }
     }
 
     // ---- os assuntos: a lista da equipe (colada) e o que já foi preenchido em alguns ----
@@ -4033,6 +4142,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (det.checklist) a.checklist = [...det.checklist];
       if (det.dePara) a.dePara = [...det.dePara];
       if (det.ativo !== undefined) a.ativo = det.ativo;
+      if (det.prazo !== undefined) a.prazoSolucao = det.prazo;
     }
 
     // ---- o WhatsApp dos chamados ligado (pela chave do LineChat), com a equipe e o número dela ----
@@ -4390,6 +4500,18 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
             }
             alterar(ator, card.id, { campos }, quando);
           }
+          // o checklist do card (2.4.8): a lista colada e o que foi marcado
+          for (const l of p.listas ?? []) {
+            const c = A.campos.find((y) => y.painelId === PAINEL_DA_IMPLANTACAO && y.nome === l.nome && y.tipo === 'checklist');
+            if (!c) throw new Error(`o campo ${l.nome} não é da Implantação`);
+            if (l.incluir) mexerNaListaDoCampo(ator, card.id, c.id, { acao: 'incluir', textos: [l.incluir] }, quando);
+            for (const [k, texto] of (l.marcar ?? []).entries()) {
+              // os que vêm da Lista de ramais (2.4.8) também: a lista como a ficha mostra
+              const item = itensDoChecklist(c, camposDoPainel(PAINEL_DA_IMPLANTACAO, true), card.campos, card.listas?.[c.id]).find((i) => i.texto === texto);
+              if (!item) throw new Error(`o item ${texto} não está em ${l.nome}`);
+              mexerNaListaDoCampo(ator, card.id, c.id, { acao: 'marcar', itemId: item.id, feito: true }, new Date(quando.getTime() + (k + 1) * MINUTO));
+            }
+          }
           if (p.para) {
             mover(ator, card.id, { etapaId: etapaDaImplantacao(p.para), ...(p.responsavel ? { responsavelId: idDa(p.responsavel) } : {}) }, new Date(quando.getTime() + 5 * MINUTO));
           }
@@ -4397,6 +4519,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       } catch (err) { A.erros.push(`implantação ${ex.negociacao}: ${err instanceof Error ? err.message : String(err)}`); }
     }
     for (const marcar of ganhosDepois) marcar();
+    // 2.4.8: as duas últimas etapas com os nomes do painel do Luan ("Implantado - Em acompanhamento" e "Implantado - Concluído"),
+    // para a prévia mostrar o que ele vai ver: as duas abrem a aba Implantação, e a barrinha dela fica azul no cartão. Depois dos
+    // exemplos, que andam pelos nomes do modelo (o Concluído e o Implantado)
+    for (const [de, para] of [['Concluído', 'Implantado - Em acompanhamento'], ['Implantado', 'Implantado - Concluído']] as const) {
+      const e = A.etapas.find((x) => x.painelId === PAINEL_DA_IMPLANTACAO && x.nome === de && !x.deletedAt);
+      if (e) e.nome = para;
+    }
 
     // ---- o sininho: o que é antigo já foi lido ----
     // O Luan vê os 5 de que mais precisa (o Crítico que chegou, o prazo perto, o chamado que recebeu, o
@@ -4560,6 +4689,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async definirPai(id, pai) { await ctx.wait(150); const dados = ler(PaiSchema, { pai }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(definirPai(eu(), id, dados.pai)); },
     async definirProblema(id, problema) { await ctx.wait(150); const dados = ler(ProblemaSchema, { problema }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(definirProblema(eu(), id, dados.problema)); },
     async checklist(id, d) { await ctx.wait(120); const dados = ler(ChecklistSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(mexerNoChecklist(eu(), id, dados)); },
+    async listaDoCampo(id, campoId, d) { await ctx.wait(120); const dados = ler(ListaDoCampoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(mexerNaListaDoCampo(eu(), id, campoId, dados)); },
     async registrarTempo(id, d) { await ctx.wait(150); const dados = ler(TempoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(registrarTempo(eu(), id, dados)); },
     async apagarTempo(id, itemId) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(apagarTempo(eu(), id, itemId), 'delete'); },
     async abrirNaOperadora(id, d) { await ctx.wait(150); const dados = ler(OperadoraCasoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(abrirNaOperadora(eu(), id, dados)); },
@@ -4833,6 +4963,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const r = restaurarCampo(campoId);
       auditar('restore', 'ticket_field', r.resumo, campoId, { after: r.depois });
       return r.valor;
+    },
+    async checklistNaImplantacao(campoId, d) {
+      await ctx.wait(150);
+      const dados = ler(ChecklistNaImplantacaoSchema, d);
+      exigirConfigurar(painelDoCampo(campoId)); preparar();
+      const r = checklistNaImplantacao(campoId, dados.ligar, agoraReal());
+      auditar('update', 'ticket_field', r.resumo, r.valor?.id ?? campoId, { before: 'antes' in r ? r.antes : undefined, after: 'depois' in r ? r.depois : undefined });
+      return { campo: r.valor };
     },
     async salvarGrupos(painelId, d) {
       await ctx.wait(150);

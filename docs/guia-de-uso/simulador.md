@@ -51,13 +51,14 @@ custo**:
 
 Com dois produtos ou mais, cada linha diz de qual produto veio (a instalação do LinePBX e a do LineChat).
 
-**O LineChat** (2.0.3): com o produto **LineChat** no cenário (em Produtos, ou pelo modelo), os Custos mensais
+**O LineChat** (2.0.3): com o produto **LineChat** no cenário (em Produtos, pelo modelo ou, desde o 2.4.8, pelo
+item **LineChat (Helena)** do **Da tabela** dos Custos mensais — a Helena é um item só ali), os Custos mensais
 abrem com o quadro do LineChat. É só pôr as quantidades — **Usuários**, **Canais oficiais** (WhatsApp oficial
-ou Instagram), **Canais não oficiais** (a conexão Z-API) e **Agentes de IA** —, e o quadro diz o custo de cada
-uma e o **total do mês**, como na planilha da Helena. A licença base entra sozinha (com 3 usuários e 1 canal
-oficial inclusos). As faixas de preço valem por trás, sem aparecer (mudam nos Ajustes). Tirar o LineChat dos
-produtos tira o quadro; pôr de novo traz o modelo do LineChat. Na simulação de antes de 21/10, os contatos
-ativos acima de 5.000 (e a transcrição de áudio) aparecem no quadro quando custam algo.
+ou Instagram), **Canais não oficiais** (a conexão Z-API), **Agentes de IA**, **Contatos ativos no mês** e
+**Transcrição de áudio** (os usuários com ela) —, e o quadro diz o custo de cada uma e o **total do mês**, como
+na planilha da Helena. A licença base entra sozinha (com 3 usuários, 1 canal oficial e 5.000 contatos ativos
+inclusos). As faixas de preço valem por trás, sem aparecer (mudam nos Ajustes, onde os sete custos da Helena
+continuam um a um). Tirar o LineChat dos produtos tira o quadro; pôr de novo traz o modelo do LineChat.
 
 Cada linha tem o nome, o **tipo** (só os do grupo), a quantidade, o valor de cada um e o total:
 

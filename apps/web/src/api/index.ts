@@ -366,6 +366,8 @@ export type Api = {
     /** o problema de que este chamado é incidente, pelo código (null tira) */
     definirProblema(id: string, problema: string | null): Promise<T.FichaChamado>;
     checklist(id: string, d: T.ChecklistEntrada): Promise<T.FichaChamado>;
+    /** o checklist do card (2.4.8): incluir, marcar, corrigir ou tirar um item de um campo Checklist do card */
+    listaDoCampo(id: string, campoId: string, d: T.ListaDoCampoEntrada): Promise<T.FichaChamado>;
     registrarTempo(id: string, d: T.TempoEntrada): Promise<T.FichaChamado>;
     apagarTempo(id: string, itemId: string): Promise<T.FichaChamado>;
     abrirNaOperadora(id: string, d: T.OperadoraCasoEntrada): Promise<T.FichaChamado>;
@@ -403,6 +405,8 @@ export type Api = {
     /** os campos excluídos do painel (2.4), do mais recente para o mais antigo */
     camposExcluidos(painelId: string): Promise<Array<T.CampoPersonalizado & { excluidoEm: string }>>;
     restaurarCampo(campoId: string): Promise<T.CampoPersonalizado>;
+    /** 2.4.8: a caixinha "Checklist na Implantação" ao lado do campo (ligar cria o checklist no grupo Implantação; desligar exclui) */
+    checklistNaImplantacao(campoId: string, d: T.ChecklistNaImplantacaoEntrada): Promise<{ campo: T.CampoPersonalizado | null }>;
     /** os grupos de campos do painel (2.4): a lista inteira, na ordem da ficha; o que não vier é excluído com os campos */
     salvarGrupos(painelId: string, d: T.GruposGravarEntrada): Promise<T.GrupoDeCampos[]>;
     /** incluir uma opção numa lista do painel ali mesmo (2.0.3, só nas listas que incluem na hora: a Indicação) */

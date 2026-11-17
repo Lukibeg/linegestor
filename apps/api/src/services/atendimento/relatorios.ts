@@ -115,7 +115,7 @@ function contextoDoPainel(ctx: Contexto, painel: Painel, campoDaFalha: string | 
       usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras'), prioridade: usa('prioridade') },
     },
     etapas: [...ctx.etapas].filter(([, v]) => v.painelId === painel.id).map(([id, v]) => ({ id, nome: v.etapa.nome, tipo: v.etapa.tipo, nivel: v.etapa.nivel, ordem: v.ordem, ativa: !v.saiu })),
-    assuntos: ctx.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo })),
+    assuntos: ctx.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo, prazoSolucao: a.prazoSolucao })),
     campos: ctx.campos.filter((c) => c.painelId === painel.id && (c.tipo === 'lista' || c.tipo === 'lista_varios'))
       .map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo, varios: c.tipo === 'lista_varios' })),
     pessoas: new Map([...ctx.pessoas].map(([id, p]) => [id, p.nome])),

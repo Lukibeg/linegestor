@@ -531,6 +531,25 @@ describe('os assuntos', () => {
     expect(await auditoria()).toContain('Desativou o assunto Ramal › Configuração › Identidade no painel Suporte');
   });
 
+  it('o prazo de solução do assunto (2.4.8): em minutos úteis; sem a chave, fica o que estava; nulo, herda do de cima', async () => {
+    const r = await s.put(`/atendimento/assuntos/${ramal}`, { nome: 'Ramal', prazoSolucao: 8 * 60 });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().prazoSolucao).toBe(480);
+    // quem não manda o prazo não apaga o prazo
+    expect((await s.put(`/atendimento/assuntos/${ramal}`, { nome: 'Ramal', descricao: 'Tudo do ramal' })).json().prazoSolucao).toBe(480);
+    // de 15 minutos para cima
+    const curto = await s.put(`/atendimento/assuntos/${ramal}`, { nome: 'Ramal', prazoSolucao: 10 });
+    expect(curto.statusCode).toBe(400);
+    expect((await criar({ nome: 'Sem áudio', paiId: ramal, prazoSolucao: 2 * 60 })).json().prazoSolucao).toBe(120);
+    const opcoes = (await s.get('/atendimento/opcoes')).json();
+    expect(opcoes.assuntos.find((x: any) => x.id === config).prazoSolucao).toBeNull();
+    expect(await auditoria()).toContain('Alterou o assunto Ramal no painel Suporte');
+    const [linha] = await app.db.select().from(ticketSubjects).where(eq(ticketSubjects.id, ramal));
+    expect(linha!.resolutionMinutes).toBe(480);
+    // nulo: tira o prazo próprio
+    expect((await s.put(`/atendimento/assuntos/${ramal}`, { nome: 'Ramal', descricao: 'Tudo do ramal', prazoSolucao: null })).json().prazoSolucao).toBeNull();
+  });
+
   it('colar a lista: cria o que falta e acha o que já existe pelo caminho (sem acento e maiúscula)', async () => {
     const texto = [
       'ramal - configuracao - IDENTIDADE',
@@ -1038,16 +1057,25 @@ describe('2.1.2: o painel desliga o cliente, o relato, a solução e a prioridad
     expect(linha).toMatchObject({ customerReport: null, priority: null, contactName: null, contactPhone: null, clientId: null });
     const f = await ficha(c.json().codigo);
     expect(f).toMatchObject({ prioridade: null, cliente: null, contato: null });
-    expect(f.prazos.resposta.situacao).toBe('sem');
+    // 2.4.8: o prazo vem do assunto (sem prioridade, conta igual); ainda sem assunto, sem prazo
+    expect(f.prazos.solucao).toMatchObject({ situacao: 'sem', motivo: 'sem_assunto' });
     // mudar o que o painel não usa não grava
     const m = await s.patch(`/atendimento/chamados/${c.json().id}`, { relato: 'outro', prioridade: 'baixa', solucao: 'feito' });
     expect(m.statusCode, m.body).toBe(200);
     const [depois] = await app.db.select().from(tickets).where(eq(tickets.id, c.json().id));
     expect(depois).toMatchObject({ customerReport: null, priority: null, solution: null });
-    // ligar de novo a prioridade: o prazo volta a contar (o "conta prazo" ficou guardado)
-    const ligou = await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['cliente', 'relato', 'solucao', 'alcance'], tipos: [] });
-    expect(ligou.statusCode, ligou.body).toBe(200);
-    await s.patch(`/atendimento/chamados/${c.json().id}`, { prioridade: 'baixa' });
-    expect((await ficha(c.json().codigo)).prazos.resposta.situacao).not.toBe('sem');
+    // o assunto sem prazo cadastrado: sem prazo, e a ficha diz o porquê
+    const assunto = (await s.post(`/atendimento/paineis/${p.id}/assuntos`, { nome: 'Site' })).json();
+    await s.patch(`/atendimento/chamados/${c.json().id}`, { assuntoId: assunto.id });
+    expect((await ficha(c.json().codigo)).prazos.solucao).toMatchObject({ situacao: 'sem', motivo: 'assunto_sem_prazo' });
+    // com o prazo no assunto, o prazo conta (sem prioridade)
+    await s.put(`/atendimento/assuntos/${assunto.id}`, { nome: 'Site', prazoSolucao: 4 * 60 });
+    expect((await ficha(c.json().codigo)).prazos.solucao).toMatchObject({ situacao: 'no_prazo', limite: 240 });
+    // desligar o assunto no painel: não conta prazo (o "conta prazo" fica guardado e volta com o assunto)
+    const desligou = await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['cliente', 'relato', 'solucao', 'prioridade', 'alcance', 'assunto'], tipos: [] });
+    expect(desligou.statusCode, desligou.body).toBe(200);
+    expect((await ficha(c.json().codigo)).prazos.solucao).toMatchObject({ situacao: 'sem', motivo: 'painel' });
+    await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['cliente', 'relato', 'solucao', 'prioridade', 'alcance'], tipos: [] });
+    expect((await ficha(c.json().codigo)).prazos.solucao.situacao).not.toBe('sem');
   });
 });

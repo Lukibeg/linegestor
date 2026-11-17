@@ -28,14 +28,15 @@
  *    chamados preencheram fica guardado e volta pelos **Excluídos** (o Restaurar);
  *  - o tipo **Documento** (o arquivo anexado), e o texto que vira documento.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronRight, FolderPlus, ListTree, Pencil, Plus, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
 import {
   camposDoSistemaDoTipo, DICA_CAMPO_DO_SISTEMA, DICA_TIPO_CAMPO, MAX_CAMPOS_DO_PAINEL, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO,
-  NOME_LUGAR_DO_GRUPO, OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, TIPOS_QUE_TROCAM, chaveDoCampo, etiquetasUnicas, gruposDoPainel, mesmoGrupo, nomeDoSistemaIgual, paraBusca,
+  NOME_LUGAR_DO_GRUPO, OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, TIPOS_QUE_GERAM_ITENS, TIPOS_QUE_TROCAM, nomeCompletoDoCampo, chaveDoCampo, etiquetasUnicas, gruposDoPainel, mesmoGrupo, nomeDoSistemaIgual, paraBusca,
   temOpcoesEscritas, tipoTroca, LARGURAS_DO_CAMPO, NOME_LARGURA_DO_CAMPO, larguraDoCampo,
+  checklistLigadoNaImplantacao, painelComImplantacao, podeLigarNaImplantacao,
   type LarguraDoCampo, type CampoDoSistema, type CampoGravarEntrada, type CampoPersonalizado, type GrupoDoPainel, type GruposGravarEntrada, type LugarDoGrupo, type Painel, type TipoCampo,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -158,7 +159,7 @@ function CamposDoSistema({ painel, nAssuntos, onAssuntos, onTipos }: { painel: P
         <p className="text-[12.5px] text-muted">
           {painel.tipo === 'vendas'
             ? 'Toda negociação tem a empresa, o título, o valor, o responsável e as etiquetas. Estes, cada painel usa ou não:'
-            : 'Todo chamado tem o título, a descrição, o responsável e as etiquetas. Estes, cada painel usa ou não (sem a prioridade, o painel não conta prazo):'}
+            : 'Todo chamado tem o título, a descrição, o responsável e as etiquetas. Estes, cada painel usa ou não (sem o assunto, o painel não conta prazo: o prazo de solução vem do assunto):'}
         </p>
       </header>
       <ul className="divide-y divide-line">
@@ -375,6 +376,13 @@ function LinhaDoCampo({ c, painel, primeiro, ultimo, movendo, onMover, onEditar 
 }) {
   const pede = c.ativo ? ondePede(painel, [chaveDoCampo(c.id)]) : [];
   const ativas = c.opcoes.filter((o) => o.ativa);
+  // de onde vêm os itens do checklist do card (2.4.8)
+  const opcoes = useOpcoes();
+  const origens = (c.origens ?? []).map((id) => opcoes.data?.campos.find((x) => x.id === id)).filter((x): x is CampoPersonalizado => !!x);
+  // a caixinha "Checklist na Implantação" (2.4.8): no painel da implantação, nos textos e nas listas fora da Implantação
+  const doPainel = (opcoes.data?.campos ?? []).filter((x) => x.painelId === painel.id);
+  const mostraImplantacao = painelComImplantacao(painel, opcoes.data?.paineis ?? []) && podeLigarNaImplantacao(c);
+  const ligado = mostraImplantacao ? checklistLigadoNaImplantacao(c, doPainel) : null;
   return (
     <li className="flex items-start gap-1.5 px-2 py-2 sm:px-3" data-campo={c.nome}>
       <span className="flex shrink-0">
@@ -391,12 +399,54 @@ function LinhaDoCampo({ c, painel, primeiro, ultimo, movendo, onMover, onEditar 
         </span>
         {temOpcoesEscritas(c.tipo) && <span className="block text-[12.5px] text-ink-2 break-words">{ativas.map((o) => o.nome).join(' · ') || (c.tipo === 'caixinhas' ? 'Nenhuma caixinha' : 'Sem opções ativas')}</span>}
         {c.tipo === 'modulos' && <span className="block text-[12.5px] text-ink-2 break-words">{ativas.map((o) => o.nome).join(' · ') || 'O produto ainda não tem módulos (Administração › Produtos)'}</span>}
+        {c.tipo === 'checklist' && (
+          <span className="block text-[12.5px] text-ink-2 break-words">
+            {origens.length ? `Os itens vêm de ${origens.map((o) => `${nomeCompletoDoCampo(o, opcoes.data?.produtos ?? [])}${o.parte ? ` (${o.parte})` : ''}`).join(' · ')}, e cada card inclui os seus` : 'Cada card inclui os seus itens'}
+          </span>
+        )}
         {c.dica && <span className="block text-[12.5px] text-muted leading-snug break-words">{c.dica}</span>}
       </button>
+      {mostraImplantacao && <ChecklistNaImplantacao c={c} ligado={ligado} />}
       <button type="button" className="btn-ghost btn-sm shrink-0" onClick={onEditar} aria-label={`Editar o campo ${c.nome}`}>
         <Pencil size={14} /><span className="hidden sm:inline">Editar</span>
       </button>
     </li>
+  );
+}
+
+/**
+ * A caixinha "Checklist na Implantação" ao lado do campo (2.4.8, o Luan: "quero que crie sozinho, quero que tenha um checkbox …
+ * ao lado de um campo de configuração que quando eu clicar automaticamente ele já abra um campo na parte de implantação"):
+ * marcar cria, no grupo Implantação, o checklist com os itens vindos deste campo; desmarcar manda esse checklist para os
+ * Excluídos (marcar de novo traz de volta, com as marcas dos cards).
+ */
+function ChecklistNaImplantacao({ c, ligado }: { c: CampoPersonalizado; ligado: CampoPersonalizado | null }) {
+  const depois = useDepoisDeMudar();
+  const [mudando, setMudando] = useState(false);
+  const [erro, setErro] = useState('');
+  // a marca muda na hora; volta ao que o painel diz quando a lista dos campos chega (ou se deu erro)
+  const [otimista, setOtimista] = useState<boolean | null>(null);
+  useEffect(() => { if (otimista !== null && !!ligado === otimista) setOtimista(null); }, [ligado, otimista]);
+  const marcado = otimista ?? !!ligado;
+  const alternar = async (ligar: boolean) => {
+    setMudando(true); setErro(''); setOtimista(ligar);
+    try {
+      await depois(api.atendimento.checklistNaImplantacao(c.id, { ligar }), ligar ? 'Checklist criado na aba Implantação' : 'O checklist da Implantação foi para os Excluídos');
+    } catch (e) { setErro(mensagemErro(e)); setOtimista(null); } finally { setMudando(false); }
+  };
+  return (
+    <span className="shrink-0 flex flex-col items-end max-w-[13rem] pt-0.5" data-checklist-na-implantacao={c.nome}>
+      <label className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12.5px] cursor-pointer select-none ${
+        marcado ? 'border-ok bg-ok-soft text-ok font-medium' : 'border-line text-ink-2 hover:bg-surface-2'}`}
+        title={ligado ? `Ligado: ${ligado.nome}, na aba Implantação. Desmarcar manda para os Excluídos.` : 'Cria sozinho, na aba Implantação, um checklist com um item por linha (ou por opção escolhida) deste campo'}>
+        <input type="checkbox" className="accent-ok" checked={marcado} disabled={mudando} aria-label={`Checklist na Implantação: ${c.nome}`}
+          onChange={(e) => void alternar(e.target.checked)} />
+        {mudando ? <Spinner className="!w-3.5 !h-3.5" /> : null}
+        <span className="whitespace-nowrap">Checklist na Implantação</span>
+      </label>
+      {ligado && <span className="text-[11.5px] text-muted mt-0.5 text-right break-words">→ {ligado.nome}</span>}
+      {erro && <span className="text-[11.5px] text-bad mt-0.5 text-right" role="alert">{erro}</span>}
+    </span>
   );
 }
 
@@ -609,7 +659,14 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
     anexos: campo?.anexos ?? false,
     // 2.4.7: vazio = pelo tipo (o que a ficha fazia antes)
     largura: (campo?.largura ?? '') as LarguraDoCampo | '',
+    // 2.4.8: de onde vêm os itens do checklist do card
+    origens: campo?.origens ?? [],
   }));
+  // a caixinha "Checklist na Implantação" (2.4.8): como está, e como fica ao salvar
+  const doPainel = (opcoesDoModulo.data?.campos ?? []).filter((c) => c.painelId === painel.id);
+  const comImplantacao = painelComImplantacao(painel, opcoesDoModulo.data?.paineis ?? []);
+  const ligadoAntes = campo ? checklistLigadoNaImplantacao(campo, doPainel) : null;
+  const [naImplantacao, setNaImplantacao] = useState(!!ligadoAntes);
   // as caixinhas, em pastas (2.3)
   const [pastas, setPastas] = useState<PastaRascunho[]>(() => pastasDoEditor(campo?.opcoes ?? []));
   const [erro, setErro] = useState('');
@@ -629,6 +686,11 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
   // o checklist dos módulos (2.3) segue um campo de módulos do mesmo produto, que seja a escolha
   const fontes = (opcoesDoModulo.data?.campos ?? []).filter((c) => c.painelId === painel.id && c.tipo === 'modulos' && !c.escolhidosEm && c.id !== campo?.id && (c.produtoId ?? '') === f.produtoId);
   const seguido = !!campo && (opcoesDoModulo.data?.campos ?? []).some((c) => c.escolhidosEm === campo.id);
+  // os campos que geram os itens do checklist do card (2.4.8): os textos e as listas deste painel, na ordem dos grupos
+  const ordemDoGrupo = (parte: string | null) => { const i = grupos.findIndex((g) => mesmoGrupo(g.nome, parte ?? '')); return i < 0 ? -1 : i; };
+  const geradores = (opcoesDoModulo.data?.campos ?? [])
+    .filter((c) => c.painelId === painel.id && c.ativo && c.id !== campo?.id && TIPOS_QUE_GERAM_ITENS.includes(c.tipo))
+    .sort((a, b) => ordemDoGrupo(a.parte) - ordemDoGrupo(b.parte) || a.ordem - b.ordem);
 
   const excluir = async () => {
     setSalvando(true); setErro('');
@@ -671,13 +733,19 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
       escolhidosEm: f.tipo === 'modulos' && fontes.some((c) => c.id === f.escolhidosEm) ? f.escolhidosEm : null,
       anexos: f.anexos,
       largura: f.largura || null,
+      // na ordem dos campos (e sem os que saíram)
+      origens: f.tipo === 'checklist' ? geradores.filter((c) => f.origens.includes(c.id)).map((c) => c.id) : [],
       opcoes: f.tipo === 'caixinhas' ? caixinhasParaGravar(pastas) : lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
-      obrigatorioAoAbrir: f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
+      obrigatorioAoAbrir: f.tipo !== 'checklist' && f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
     };
     setSalvando(true); setErro('');
     try {
-      await depois(api.atendimento.salvarCampo(painel.id, campo?.id ?? null, d),
+      const salvo = await depois(api.atendimento.salvarCampo(painel.id, campo?.id ?? null, d),
         !campo ? `Campo ${nome} criado no painel ${painel.nome}` : campo.ativo !== f.ativo ? `Campo ${nome} ${f.ativo ? 'reativado' : 'desativado'}` : `Campo ${nome} salvo`);
+      // o checklist na Implantação (2.4.8), depois do campo gravado (o novo precisa existir)
+      if (comImplantacao && podeLigarNaImplantacao(salvo) && naImplantacao !== !!ligadoAntes) {
+        await depois(api.atendimento.checklistNaImplantacao(salvo.id, { ligar: naImplantacao }), naImplantacao ? 'Checklist criado na aba Implantação' : 'O checklist da Implantação foi para os Excluídos');
+      }
       onFechar();
     } catch (e) {
       setErro(mensagemErro(e));
@@ -790,6 +858,42 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
           </Rotulo>
         )}
 
+        {/* 2.4.8: a mesma caixinha da linha do campo ("quero que crie sozinho … um checkbox … ao lado de um campo") */}
+        {comImplantacao && podeLigarNaImplantacao({ tipo: f.tipo, parte: f.parte.trim() || null }) && (
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer" id="campo-na-implantacao-rotulo">
+            <input type="checkbox" id="campo-na-implantacao" className="mt-[3px] shrink-0" checked={naImplantacao} onChange={(e) => setNaImplantacao(e.target.checked)} />
+            <span>Checklist na Implantação
+              <span className="block text-[12.5px] text-muted">{ligadoAntes
+                ? `Ligado: ${ligadoAntes.nome}, na aba Implantação. Desmarcar manda esse checklist para os Excluídos.`
+                : 'Cria sozinho, na aba Implantação, um checklist com um item por linha (ou por opção escolhida) deste campo.'}</span>
+            </span>
+          </label>
+        )}
+
+        {/* 2.4.8, o Luan: "quero que os campos de outras etapas que eu selecionar … gere esse checklist na implantação" */}
+        {f.tipo === 'checklist' && (
+          <fieldset className="rounded-lg border border-line px-3.5 pt-1.5 pb-3 min-w-0" id="campo-origens">
+            <legend className="text-[13px] font-semibold px-1">Os itens vêm de (opcional)</legend>
+            <p className="text-[12.5px] text-muted mb-2">
+              Cada linha de um texto longo (a Lista de ramais) e cada opção escolhida numa lista viram um item; o texto curto e a lista
+              de uma opção, um item com o nome do campo. O checklist acompanha o que mudar lá, e os itens incluídos à mão continuam.
+            </p>
+            {geradores.length ? (
+              <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2 max-h-60 overflow-y-auto pr-1">
+                {geradores.map((c) => (
+                  <label key={c.id} className="flex items-start gap-2 text-sm cursor-pointer min-w-0">
+                    <input type="checkbox" className="mt-[3px] shrink-0" checked={f.origens.includes(c.id)}
+                      onChange={(e) => mudar({ origens: e.target.checked ? [...f.origens, c.id] : f.origens.filter((x) => x !== c.id) })} />
+                    <span className="min-w-0">{nomeCompletoDoCampo(c, opcoesDoModulo.data?.produtos ?? [])}
+                      <span className="block text-[12px] text-muted">{c.parte ?? 'Detalhes'} · {NOME_TIPO_CAMPO[c.tipo]}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : <p className="text-[12.5px] text-muted italic">Este painel ainda não tem um texto ou uma lista para gerar itens.</p>}
+          </fieldset>
+        )}
+
         <Rotulo rotulo="Explicação (opcional)" id="campo-dica" dica="Aparece embaixo do campo, na ficha e no Abrir chamado.">
           <input className="input" id="campo-dica" value={f.dica} maxLength={200} placeholder="Ex.: o sistema em que o problema aparece" onChange={(e) => mudar({ dica: e.target.value })} />
         </Rotulo>
@@ -804,12 +908,13 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
 
         <fieldset className={`flex flex-col gap-2.5 rounded-lg border border-line p-3 ${f.ativo ? '' : 'opacity-60'}`} disabled={!f.ativo}>
           <legend className="label px-1 mb-0">Quando é obrigatório</legend>
-          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+          {/* o checklist do card (2.4.8) é montado depois de aberto: não dá para pedir na abertura */}
+          {f.tipo !== 'checklist' && <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <Toggle checked={f.obrigatorioAoAbrir} onChange={(v) => mudar({ obrigatorioAoAbrir: v })} />
             <span>Para abrir o chamado
               <span className="block text-[12.5px] text-muted">Quem abre pela tela não abre sem ele. O robô e o agendado abrem mesmo assim: o que faltar é pedido para o chamado andar.</span>
             </span>
-          </label>
+          </label>}
           <div>
             <div className="text-[13px] text-ink mb-1">Para entrar nas etapas</div>
             <div className="grid grid-cols-1 gap-x-4 gap-y-1 min-[480px]:grid-cols-2" id="campo-etapas">
@@ -821,7 +926,9 @@ function JanelaCampo({ painel, campo, inicial, onFechar }: {
                 </label>
               ))}
             </div>
-            <p className="text-[12.5px] text-muted mt-1">Sem ele, o chamado não entra na etapa: a ficha diz o que falta.</p>
+            <p className="text-[12.5px] text-muted mt-1">{f.tipo === 'checklist'
+              ? 'O chamado só entra na etapa com itens na lista, todos marcados: a ficha diz o que falta.'
+              : 'Sem ele, o chamado não entra na etapa: a ficha diz o que falta.'}</p>
           </div>
         </fieldset>
 

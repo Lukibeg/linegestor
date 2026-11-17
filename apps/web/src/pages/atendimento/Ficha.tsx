@@ -185,8 +185,8 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
             {/* os grupos de campos da lateral (2.4) */}
             <GruposDaLateral />
             <Responsavel />
-            {/* sem a prioridade no painel (2.1.2), não há prazo: o bloco sai */}
-            {aberta.painel?.tipo !== 'vendas' && (!aberta.painel || campoLigado(aberta.painel.ajustes, 'prioridade')) && <Prazos />}
+            {/* sem o assunto no painel, não há prazo (2.4.8: o prazo vem do assunto): o bloco sai */}
+            {aberta.painel?.tipo !== 'vendas' && (!aberta.painel || campoLigado(aberta.painel.ajustes, 'assunto')) && <Prazos />}
             <NaAgenda />
             <Operadora />
             {/* o tempo gasto: o painel pode desligar (2.3, a Implantação não usa) */}

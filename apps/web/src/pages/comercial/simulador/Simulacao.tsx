@@ -515,7 +515,8 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar, 
             <ChipDoSinal sinal={k.sinal} margem={k.margem} />
             <div className="text-[12.5px] text-ink-2">Se paga {textoDoSePagaEm(k.sePagaEm)}</div>
           </div>
-          <OsCustos c={c} k={k} ajustes={ajustes} mudar={mudarCenario} podeEditar={podeEditar} nomeDoProduto={nomeDoProduto} />
+          <OsCustos c={c} k={k} ajustes={ajustes} mudar={mudarCenario} podeEditar={podeEditar} nomeDoProduto={nomeDoProduto}
+            porOLineChat={() => mudarCenario(cenarioComProdutos(c, [...c.produtos, LINECHAT_DO_SIMULADOR.produto], ajustes))} />
           {r.cenarios.length > 1 && <LadoALado cenarios={r.cenarios} contas={contas} principal={r.principal} aberto={c.id} abrir={setAberto} />}
         </div>
         <div className="min-w-0 lg:sticky lg:top-4">
@@ -658,6 +659,18 @@ function Negociacao({ r, mudar, podeEditar, naFicha }: { r: Rascunho; mudar: (n:
 }
 
 /**
+ * O cenário com outra lista de produtos: refaz o preço por produto e põe (ou tira) as linhas do LineChat. Serve ao
+ * "+ produto" e ao item LineChat (Helena) da tabela dos custos mensais (2.4.8), que fazem a mesma coisa.
+ */
+export function cenarioComProdutos(c: CenarioDaSimulacao, lista: string[], ajustes: AjustesDoSimulador): Partial<CenarioDaSimulacao> {
+  const n = normalizarPorProduto({ ...c, produtos: lista });
+  const lc = LINECHAT_DO_SIMULADOR.produto;
+  const linhas = lista.includes(lc) && !c.produtos.includes(lc) ? [...c.linhas, ...linhasParaOLineChat(ajustes, c)]
+    : !lista.includes(lc) && c.produtos.includes(lc) ? linhasSemOLineChat(c) : c.linhas;
+  return { produtos: n.produtos, porProduto: n.porProduto, mensalidade: n.mensalidade, ativacao: n.ativacao, linhas };
+}
+
+/**
  * Os produtos do catálogo que a venda leva (a principal da negociação põe estes no card, 2.3). Pôr ou tirar um produto
  * refaz o preço por produto (o que entra começa com zero; o que sai leva o preço dele). Com dois produtos ou
  * mais, o preço é um só ou por produto (a proposta de cada um, numa negociação só).
@@ -671,13 +684,7 @@ function ProdutosDoCenario({ c, produtos, ajustes, mudar, podeEditar }: {
 }) {
   const nome = (codigo: string) => produtos.find((p) => p.codigo === codigo)?.nome ?? codigo;
   const fora = produtos.filter((p) => !c.produtos.includes(p.codigo));
-  const comProdutos = (lista: string[]) => {
-    const n = normalizarPorProduto({ ...c, produtos: lista });
-    const lc = LINECHAT_DO_SIMULADOR.produto;
-    const linhas = lista.includes(lc) && !c.produtos.includes(lc) ? [...c.linhas, ...linhasParaOLineChat(ajustes, c)]
-      : !lista.includes(lc) && c.produtos.includes(lc) ? linhasSemOLineChat(c) : c.linhas;
-    return { produtos: n.produtos, porProduto: n.porProduto, mensalidade: n.mensalidade, ativacao: n.ativacao, linhas };
-  };
+  const comProdutos = (lista: string[]) => cenarioComProdutos(c, lista, ajustes);
   return (
     <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[12.5px]" id="simulador-produtos">
       <span className="text-ink-2 font-semibold mr-0.5">Produtos</span>

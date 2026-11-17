@@ -2,8 +2,8 @@
  * Painéis › Ajustes (Patch 2.0, decisão 0047) — PRAZOS.
  *
  * O documento "Prioridade e prazos dos chamados" (o ICI-12) virou esta tela: o horário de atendimento
- * (os 7 dias), os feriados, os dois prazos de cada prioridade (a primeira resposta e a solução, em
- * horas úteis ou corridas), a matriz que sugere a prioridade pela gravidade e pelo alcance (e a coluna
+ * (os 7 dias), os feriados, o resumo do prazo de solução (2.4.8: vem do assunto, cadastrado na árvore de
+ * assuntos; antes, os dois prazos de cada prioridade), a matriz que sugere a prioridade pela gravidade e pelo alcance (e a coluna
  * "Só a gravidade", para os painéis que não usam o alcance), e os alertas (o "perto de vencer" e o "sem dono").
  *
  * As contas são as do `@gestor/shared` (as mesmas do relógio que avisa): o prazo de um chamado é
@@ -13,22 +13,19 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarPlus, Trash2 } from 'lucide-react';
 import {
-  ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, NOME_ALCANCE, NOME_CONTA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOMES_DOS_DIAS, PRIORIDADES,
-  AjustesPrazosSchema, campoLigado, duracaoDoPrazo, hhmm,
-  type AjustesPrazos, type ContaPrazo, type Feriado, type HorarioDoDia, type Prioridade,
+  ALCANCES, DICA_GRAVIDADE, GRAVIDADES, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOMES_DOS_DIAS, PRIORIDADES,
+  AjustesPrazosSchema, campoLigado, duracaoDoPrazo, hhmm, painelContaPrazo, prazoDoAssunto,
+  type AjustesPrazos, type Feriado, type HorarioDoDia, type Prioridade,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Carregando, Chip, Spinner, Toggle, mensagemErro } from '../../../components/ui/index.js';
 import { ThN, TdN } from '../../../lib/contagem.js';
 import { Th, ordenarLista, useOrdenacaoLocal } from '../../../lib/ordenacao.js';
-import { ChipPrioridade, useDepoisDeMudar, useOpcoes } from '../comum.js';
+import { useDepoisDeMudar, useOpcoes } from '../comum.js';
 
 const CHAVE = ['atendimento', 'ajustes', 'prazos'];
 /** A semana começa na segunda (o índice 0 do horário é o domingo). */
 const ORDEM_DA_SEMANA = [1, 2, 3, 4, 5, 6, 0];
-/** Os limites do servidor (AjustesPrazosSchema), em minutos. */
-const MAX_RESPOSTA = 60 * 24 * 60;
-const MAX_SOLUCAO = 60 * 24 * 365;
 /** A cor da prioridade escolhida em cada cruzamento da matriz (as mesmas do chip da prioridade). */
 const COR_PRIORIDADE: Record<Prioridade, string> = {
   critica: 'bg-bad-soft text-bad border-bad', alta: 'bg-signal-soft text-signal border-signal',
@@ -50,7 +47,6 @@ const horaValida = (t: string) => HORA.test(t);
 /** "0800" ou "08:00" → "08:00"; vai pondo os dois-pontos enquanto a pessoa digita. */
 const mascaraHora = (t: string) => { const d = t.replace(/\D/g, '').slice(0, 4); return d.length <= 2 ? d : `${d.slice(0, 2)}:${d.slice(2)}`; };
 const minutosDoDia = (h: HorarioDoDia) => (h.abre && horaValida(h.inicio) && horaValida(h.fim) ? Math.max(0, hhmm(h.fim) - hhmm(h.inicio)) : 0);
-const numero = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 
 /**
  * Quanto dura um dia útil: o horário mais comum da semana (de segunda a sexta, das 8h às 18h, são 10 h
@@ -64,14 +60,6 @@ function duracaoDoDiaUtil(horario: HorarioDoDia[]): number {
   return melhor;
 }
 
-/** "20 h úteis ≈ 2 dias", "4 h úteis", "48 h corridas ≈ 2 dias". */
-function textoDoLimite(min: number, conta: ContaPrazo, diaUtil: number): string {
-  const base = `${duracaoDoPrazo(min)} ${conta === 'uteis' ? 'úteis' : 'corridas'}`;
-  const dia = conta === 'uteis' ? diaUtil : 24 * 60;
-  if (!dia || min < dia) return base;
-  const dias = Math.round((min / dia) * 10) / 10;
-  return `${base} ≈ ${numero(dias)} ${dias === 1 ? 'dia' : 'dias'}`;
-}
 
 /** As conferências do servidor, ditas com o nome do dia, da prioridade e do campo (o erro do schema é técnico). */
 function problemaNoFormulario(a: AjustesPrazos): string | null {
@@ -83,13 +71,6 @@ function problemaNoFormulario(a: AjustesPrazos): string | null {
   for (const f of a.calendario.feriados) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.data)) return 'Um feriado está sem a data.';
     if (!f.nome.trim()) return `O feriado de ${fmtData(f.data)} está sem nome.`;
-  }
-  for (const p of PRIORIDADES) {
-    const x = a.prazos[p];
-    if (x.resposta < 1) return `${NOME_PRIORIDADE[p]}: a primeira resposta precisa de pelo menos 1 minuto.`;
-    if (x.solucao < 1) return `${NOME_PRIORIDADE[p]}: a solução precisa de pelo menos 1 minuto.`;
-    if (x.resposta > MAX_RESPOSTA) return `${NOME_PRIORIDADE[p]}: a primeira resposta vai até ${MAX_RESPOSTA / 60} horas.`;
-    if (x.solucao > MAX_SOLUCAO) return `${NOME_PRIORIDADE[p]}: a solução vai até ${MAX_SOLUCAO / 60} horas.`;
   }
   if (!Number.isInteger(a.alertaPercentual) || a.alertaPercentual < 10 || a.alertaPercentual > 99) return 'O aviso de "perto de vencer" vai de 10% a 99% do prazo.';
   if (!Number.isInteger(a.semDonoMinutos) || a.semDonoMinutos < 1 || a.semDonoMinutos > 24 * 60) return 'O aviso de "sem responsável" vai de 1 minuto a 24 horas (1440 minutos).';
@@ -124,7 +105,6 @@ function Formulario({ inicial }: { inicial: AjustesPrazos }) {
     setF((x) => ({ ...x, calendario: { ...x.calendario, horario: x.calendario.horario.map((h, j) => (j === i ? { ...h, ...o } : h)) } }));
     mexeu();
   };
-  const mudarPrazo = (p: Prioridade, o: Partial<AjustesPrazos['prazos'][Prioridade]>) => { setF((x) => ({ ...x, prazos: { ...x.prazos, [p]: { ...x.prazos[p], ...o } } })); mexeu(); };
   const mudarMatriz = (g: (typeof GRAVIDADES)[number], a: (typeof ALCANCES)[number], p: Prioridade) => {
     setF((x) => ({ ...x, matriz: { ...x.matriz, [g]: { ...x.matriz[g], [a]: p } } }));
     mexeu();
@@ -190,34 +170,8 @@ function Formulario({ inicial }: { inicial: AjustesPrazos }) {
       {/* ---------- os feriados ---------- */}
       <Feriados lista={feriados} onChange={(v) => { setFeriados(v); mexeu(); }} />
 
-      {/* ---------- os prazos por prioridade ---------- */}
-      <Cartao titulo="Prazos por prioridade" dica={`A primeira resposta de uma pessoa da equipe e a solução. Em horas úteis, o relógio só anda no horário de atendimento${diaUtil ? ` (um dia útil = ${duracaoDoPrazo(diaUtil)})` : ''}; esperando o cliente, o prazo para.`}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" id="prazos-prioridades">
-          {PRIORIDADES.map((p) => {
-            const x = f.prazos[p];
-            return (
-              <div key={p} className="rounded-lg border border-line p-3 flex flex-col gap-2.5 min-w-0">
-                <div>
-                  <ChipPrioridade p={p} />
-                  {/* a dica com a altura de duas linhas: os campos ficam alinhados de um cartão para o outro */}
-                  <p className="text-[12px] text-muted mt-1 leading-snug sm:min-h-[2.75em]">{DICA_PRIORIDADE[p]}</p>
-                </div>
-                <Duracao id={`prazo-${p}-resposta`} rotulo="Primeira resposta" minutos={x.resposta} conta={x.conta} diaUtil={diaUtil} max={MAX_RESPOSTA}
-                  onChange={(m) => mudarPrazo(p, { resposta: m })} />
-                <Duracao id={`prazo-${p}-solucao`} rotulo="Solução" minutos={x.solucao} conta={x.conta} diaUtil={diaUtil} max={MAX_SOLUCAO}
-                  onChange={(m) => mudarPrazo(p, { solucao: m })} />
-                {x.resposta > x.solucao && x.solucao > 0 && <p className="text-signal text-[12px]">A primeira resposta está maior que a solução.</p>}
-                <div>
-                  <label className="label" htmlFor={`prazo-${p}-conta`}>Conta em</label>
-                  <select className="input py-1.5" id={`prazo-${p}-conta`} value={x.conta} onChange={(e) => mudarPrazo(p, { conta: e.target.value as ContaPrazo })}>
-                    {(['uteis', 'corridas'] as const).map((c) => <option key={c} value={c}>{NOME_CONTA[c]}</option>)}
-                  </select>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Cartao>
+      {/* ---------- o prazo de solução: pelo assunto (2.4.8, revê a 0047) ---------- */}
+      <PrazosDosAssuntos diaUtil={diaUtil} />
 
       {/* ---------- a matriz ---------- */}
       <Cartao titulo="A prioridade sugerida" dica="Ao abrir um chamado, a gravidade sugere a prioridade: no painel que usa o alcance (Ajustes › Campos), cruzada com ele; no painel sem o alcance, pela coluna Só a gravidade. Trocar a sugestão pede o motivo, que fica no histórico.">
@@ -341,25 +295,42 @@ function Cartao({ titulo, dica, children }: { titulo: string; dica?: string; chi
   );
 }
 
-/** Um prazo em horas e minutos, com o texto ("20 h úteis ≈ 2 dias") logo abaixo. */
-function Duracao({ id, rotulo, minutos, conta, diaUtil, max, onChange }: {
-  id: string; rotulo: string; minutos: number; conta: ContaPrazo; diaUtil: number; max: number; onChange: (m: number) => void;
-}) {
-  const h = Math.floor(minutos / 60);
-  const m = minutos % 60;
-  const ler = (v: string) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; };
-  const erro = minutos < 1 ? 'Pelo menos 1 minuto.' : minutos > max ? `No máximo ${max / 60} horas.` : '';
+/**
+ * O prazo de solução vem do assunto (2.4.8, o pedido do Luan: "esse prazo de solução tem que ser baseado nos
+ * assuntos, e não na gravidade"): aqui fica só o resumo de cada painel que conta prazo — quantos assuntos têm
+ * prazo — e onde cadastrar. A primeira resposta não tem prazo. A prioridade continua (a matriz, abaixo), mas
+ * não mexe mais no prazo.
+ */
+function PrazosDosAssuntos({ diaUtil }: { diaUtil: number }) {
+  const opcoes = useOpcoes();
+  const paineis = (opcoes.data?.paineis ?? []).filter((p) => p.ativo && p.tipo !== 'vendas' && painelContaPrazo(p.ajustes));
+  const assuntos = opcoes.data?.assuntos ?? [];
   return (
-    <div>
-      <label className="label" htmlFor={`${id}-h`}>{rotulo}</label>
-      <div className="flex items-center gap-1.5 text-[13px]">
-        <input type="number" className="input w-[72px] py-1.5 tnum" id={`${id}-h`} min={0} value={h} aria-label={`${rotulo}: horas`} onChange={(e) => onChange(ler(e.target.value) * 60 + m)} />
-        <span className="text-muted">h</span>
-        <input type="number" className="input w-[64px] py-1.5 tnum" id={`${id}-min`} min={0} max={59} value={m} aria-label={`${rotulo}: minutos`} onChange={(e) => onChange(h * 60 + Math.min(59, ler(e.target.value)))} />
-        <span className="text-muted">min</span>
-      </div>
-      <p className={`text-[12px] mt-1 ${erro ? 'text-bad' : 'text-muted'}`}>{erro || textoDoLimite(minutos, conta, diaUtil)}</p>
-    </div>
+    <Cartao titulo="Prazo de solução: pelo assunto"
+      dica={`Cada assunto tem o seu prazo de solução, cadastrado na árvore de assuntos do painel (Configurar › Assuntos). O subtópico sem prazo usa o do assunto de cima; sem prazo em nenhum, o chamado fica sem prazo e a ficha diz o porquê. Em horas úteis: o relógio só anda no horário de atendimento${diaUtil ? ` (um dia útil = ${duracaoDoPrazo(diaUtil)})` : ''}; esperando o cliente, o prazo para. A primeira resposta não tem prazo.`}>
+      {!paineis.length ? <p className="text-[13px] text-muted">Nenhum painel conta prazo agora (o prazo liga em Configurar › Painel e etapas, com o campo Assunto ligado).</p> : (
+        <ul className="flex flex-col divide-y divide-line" id="prazos-dos-assuntos">
+          {paineis.map((p) => {
+            const doPainel = assuntos.filter((a) => a.painelId === p.id && a.ativo);
+            const proprio = doPainel.filter((a) => a.prazoSolucao).length;
+            const comPrazo = doPainel.filter((a) => prazoDoAssunto(a.id, doPainel)).length;
+            const sem = doPainel.length - comPrazo;
+            return (
+              <li key={p.id} className="py-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px]">
+                <b className="text-ink">{p.nome}</b>
+                <span className="text-muted tnum">
+                  {!doPainel.length ? 'nenhum assunto ainda' : <>
+                    {proprio} {proprio === 1 ? 'assunto com prazo próprio' : 'assuntos com prazo próprio'}
+                    {comPrazo - proprio > 0 ? `, ${comPrazo - proprio} ${comPrazo - proprio === 1 ? 'herda' : 'herdam'} do de cima` : ''}
+                    {sem > 0 ? <>, <span className="text-signal">{sem} sem prazo</span></> : ''}
+                  </>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Cartao>
   );
 }
 

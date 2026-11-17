@@ -115,7 +115,23 @@ export const campoDoTipo = (tipo: TipoDePainel, c: CampoObrigatorio) => !(tipo =
 export const CORES_PAINEL = ['accent', 'roxo', 'turquesa', 'signal', 'ok', 'rosa', 'amarelo', 'neutral'] as const;
 export type CorPainel = (typeof CORES_PAINEL)[number];
 
-export type ItemChecklist = { id: string; texto: string; feito: boolean; porId: string | null; em: string | null; doAssunto: boolean };
+export type ItemChecklist = {
+  id: string; texto: string; feito: boolean; porId: string | null; em: string | null; doAssunto: boolean;
+  /** no checklist do card (2.4.8): o campo de onde o item veio (a Lista de ramais da Curadoria); nulo, incluído à mão */
+  origem?: string | null;
+  /**
+   * o item que veio de outro campo e foi tirado deste card pelo × (2.4.8, o Luan: "tem que ter um xzinho se eu quiser remover
+   * algum item"): fica guardado (senão voltaria na leitura seguinte, porque a linha continua na origem), fora da conta e da
+   * lista, com o Voltar
+   */
+  tirado?: boolean;
+};
+/**
+ * Os itens dos campos Checklist do card (2.4.8), pelo id do campo. Diferente das caixinhas (as mesmas em todos os cards do
+ * painel), cada card monta a sua lista: "uma implantação varia muito o que tem que fazer… uma lista de ramais que tenho que
+ * configurar no telefone e outra no softphone… n pode ser um check list fixo" (o Luan, 13/11).
+ */
+export type ListasDosCampos = Record<string, ItemChecklist[]>;
 
 // =====================================================================
 //  PAINÉIS E ETAPAS
@@ -346,7 +362,7 @@ export function movimentoDeNivel(de: Pick<EtapaPainel, 'nivel'> | null | undefin
  * Desde o 2.1.2 (o Luan: "quero poder editar tbm os campos personalizados do painel pq tem muitos que a depender
  * do painel que eu cria, n vou usar"), o painel de Gestão também desliga o cliente e o contato, o relato do
  * cliente, a solução e a causa e a prioridade — um painel de atividades internas não tem cliente nem prazo. Sem a
- * prioridade, o painel não conta prazo. O problema (ITIL) continua pedindo a solução e a causa para fechar.
+ * prioridade, o painel não contava prazo (desde o 2.4.8, o prazo vem do assunto: sem o assunto, não conta). O problema (ITIL) continua pedindo a solução e a causa para fechar.
  */
 export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras', 'cliente', 'relato', 'solucao', 'prioridade', 'tempo'] as const;
 export type CampoDoSistema = (typeof CAMPOS_DO_SISTEMA)[number];
@@ -361,7 +377,7 @@ export const NOME_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   cliente: 'Cliente e contato', relato: 'Relato do cliente', solucao: 'Solução e causa', prioridade: 'Prioridade', tempo: 'Tempo gasto',
 };
 export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
-  assunto: 'A árvore de assuntos (até 3 níveis), com a descrição, o checklist e o de-para de cada um.',
+  assunto: 'A árvore de assuntos (até 3 níveis), com a descrição, o checklist, o de-para e o prazo de solução de cada um. Desligado, o painel não conta prazo.',
   tipo: '"Que tratativa foi essa?": as opções são deste painel.',
   gravidade: 'Quanto o problema pesa (de Inoperância a Não se aplica). Sugere a prioridade (Ajustes › Prazos).',
   alcance: 'Quantos o problema atinge no cliente (a empresa toda, um setor, uma pessoa). Com a gravidade, sugere a prioridade.',
@@ -370,7 +386,7 @@ export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   cliente: 'A empresa do cadastro e quem pediu (o nome e o WhatsApp). Desligado, o chamado é interno: não tem cliente nem aviso ao cliente.',
   relato: 'O que o cliente contou, com as palavras dele.',
   solucao: 'Como foi resolvido e por que aconteceu. O problema (ITIL) continua pedindo os dois para fechar.',
-  prioridade: 'Baixa, Média, Alta ou Crítica. Desligada, o painel não conta prazo (SLA).',
+  prioridade: 'Baixa, Média, Alta ou Crítica: ordena o quadro e os relatórios (o prazo vem do assunto).',
   // 2.3, o Luan no card da implantação: "n precisa disso"
   tempo: 'Os minutos de trabalho de cada um no chamado (o relatório Tempo gasto). Desligado, a ficha não mostra o Registrar tempo; o que já foi registrado fica guardado.',
 };
@@ -392,16 +408,19 @@ export function prioridadeSugeridaDoPainel(
   if (!campoLigado(ajustes, 'prioridade')) return null;
   return sugestaoPelosCampos({ gravidade: campoLigado(ajustes, 'gravidade'), alcance: campoLigado(ajustes, 'alcance') }, gravidade, alcance, prazos);
 }
-/** O painel conta prazo? Só com o prazo ligado e a prioridade (2.1.2: sem prioridade, não há prazo). */
-export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'>) => ajustes.contaPrazo && campoLigado(ajustes, 'prioridade');
+/**
+ * O painel conta prazo? Só com o prazo ligado e o assunto (2.4.8: o prazo vem do assunto; antes, da
+ * prioridade — 2.1.2). Sem o campo Assunto no painel, não há prazo.
+ */
+export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'>) => ajustes.contaPrazo && campoLigado(ajustes, 'assunto');
 
 /** Os campos que quem cuida dos chamados cria em cada painel. O tipo não muda depois de criado. */
-export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios', 'caixinhas', 'modulos', 'documento'] as const;
+export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios', 'caixinhas', 'checklist', 'modulos', 'documento'] as const;
 export type TipoCampo = (typeof TIPOS_CAMPO)[number];
 export const NOME_TIPO_CAMPO: Record<TipoCampo, string> = {
   texto: 'Texto curto', texto_longo: 'Texto longo', numero: 'Número', data: 'Data', sim_nao: 'Sim ou não',
   lista: 'Lista (escolhe uma opção)', lista_varios: 'Lista (escolhe várias)',
-  caixinhas: 'Caixinhas (o que já foi feito)', modulos: 'Módulos do produto', documento: 'Documento (arquivo)',
+  caixinhas: 'Caixinhas (o que já foi feito)', checklist: 'Checklist do card', modulos: 'Módulos do produto', documento: 'Documento (arquivo)',
 };
 export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   texto: 'Uma linha (até 300 letras): um protocolo, uma versão, um número de série.',
@@ -411,7 +430,8 @@ export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   sim_nao: 'Sim ou não (fica vazio até alguém responder).',
   lista: 'Uma das opções que você escrever.',
   lista_varios: 'Uma ou mais das opções que você escrever.',
-  caixinhas: 'Uma lista de tarefas: cada opção é uma caixinha, e a ficha mostra quem marcou e quando (a configuração, os testes).',
+  caixinhas: 'Uma lista de tarefas: cada opção é uma caixinha, e a ficha mostra quem marcou e quando (a configuração, os testes). As caixinhas são as mesmas em todos os cards do painel.',
+  checklist: 'Uma lista de tarefas que cada card monta na ficha, porque muda de cliente para cliente (os ramais a configurar no telefone, os do softphone). Cole várias linhas de uma vez: cada linha vira um item. A ficha mostra quem marcou cada um e quando.',
   modulos: 'Os módulos do produto escolhido abaixo (Administração › Produtos), para marcar os que o cliente vai usar. Na etapa que liga no cadastro, os marcados ficam ativos na ficha do cliente (o checklist, que segue outro campo de módulos, só confere o que foi ativado).',
   documento: 'Um ou mais arquivos anexados (a planilha dos ramais, o desenho da URA): PDF, imagem, Word ou Excel, de até 30 MB. Conta como feito com o primeiro arquivo.',
 };
@@ -525,7 +545,20 @@ export type CampoPersonalizado = {
    * inteira. Nulo: pelo tipo, como antes (larguraDoCampo).
    */
   largura?: LarguraDoCampo | null;
+  /**
+   * De onde vêm os itens (2.4.8, o Luan: "quero que os campos de outras etapas que eu selecionar … gere esse checklist na
+   * implantação"): num Checklist do card, os campos deste painel cujo conteúdo vira item — cada linha de um texto longo, cada
+   * opção escolhida numa lista de várias; o texto curto e a lista de uma opção viram um item com o nome do campo. O checklist
+   * acompanha: o que entra lá aparece, o que sai some. Vazio: só os itens incluídos à mão.
+   */
+  origens?: string[];
 };
+/** Ligar ou desligar o checklist na Implantação de um campo (2.4.8): a caixinha ao lado do campo, em Configurar › Campos. */
+export const ChecklistNaImplantacaoSchema = z.object({ ligar: z.boolean() });
+export type ChecklistNaImplantacaoEntrada = z.input<typeof ChecklistNaImplantacaoSchema>;
+/** Os tipos de campo que podem gerar os itens de um checklist do card (2.4.8). */
+export const TIPOS_QUE_GERAM_ITENS: readonly TipoCampo[] = ['texto', 'texto_longo', 'lista', 'lista_varios'];
+export const MAX_ORIGENS_DO_CHECKLIST = 20;
 export const LARGURAS_DO_CAMPO = ['metade', 'inteiro'] as const;
 export type LarguraDoCampo = (typeof LARGURAS_DO_CAMPO)[number];
 export const NOME_LARGURA_DO_CAMPO: Record<LarguraDoCampo, string> = { metade: 'Metade', inteiro: 'Linha inteira' };
@@ -535,7 +568,7 @@ export const NOME_LARGURA_DO_CAMPO: Record<LarguraDoCampo, string> = { metade: '
  */
 export function larguraDoCampo(c: Pick<CampoPersonalizado, 'tipo' | 'largura'>): LarguraDoCampo {
   if (c.largura === 'metade' || c.largura === 'inteiro') return c.largura;
-  return c.tipo === 'texto_longo' || c.tipo === 'documento' || c.tipo === 'caixinhas' || c.tipo === 'modulos' ? 'inteiro' : 'metade';
+  return c.tipo === 'texto_longo' || c.tipo === 'documento' || c.tipo === 'caixinhas' || c.tipo === 'checklist' || c.tipo === 'modulos' ? 'inteiro' : 'metade';
 }
 /**
  * Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção. O valor do campo continua a lista das marcadas; isto
@@ -679,6 +712,9 @@ export function normalizarValorDoCampo(campo: Pick<CampoPersonalizado, 'nome' | 
     // o documento (2.4) é o que foi anexado: o Gestor conta os arquivos sozinho
     case 'documento':
       return erro('anexe o arquivo pela ficha (o Anexar do campo)');
+    // o checklist do card (2.4.8): os itens moram à parte (`listas`), e entram pela ficha
+    case 'checklist':
+      return erro('inclua os itens pela ficha (o checklist do card)');
     default:
       return erro('tipo de campo desconhecido');
   }
@@ -892,6 +928,8 @@ export type DadosObrigatorios = {
   campos: ValoresDosCampos;
   /** os campos com um arquivo anexado (2.4.4: o anexo conta como preenchido; sem a lista, nenhum) */
   camposComAnexo?: readonly string[];
+  /** os itens dos campos Checklist do card (2.4.8), pelo id do campo: o campo pedido só está feito com itens, todos marcados */
+  listas?: ListasDosCampos;
   /** a negociação (painel de Vendas): o valor (a mensalidade) e a ativação em centavos, a empresa que ainda não é cliente e o motivo da perda */
   valor?: number | null;
   ativacao?: number | null;
@@ -904,7 +942,13 @@ const preenchido = (v: string | null | undefined) => !!v && v.trim().length > 0;
 function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
   const id = idDaChave(campo);
   // o campo com um arquivo anexado está preenchido (2.4.4, o Luan: "um documento tem q contar como preenchido o campo")
-  if (id) return !valorPreenchido(c.campos[id]) && !c.camposComAnexo?.includes(id);
+  if (id) {
+    // o checklist do card (2.4.8): com itens, falta enquanto um deles não está marcado; sem nenhum, falta (abaixo)
+    // os tirados pelo × (2.4.8) não contam
+    const lista = c.listas?.[id]?.filter((i) => !i.tirado);
+    if (lista?.length) return lista.some((i) => !i.feito);
+    return !valorPreenchido(c.campos[id]) && !c.camposComAnexo?.includes(id);
+  }
   switch (campo as CampoObrigatorio) {
     // na negociação, a empresa que ainda não é cliente (escrita à mão) também conta como o cliente
     case 'cliente': return !c.clienteId && !preenchido(c.empresa);
@@ -1410,6 +1454,10 @@ export function siglasDoPainelPessoal(nomeDaPessoa: string): string[] {
   return [...new Set(candidatas.filter((s) => /^[A-Z]{2,5}$/.test(s)))];
 }
 
+/** O prazo de solução do assunto (2.4.8): de 15 minutos a 2.000 horas úteis. */
+export const MIN_PRAZO_DO_ASSUNTO = 15;
+export const MAX_PRAZO_DO_ASSUNTO = 2000 * 60;
+
 export const AssuntoGravarSchema = z.object({
   paiId: z.string().nullish().transform((v) => v || null),
   nome: z.string().trim().min(1, 'Dê um nome ao assunto').max(80),
@@ -1418,6 +1466,11 @@ export const AssuntoGravarSchema = z.object({
   checklist: z.array(z.string().trim().min(1).max(160)).max(30).default([]),
   /** de-para: os nomes antigos (da lista atual do LineChat) que viram este assunto */
   dePara: z.array(z.string().trim().min(1).max(120)).max(50).default([]),
+  /**
+   * o prazo de solução, em minutos úteis (2.4.8); nulo: herda do assunto de cima. Sem a chave, ao
+   * alterar, fica o que estava (quem não conhece o prazo não apaga o prazo).
+   */
+  prazoSolucao: z.number().int().min(MIN_PRAZO_DO_ASSUNTO, 'O prazo vai de 15 minutos para cima').max(MAX_PRAZO_DO_ASSUNTO, `O prazo vai até ${MAX_PRAZO_DO_ASSUNTO / 60} horas úteis`).nullable().optional(),
 });
 export const AssuntosColarSchema = z.object({ texto: Texto(50_000) });
 
@@ -1460,6 +1513,9 @@ export const CampoGravarSchema = z.object({
   produtoId: z.string().trim().max(60).nullish().transform((v) => v || null),
   /** Nos módulos (2.3): o campo de módulos de onde vêm as opções (o checklist do que foi escolhido na Curadoria) */
   escolhidosEm: z.string().trim().max(60).nullish().transform((v) => v || null),
+  // de onde vêm os itens do checklist do card (2.4.8): sem repetir; nos outros tipos, nada
+  origens: z.array(z.string().trim().min(1).max(60)).max(MAX_ORIGENS_DO_CHECKLIST, `Até ${MAX_ORIGENS_DO_CHECKLIST} campos`).default([])
+    .transform((v) => [...new Set(v)]),
   /** recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha */
   anexos: z.boolean().default(false),
   /** a largura no grupo do meio da ficha (2.4.7): metade ou a linha inteira; vazio, pelo tipo */
@@ -1467,6 +1523,8 @@ export const CampoGravarSchema = z.object({
 }).superRefine((c, ctx) => {
   if (c.tipo === 'modulos' && !c.produtoId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['produtoId'], message: 'Escolha o produto: os módulos são os dele' });
   if (c.escolhidosEm && c.tipo !== 'modulos') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['escolhidosEm'], message: 'Só os módulos do produto seguem outro campo' });
+  // o checklist do card (2.4.8) é montado na ficha, depois de aberto: pedir na abertura travaria todo chamado novo
+  if (c.tipo === 'checklist' && c.obrigatorioAoAbrir) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['obrigatorioAoAbrir'], message: 'O checklist do card é montado depois de aberto: peça-o numa etapa' });
   if (!temOpcoesEscritas(c.tipo)) return;
   // a que se inclui na hora pode começar vazia: as opções nascem nos chamados; as caixinhas também (2.4, o Luan: "quero poder
   // deixar todos os testes desativados" — o campo sem caixinha nenhuma não conta na parte)
@@ -1474,7 +1532,7 @@ export const CampoGravarSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'A lista precisa de pelo menos uma opção' });
   }
   opcoesSemRepetir(c.opcoes, ctx);
-}).transform((c) => (c.tipo === 'documento' ? { ...c, anexos: true, opcoes: [] } : c));
+}).transform((c) => (c.tipo === 'documento' ? { ...c, anexos: true, opcoes: [], origens: [] } : c.tipo === 'checklist' ? { ...c, opcoes: [], incluirNaHora: false } : { ...c, origens: [] }));
 /**
  * Só as caixinhas do campo (2.3, o "Editar as caixinhas" do card: criar, renomear, tirar, mudar a ordem e as pastas), sem
  * mexer no resto do campo. Vale para todos os cards do painel. Desde o 2.4 a que sai é excluída de verdade (o Luan: "aqui eu
@@ -1687,6 +1745,21 @@ export const AnexosDoCampoSchema = z.object({
 export const LigarChamadoSchema = z.object({ para: z.string().trim().min(1).max(40), tipo: z.enum(TIPOS_LIGACAO_CHAMADO) });
 export const PaiSchema = z.object({ pai: z.string().trim().max(40).nullable() });
 export const ProblemaSchema = z.object({ problema: z.string().trim().max(40).nullable() });
+/** Até quantos itens cabem num checklist do card (2.4.8), e até quantas letras em cada um. */
+export const MAX_ITENS_DA_LISTA = 200;
+export const MAX_LETRAS_DO_ITEM = 200;
+/**
+ * O checklist do card (2.4.8): incluir (um ou vários: cada linha colada vira um item), marcar, corrigir o texto e tirar.
+ */
+export const ListaDoCampoSchema = z.discriminatedUnion('acao', [
+  z.object({ acao: z.literal('incluir'), textos: z.array(z.string().max(2000)).min(1, 'Escreva o item').max(MAX_ITENS_DA_LISTA) }),
+  z.object({ acao: z.literal('marcar'), itemId: z.string().min(1).max(60), feito: z.boolean() }),
+  z.object({ acao: z.literal('editar'), itemId: z.string().min(1).max(60), texto: z.string().trim().min(1, 'Escreva o item').max(MAX_LETRAS_DO_ITEM, `O item vai até ${MAX_LETRAS_DO_ITEM} letras`) }),
+  z.object({ acao: z.literal('tirar'), itemId: z.string().min(1).max(60) }),
+  // o que veio de outro campo e foi tirado volta (2.4.8)
+  z.object({ acao: z.literal('voltar'), itemId: z.string().min(1).max(60) }),
+]);
+export type ListaDoCampoEntrada = z.input<typeof ListaDoCampoSchema>;
 export const ChecklistSchema = z.discriminatedUnion('acao', [
   z.object({ acao: z.literal('marcar'), itemId: z.string(), feito: z.boolean() }),
   z.object({ acao: z.literal('incluir'), texto: z.string().trim().min(1).max(160) }),
@@ -2062,7 +2135,11 @@ export const IntegracaoAlterarSchema = ChamadoAlterarSchema.extend({
 
 export type PessoaCurta = { id: string; nome: string };
 export type AssuntoCurto = { id: string; nome: string; caminho: string; ativo: boolean };
-export type Assunto = { id: string; painelId: string; paiId: string | null; nome: string; descricao: string | null; ativo: boolean; ordem: number; checklist: string[]; dePara: string[] };
+export type Assunto = {
+  id: string; painelId: string; paiId: string | null; nome: string; descricao: string | null; ativo: boolean; ordem: number; checklist: string[]; dePara: string[];
+  /** o prazo de solução, em minutos úteis (2.4.8); nulo: herda do assunto de cima (`prazoDoAssunto`) */
+  prazoSolucao: number | null;
+};
 
 /** O chamado no quadro e na lista. */
 export type CartaoChamado = {
@@ -2211,6 +2288,8 @@ export type FichaChamado = CartaoChamado & {
   /** as outras conversas do LineChat (2.2), além da principal (`sessaoId`): a sessão e o link */
   outrasConversas: Array<{ sessaoId: string; url: string | null }>;
   checklist: ItemChecklist[];
+  /** os itens dos campos Checklist do card (2.4.8), pelo id do campo */
+  listas: ListasDosCampos;
   observadores: PessoaCurta[];
   /** quem pode ser citado com @ nas anotações: as pessoas ativas que veem o painel */
   citaveis: PessoaCurta[];
@@ -2441,7 +2520,16 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'filho': return d.acao === 'tirou' ? `${d.filho} deixou de ser filho deste` : `ganhou o filho ${d.filho}${d.painel ? ` (${d.painel})` : ''}`;
     case 'problema': return d.acao === 'tirou' ? `deixou de ser incidente do problema ${d.problema}` : `virou incidente do problema ${d.problema}`;
     case 'incidente': return d.acao === 'tirou' ? `${d.incidente} deixou de ser incidente deste problema` : `juntou o incidente ${d.incidente}`;
-    case 'checklist': return d.acao === 'incluiu' ? `incluiu no checklist: ${d.item}` : d.acao === 'tirou' ? `tirou do checklist: ${d.item}` : `${d.feito ? 'marcou' : 'desmarcou'} no checklist: ${d.item}`;
+    case 'checklist': {
+      // o checklist do card (2.4.8) diz o campo ("incluiu em Ramais no telefone: 201, 202"); o do chamado, "no checklist"
+      const em = d.campo ? `em ${d.campo}` : 'no checklist';
+      const itens = Array.isArray(d.itens) ? (d.itens as string[]).join(', ') : d.item;
+      if (d.acao === 'incluiu') return `incluiu ${em}: ${itens}`;
+      if (d.acao === 'tirou') return `tirou ${d.campo ? `de ${d.campo}` : 'do checklist'}: ${d.item}`;
+      if (d.acao === 'editou') return `corrigiu ${em}: "${d.de}" para "${d.item}"`;
+      if (d.acao === 'voltou') return `trouxe de volta ${em}: ${d.item}`;
+      return `${d.feito ? 'marcou' : 'desmarcou'} ${em}: ${d.item}`;
+    }
     case 'tempo': return `registrou ${d.duracao ?? `${d.minutos} min`} de trabalho${d.nota ? `: ${d.nota}` : ''}`;
     case 'operadora': return d.acao === 'abriu' ? `abriu chamado na ${d.operadora} (protocolo ${d.protocolo})` : d.acao === 'fechou' ? `a ${d.operadora} fechou o protocolo ${d.protocolo}${d.texto ? `: ${d.texto}` : ''}` : `cobrou a ${d.operadora} (protocolo ${d.protocolo})${d.texto ? `: ${d.texto}` : ''}`;
     case 'aviso_cliente': return d.ok ? `avisou o cliente pelo WhatsApp${d.modelo ? ' (com o modelo aprovado)' : ''}` : `tentou avisar o cliente pelo WhatsApp, mas não foi: ${d.erro ?? 'erro'}`;
@@ -2630,6 +2718,25 @@ export function caminhoDoAssunto(id: string | null | undefined, assuntos: Pick<A
   let atual = porId.get(id);
   for (let n = 0; atual && n < 5; n++) { partes.unshift(atual.nome); atual = atual.paiId ? porId.get(atual.paiId) : undefined; }
   return partes.join(' › ');
+}
+
+/**
+ * O prazo de solução que vale para o assunto (2.4.8): o dele, ou o do mais próximo acima — o subtópico
+ * sem prazo próprio herda o do assunto de cima. Nulo: ninguém no caminho tem prazo cadastrado.
+ */
+type AssuntoComPrazo = { id: string; paiId: string | null; nome: string; prazoSolucao?: number | null };
+export function prazoDoAssunto(
+  id: string | null | undefined,
+  assuntos: ReadonlyArray<AssuntoComPrazo> | ReadonlyMap<string, AssuntoComPrazo>,
+): { minutos: number; deId: string; deNome: string } | null {
+  if (!id) return null;
+  const porId: ReadonlyMap<string, AssuntoComPrazo> = assuntos instanceof Map ? assuntos : new Map((assuntos as ReadonlyArray<AssuntoComPrazo>).map((a) => [a.id, a]));
+  let atual = porId.get(id);
+  for (let n = 0; atual && n < 5; n++) {
+    if (atual.prazoSolucao) return { minutos: atual.prazoSolucao, deId: atual.id, deNome: atual.nome };
+    atual = atual.paiId ? porId.get(atual.paiId) : undefined;
+  }
+  return null;
 }
 
 /** "Ramal › Configuração", "ramal > configuracao", "Ramal - Configuração": o mesmo caminho. */
@@ -3114,7 +3221,8 @@ export function csvDosChamados(
     'Aberto em', 'Fechado em', 'Origem', ...cabExtras,
   ] : [
     'Código', 'Título', 'Painel', 'Etapa', 'Situação', 'Cliente', 'Contato', 'Telefone', 'Responsável', 'Assunto', 'Tipo', 'Gravidade', 'Alcance', 'Prioridade', 'Etiquetas', 'Esperando',
-    'Prazo de resposta', 'Prazo de solução', 'Aberto em', 'Resolvido em', 'Fechado em', 'Origem', ...(deVendas.length ? cabVenda : []), ...cabExtras,
+    // 2.4.8: a primeira resposta não tem prazo; o de solução vem do assunto
+    'Prazo de solução', 'Aberto em', 'Resolvido em', 'Fechado em', 'Origem', ...(deVendas.length ? cabVenda : []), ...cabExtras,
   ];
   const linhas = lista.map((c) => (soVendas ? [
     c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome ?? c.empresa, c.contato?.nome, c.contato?.telefone,
@@ -3124,7 +3232,7 @@ export function csvDosChamados(
     c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome ?? c.empresa, c.contato?.nome, c.contato?.telefone,
     c.responsavel?.nome, c.assunto?.caminho, c.tipo, c.gravidade ? NOME_GRAVIDADE[c.gravidade] : '', c.alcance ? NOME_ALCANCE[c.alcance] : '',
     c.prioridade ? NOME_PRIORIDADE[c.prioridade] : '', c.etiquetas.join(', '), c.espera ? NOME_ESPERA[c.espera.tipo] : '',
-    c.prazos.resposta.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.resposta.situacao], c.prazos.solucao.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.solucao.situacao],
+    c.prazos.solucao.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.solucao.situacao],
     dataHora(c.criadoEm), dataHora(c.resolvidoEm), dataHora(c.fechadoEm), NOME_ORIGEM[c.origem],
     ...(deVendas.length ? (nomes.vendas?.(c.painelId) ? venda(c) : cabVenda.map(() => '')) : []), ...valoresExtras(c),
   ]).map(celula).join(';'));

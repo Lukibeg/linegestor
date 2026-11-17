@@ -141,9 +141,23 @@ Omniboard - Incidente - Sincronismo de status
 BM - Configuração - Conta do WhatsApp
 BM - Incidente - Meio de pagamento`;
 
-/** O que a equipe já preencheu em alguns assuntos: a descrição, o checklist e o de-para (os nomes antigos do LineChat). */
-export const DETALHES_DOS_ASSUNTOS: Array<{ caminho: string; descricao?: string; checklist?: string[]; dePara?: string[]; ativo?: boolean }> = [
-  { caminho: 'Ramal', descricao: 'Tudo do ramal: criar, configurar e quando ele para de funcionar.' },
+/**
+ * O que a equipe já preencheu em alguns assuntos: a descrição, o checklist, o de-para (os nomes antigos do LineChat) e
+ * o prazo de solução (2.4.8, em minutos úteis: o subtópico sem prazo herda o do de cima). A Infraestrutura do cliente e
+ * o BM ficam sem prazo, para a prévia mostrar o "Sem prazo: o assunto selecionado não tem prazo cadastrado".
+ */
+export const DETALHES_DOS_ASSUNTOS: Array<{ caminho: string; descricao?: string; checklist?: string[]; dePara?: string[]; ativo?: boolean; prazo?: number }> = [
+  { caminho: 'Ramal', descricao: 'Tudo do ramal: criar, configurar e quando ele para de funcionar.', prazo: 16 * 60 },
+  { caminho: 'Ramal › Incidente', prazo: 8 * 60 },
+  { caminho: 'Operadora', prazo: 8 * 60 },
+  { caminho: 'SBC e Tronco', prazo: 8 * 60 },
+  { caminho: 'LinePBX', prazo: 24 * 60 },
+  { caminho: 'Filas', prazo: 16 * 60 },
+  { caminho: 'FOP2', prazo: 16 * 60 },
+  { caminho: 'FOP2 › Incidente › Falha massiva', prazo: 4 * 60 },
+  { caminho: 'Omniboard', prazo: 16 * 60 },
+  { caminho: 'Relatórios', prazo: 24 * 60 },
+  { caminho: 'Equipamentos', prazo: 40 * 60 },
   {
     caminho: 'Ramal › Configuração › Criação', descricao: 'Ramal novo (um ou vários) pedido pelo cliente.',
     checklist: ['Criar o ramal no LinePBX', 'Testar ligação interna', 'Mandar o login ao cliente'], dePara: ['Ramal - Criação'],
@@ -1496,6 +1510,12 @@ export type CampoDaImplantacaoDeExemplo = { produto: 'linechat' | 'linepbx'; nom
 export type PassoDaImplantacao = {
   dias: number; hora: string; por: Pessoa;
   campos?: CampoDaImplantacaoDeExemplo[];
+  /**
+   * O checklist do card (2.4.8): os itens que a pessoa inclui (cada linha, um item) e os que ela marca, pelo texto. Os campos
+   * Ramais no telefone (os itens vêm da Lista de ramais da Curadoria) e Ramais no softphone (LinePBX, na aba Implantação) só
+   * existem na prévia: o modelo não os traz.
+   */
+  listas?: Array<{ nome: 'Ramais no telefone' | 'Ramais no softphone'; incluir?: string; marcar?: string[] }>;
   para?: 'Configuração' | 'Testes' | 'Concluído' | 'Implantado';
   /** quem fica com o card ao sair da Curadoria (sair da entrada pede o responsável) */
   responsavel?: Pessoa;
@@ -1519,6 +1539,11 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
       },
       {
         dias: 11, hora: '16:30', por: 'bruno', responsavel: 'marina', para: 'Testes',
+        listas: [
+          { nome: 'Ramais no telefone', marcar: ['200 Recepção (loja do centro)', '201 Laboratório de lentes', '202 Gerência (Fernanda)', '210 a 221 Vendedores'] },
+          // o notebook do vendedor ainda não estava na loja: o softphone dele ficou para depois
+          { nome: 'Ramais no softphone', incluir: '202 Gerência (Fernanda), no celular\n210 Vendedor (notebook)', marcar: ['202 Gerência (Fernanda), no celular'] },
+        ],
         campos: [
           {
             produto: 'linepbx', nome: 'Configuração do ambiente', valor: [
@@ -1553,6 +1578,10 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
       },
       {
         dias: 3, hora: '10:00', por: 'lucio', responsavel: 'marina', para: 'Testes',
+        listas: [
+          { nome: 'Ramais no telefone', marcar: ['300 Portaria do canteiro', '302 Almoxarifado'] },
+          { nome: 'Ramais no softphone', incluir: '301 Engenheiro residente (Edson)' },
+        ],
         campos: [
           {
             produto: 'linepbx', nome: 'Configuração do ambiente', valor: [

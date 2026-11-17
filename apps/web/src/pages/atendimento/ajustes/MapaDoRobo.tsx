@@ -86,6 +86,8 @@ const DICA_DO_TIPO: Record<CampoPersonalizado['tipo'], (c: CampoPersonalizado) =
   modulos: (c) => `Os módulos, separados por ponto e vírgula: ${opcoesAtivas(c)}.`,
   // o documento (2.4) é o arquivo anexado na ficha: o robô não preenche
   documento: () => 'Um arquivo anexado na ficha: o robô não preenche.',
+  // o checklist do card (2.4.8) é montado na ficha, item por item: o robô também não preenche
+  checklist: () => 'Os itens são incluídos na ficha de cada card: o robô não preenche.',
 };
 const opcoesAtivas = (c: CampoPersonalizado) => c.opcoes.filter((o) => o.ativa).map((o) => o.nome).join(', ') || '(nenhuma ativa)';
 

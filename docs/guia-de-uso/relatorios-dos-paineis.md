@@ -68,6 +68,9 @@ os chamados por trás dele, e clicar num chamado abre a ficha. A janela é a mes
 
 - **Tempo é em horas úteis**, pelo horário de atendimento e os feriados de **Painéis › Ajustes › Prazos** (o
   mesmo relógio dos prazos). Um "dia" (1 d) é um dia de atendimento.
+- **O Prazo cumprido** (desde o 2.4.8) é o da solução, pelo prazo do assunto: a porcentagem dos resolvidos no prazo, os
+  vencidos em aberto agora, os **resolvidos sem prazo** (sem assunto, ou o assunto sem prazo cadastrado, fora da
+  porcentagem) e a tabela **pelo assunto que dá o prazo** — o subtópico que herda o prazo conta na linha do assunto de cima.
 - **Tempo é mediana**: metade resolve antes, metade depois — um chamado esquecido não puxa a conta. "9 em
   10 até" é o tempo em que 9 de cada 10 resolvem.
 - O chamado conta como resolvido no **Resolvido** (o Fechado vem sozinho depois).

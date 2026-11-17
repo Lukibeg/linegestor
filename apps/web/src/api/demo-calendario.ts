@@ -421,7 +421,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       const { visiveis } = paineisDe(a);
       return {
         tipos: C.tipos.map((t) => ({ ...t, lembretes: [...t.lembretes] })),
-        paineis: visiveis.map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, cor: p.cor, ativo: p.ativo, pessoas: quemVe(p) })),
+        paineis: visiveis.map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, cor: p.cor, ativo: p.ativo, pessoas: quemVe(p), donoId: p.donoId ?? null })),
         pessoas: pessoasAtivas().map((u) => ({ id: u.id, nome: u.name })),
         podeEditar: podeTrabalhar(a), podeCuidar: podeCuidar(a), hoje: hojeNoCalendario(agora()),
       } satisfies CalendarioOpcoes;

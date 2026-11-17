@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  MENSAGEM_DO_TITULO, CARGOS_DE_FABRICA, caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
+  checklistLigadoNaImplantacao, MENSAGEM_DO_TITULO, CARGOS_DE_FABRICA, caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   NIA_PADRAO, resumoDaNia, contaDoCampo,
   type CartaoChamado,
@@ -102,7 +102,9 @@ describe('os exemplos da prévia', () => {
     // vencido, perto de vencer e parado esperando
     const abertos = sup.filter((c) => c.situacao === 'aberto');
     expect(abertos.some((c) => c.prazos.solucao.situacao === 'vencido')).toBe(true);
-    expect(abertos.some((c) => c.prazos.resposta.situacao === 'vencido')).toBe(true);
+    // 2.4.8: o prazo vem do assunto; o que não tem prazo cadastrado fica sem prazo (e a primeira resposta não tem prazo)
+    expect(abertos.some((c) => c.prazos.solucao.motivo === 'assunto_sem_prazo')).toBe(true);
+    expect(abertos.every((c) => c.prazos.resposta.situacao === 'sem')).toBe(true);
     expect(abertos.some((c) => c.prazos.solucao.situacao === 'perto')).toBe(true);
     expect(abertos.some((c) => c.prazos.solucao.situacao === 'pausado' && c.espera?.tipo === 'cliente')).toBe(true);
     // o robô do LineChat, o agendado, o reaberto
@@ -283,8 +285,8 @@ describe('as regras do servidor valem na prévia', () => {
     expect(f.alcance).toBeNull();
     expect(f.motivoPrioridade).toBeNull();
     expect(f.criadoPor?.id).toBe(lucio.id);
-    // quem abre na tela já está falando com o cliente: a abertura é a primeira resposta
-    expect(f.prazos.resposta.situacao).toBe('cumprido');
+    // a primeira resposta não tem prazo (2.4.8); o de solução vem do assunto
+    expect(f.prazos.resposta.situacao).toBe('sem');
     // (o aviso da etapa pelo WhatsApp da equipe também entra no histórico; aqui só interessa o resto)
     expect(f.historico.map((e) => e.tipo).filter((t) => t !== 'aviso_equipe')).toEqual(['criado']);
 
@@ -458,7 +460,9 @@ describe('as regras do servidor valem na prévia', () => {
     expect(exemplo.prazos.solucao.venceEm).toBeNull();
 
     // com dona: o Meu dia mostra, em "Esperando o cliente", só os meus
-    const r = await api.criar({ ...(await baseDoSuporte(op, 'Ramal mudo (teste de espera)')), gravidade: 'inoperancia', alcance: 'pessoa', responsavelId: marina.id });
+    // o prazo vem do assunto (2.4.8): um com prazo cadastrado
+    const comPrazo = op.assuntos.find((a) => a.painelId === painel(op, 'SUP').id && a.ativo && a.prazoSolucao)!;
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Ramal mudo (teste de espera)')), assuntoId: comPrazo.id, gravidade: 'inoperancia', alcance: 'pessoa', responsavelId: marina.id });
     const antes = await api.chamado(r.id);
     expect(antes.prazos.solucao.situacao).toBe('no_prazo');
     expect(antes.prazos.solucao.venceEm).not.toBeNull();
@@ -1214,28 +1218,35 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     await entrar('admin');
     const op = await api.opcoes();
     const imp = painel(op, 'IMP');
-    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
-    expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado']);
+    // as duas últimas com os nomes do painel do Luan (2.4.8: só na prévia; o modelo continua com o Concluído e o Implantado)
+    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Implantado - Em acompanhamento', 'Implantado - Concluído']);
+    expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado - Concluído']);
     expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
-    // os 19 campos do modelo (a Ativação dos módulos saiu no 2.4 e voltou no 2.4.1), em três partes, de dois produtos
+    // os 19 campos do modelo (a Ativação dos módulos saiu no 2.4 e voltou no 2.4.1), em três partes, de dois produtos; e, só na
+    // prévia, a aba Implantação com os dois checklists do card do LinePBX (2.4.8: os ramais no telefone, vindos da Lista de
+    // ramais da Curadoria, e os do softphone)
     const campos = op.campos.filter((c) => c.painelId === imp.id);
-    expect(campos).toHaveLength(19);
-    expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
+    expect(campos).toHaveLength(21);
+    const ramaisDaCuradoria = campos.find((c) => c.nome === 'Lista de ramais' && c.produtoId === op.produtos.find((p) => p.nome === 'LinePBX')!.id)!;
+    expect(campos.filter((c) => c.tipo === 'checklist').map((c) => [c.nome, c.parte, c.origens])).toEqual([
+      ['Ramais no telefone', 'Implantação', [ramaisDaCuradoria.id]], ['Ramais no softphone', 'Implantação', []],
+    ]);
+    expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes', 'Implantação']);
 
     const q = await api.quadro({ painel: imp.id });
     const naEtapa = Object.fromEntries(q.colunas.map((c) => [c.etapa.nome, c.chamados.map((x) => x.cliente?.nome)]));
-    expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Implantado: ['Ótica Visão Clara'] });
+    expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], 'Implantado - Concluído': ['Ótica Visão Clara'] });
     // o cartão mostra a conta da parte da etapa (a Configuração do LineChat: 3 de 5)
     const movimento = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados[0]!;
     // 3 de 5 caixinhas + 1 de 2 módulos escolhidos na Curadoria (o checklist conta)
     expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 4, total: 7 });
 
-    const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado')!.chamados[0]!.codigo);
+    const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado - Concluído')!.chamados[0]!.codigo);
     expect(vc.origem).toBe('comercial');
     expect(vc.daNegociacao?.codigo).toMatch(/^COM-/);
     expect(vc.historico.some((ev) => ev.tipo === 'cadastro' && /Line Reports/.test(ev.texto))).toBe(true);
     const negociacao = await api.chamado(vc.daNegociacao!.codigo);
-    expect(negociacao.implantacoes).toMatchObject([{ codigo: vc.codigo, etapa: 'Implantado', situacao: 'fechado', podeAbrir: true }]);
+    expect(negociacao.implantacoes).toMatchObject([{ codigo: vc.codigo, etapa: 'Implantado - Concluído', situacao: 'fechado', podeAbrir: true }]);
     // o card no Implantado levou a negociação ao Implantado do Comercial; depois, o Ganho (começou a faturar)
     expect(etapa(op, 'COM', 'Implantado').recebeImplantacao).toBe(true);
     expect(negociacao.historico.some((ev) => ev.tipo === 'etapa' && ev.texto.includes(`a implantação ${vc.codigo} terminou`))).toBe(true);
@@ -1308,7 +1319,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(Object.keys(menos.marcas[config.id]!)).toEqual([opcao(config, 'Criação das equipes')]);
 
     // a janela do Implantado: o LineChat ganha a data, o WebChat liga
-    const validado = imp.etapas.find((e) => e.nome === 'Implantado')!;
+    const validado = imp.etapas.find((e) => e.nome === 'Implantado - Concluído')!;
     const plano = (await api.aoMover(card.id, { etapaId: validado.id })).cadastro!;
     expect(plano.produtos).toEqual([{ id: chat, nome: 'LineChat', acao: 'ativa' }]);
     expect(plano.modulos.map((m) => [m.nome, m.acao])).toEqual([['WebChat', 'liga']]);
@@ -1366,7 +1377,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     // o checklist conta os escolhidos: o FOP2 marcado, o Callback faltando
     const ficha = await api.chamado(horizonte.codigo);
     expect(contaDoCampo(checklist, ficha.campos[checklist.id], ficha.campos)).toEqual({ feitos: 1, total: 2 });
-    const plano = (await api.aoMover(horizonte.id, { etapaId: imp.etapas.find((e) => e.nome === 'Implantado')!.id })).cadastro!;
+    const plano = (await api.aoMover(horizonte.id, { etapaId: imp.etapas.find((e) => e.nome === 'Implantado - Concluído')!.id })).cadastro!;
     expect(plano.modulos.map((m) => m.nome)).toEqual(['FOP2', 'Callback']);
     expect(plano.semMarcar).toEqual([expect.objectContaining({ nome: 'Callback', produto: 'LinePBX', campo: 'Ativação dos módulos' })]);
   });
@@ -1380,8 +1391,8 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     const testes = campoDe(op, imp.id, 'Testes realizados', chat);
     const vazio = await api.salvarCaixinhas(testes.id, { opcoes: [] });
     expect(vazio.opcoes).toEqual([]);
-    // os grupos: o modelo vem com os três, no meio; um grupo novo na lateral
-    expect(imp.ajustes.partes.map((g) => g.nome)).toEqual(['Curadoria', 'Configuração', 'Testes']);
+    // os grupos: o modelo vem com os três, no meio (a prévia põe a Implantação, 2.4.8); um grupo novo na lateral
+    expect(imp.ajustes.partes.map((g) => g.nome)).toEqual(['Curadoria', 'Configuração', 'Testes', 'Implantação']);
     await api.salvarGrupos(imp.id, { grupos: [...imp.ajustes.partes.map((g) => ({ nome: g.nome, antes: g.nome, lugar: g.lugar })), { nome: 'Contrato', lugar: 'lateral' }] });
     op = await api.opcoes();
     expect(painel(op, 'IMP').ajustes.partes.at(-1)).toEqual({ nome: 'Contrato', lugar: 'lateral' });
@@ -1556,5 +1567,88 @@ describe('o /nia no card na prévia (2.4.2, como o servidor)', () => {
     expect(JSON.stringify(t)).not.toMatch(/chave-/);
     expect((await erroDe(api.salvarNiaAcoes({ endereco: 'https://nia.exemplo.com.br' }))).message).toMatch(/cole a chave de novo/);
     expect((await api.testarNiaAcoes())).toMatchObject({ ok: true, quantos: 5 });
+  });
+});
+
+describe('o checklist do card na prévia (2.4.8, como o servidor)', () => {
+  it('os exemplos montaram as listas; incluir colando, marcar, corrigir e tirar; o cartão conta', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const tel = op.campos.find((c) => c.painelId === imp.id && c.nome === 'Ramais no telefone')!;
+    const soft = op.campos.find((c) => c.painelId === imp.id && c.nome === 'Ramais no softphone')!;
+    const cards = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items;
+    const visao = await api.chamado(cards.find((c) => c.cliente?.nome === 'Ótica Visão Clara')!.codigo);
+    // implantada, com o softphone do vendedor ainda por fazer; os ramais do telefone vieram da Lista de ramais da Curadoria
+    expect(visao.listas[soft.id]!.map((i) => [i.texto, i.feito])).toEqual([['202 Gerência (Fernanda), no celular', true], ['210 Vendedor (notebook)', false]]);
+    expect(visao.listas[tel.id]!.map((i) => [i.texto, i.feito, i.origem])).toEqual([
+      ['200 Recepção (loja do centro)', true, tel.origens![0]], ['201 Laboratório de lentes', true, tel.origens![0]],
+      ['202 Gerência (Fernanda)', true, tel.origens![0]], ['210 a 221 Vendedores', true, tel.origens![0]],
+    ]);
+    expect(visao.historico.map((e) => e.texto)).toContain('marcou em Ramais no telefone (LinePBX): 210 a 221 Vendedores');
+    expect(visao.partes.find((p) => p.parte === 'Implantação')).toEqual({ parte: 'Implantação', feitos: 5, total: 6 });
+
+    const hotel = cards.find((c) => c.cliente?.nome === 'Hotel Beira Mar')!;
+    const antes = hotel.partes.find((p) => p.parte === 'Implantação')!;
+    let f = await api.listaDoCampo(hotel.id, soft.id, { acao: 'incluir', textos: ['- 200 Recepção\n- 201 Reservas'] });
+    expect(f.listas[soft.id]!.map((i) => i.texto)).toEqual(['200 Recepção', '201 Reservas']);
+    // o softphone vazio contava um por fazer; agora conta os dois itens
+    expect(f.partes.find((p) => p.parte === 'Implantação')).toEqual({ parte: 'Implantação', feitos: antes.feitos, total: antes.total + 1 });
+    const [a, b] = f.listas[soft.id]!;
+    f = await api.listaDoCampo(hotel.id, soft.id, { acao: 'marcar', itemId: a!.id, feito: true });
+    expect(f.listas[soft.id]![0]).toMatchObject({ feito: true, porId: expect.any(String) });
+    f = await api.listaDoCampo(hotel.id, soft.id, { acao: 'editar', itemId: b!.id, texto: '201 Reservas (headset)' });
+    expect(f.historico.map((e) => e.texto)).toContain('corrigiu em Ramais no softphone (LinePBX): "201 Reservas" para "201 Reservas (headset)"');
+    f = await api.listaDoCampo(hotel.id, soft.id, { acao: 'tirar', itemId: b!.id });
+    expect(f.listas[soft.id]!.map((i) => i.texto)).toEqual(['200 Recepção']);
+    expect((await erroDe(api.listaDoCampo(hotel.id, soft.id, { acao: 'incluir', textos: ['200 recepção'] }))).message).toBe('Esses itens já estão na lista.');
+    expect((await erroDe(api.listaDoCampo(hotel.id, op.campos.find((c) => c.painelId === imp.id && c.nome === 'IP do cliente')!.id, { acao: 'incluir', textos: ['x'] }))).status).toBe(400);
+    // o alterar não aceita o checklist como valor
+    expect((await erroDe(api.alterar(hotel.id, { campos: { [tel.id]: ['200'] } }))).message).toMatch(/inclua os itens pela ficha/);
+    // os ramais do telefone vêm da Curadoria: marcar, sim; o × tira só deste card (e o Voltar traz). A Curadoria muda e o
+    // checklist acompanha
+    const ramais = tel.origens![0]!;
+    f = await api.chamado(hotel.id);
+    expect(f.listas[tel.id]!.map((i) => i.texto)).toEqual(['200 Recepção (24h)', '201 Reservas', '202 Governança', '210 a 269 Apartamentos']);
+    f = await api.listaDoCampo(hotel.id, tel.id, { acao: 'marcar', itemId: f.listas[tel.id]![1]!.id, feito: true });
+    const r200 = f.listas[tel.id]![0]!;
+    f = await api.listaDoCampo(hotel.id, tel.id, { acao: 'tirar', itemId: r200.id });
+    expect(f.listas[tel.id]!.find((i) => i.id === r200.id)?.tirado).toBe(true);
+    f = await api.listaDoCampo(hotel.id, tel.id, { acao: 'voltar', itemId: r200.id });
+    expect(f.listas[tel.id]!.find((i) => i.id === r200.id)?.tirado).toBeUndefined();
+    expect((await erroDe(api.listaDoCampo(hotel.id, tel.id, { acao: 'editar', itemId: r200.id, texto: 'x' }))).message)
+      .toBe('Esse item vem de Lista de ramais (LinePBX) (Curadoria): para corrigir, mude lá.');
+    f = await api.alterar(hotel.id, { campos: { [ramais]: '201 reservas\n203 Restaurante' } });
+    expect(f.listas[tel.id]!.map((i) => [i.texto, i.feito])).toEqual([['201 reservas', true], ['203 Restaurante', false]]);
+    await entrar('leitor');
+    expect((await erroDe(api.listaDoCampo(hotel.id, soft.id, { acao: 'incluir', textos: ['x'] }))).status).toBe(403);
+  });
+});
+
+describe('a caixinha "Checklist na Implantação" na prévia (2.4.8, como o servidor)', () => {
+  it('ligar cria o checklist no grupo Implantação; desligar exclui; ligar de novo traz de volta', async () => {
+    await entrar('admin');
+    let op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const pbx = op.produtos.find((p) => p.nome === 'LinePBX')!.id;
+    const ip = op.campos.find((c) => c.painelId === imp.id && c.nome === 'IP do cliente' && c.produtoId === pbx)!;
+    // a Lista de ramais já está ligada (os Ramais no telefone tiram dela)
+    const ramais = op.campos.find((c) => c.painelId === imp.id && c.nome === 'Lista de ramais' && c.produtoId === pbx)!;
+    expect(checklistLigadoNaImplantacao(ramais, op.campos.filter((c) => c.painelId === imp.id))?.nome).toBe('Ramais no telefone');
+    const r = await api.checklistNaImplantacao(ip.id, { ligar: true });
+    expect(r.campo).toMatchObject({ nome: 'IP do cliente (implantação)', tipo: 'checklist', parte: 'Implantação', produtoId: pbx, origens: [ip.id] });
+    const hotel = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Hotel Beira Mar')!;
+    let f = await api.chamado(hotel.id);
+    expect(f.listas[r.campo!.id]!.map((i) => i.texto)).toEqual(['IP do cliente: 189.45.12.90']);
+    f = await api.listaDoCampo(hotel.id, r.campo!.id, { acao: 'marcar', itemId: f.listas[r.campo!.id]![0]!.id, feito: true });
+    expect((await api.checklistNaImplantacao(ip.id, { ligar: false })).campo).toBeNull();
+    op = await api.opcoes();
+    expect(op.campos.some((c) => c.id === r.campo!.id)).toBe(false);
+    const volta = await api.checklistNaImplantacao(ip.id, { ligar: true });
+    expect(volta.campo!.id).toBe(r.campo!.id);
+    expect((await api.chamado(hotel.id)).listas[r.campo!.id]![0]!.feito).toBe(true);
+    // a data não gera itens
+    const data = op.campos.find((c) => c.painelId === imp.id && c.tipo === 'data');
+    if (data) expect((await erroDe(api.checklistNaImplantacao(data.id, { ligar: true }))).message).toMatch(/não gera itens/);
   });
 });

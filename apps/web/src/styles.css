@@ -120,6 +120,9 @@ input, select, textarea, button { font: inherit; }
 @media (prefers-reduced-motion: reduce) { .aviso-cartao { animation: none; } }
 
 /* ---------- impressão (1.7): o Fechamento do mês sai sozinho, no tema claro, como um documento ---------- */
+/* o PDF do envio diário (2.4.8): o nome do valor quebra a linha em vez de cortar ("Ramal › Configuração › WebRTC" inteiro) */
+.envio-diario [data-rotulo-do-valor] { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+
 @media print {
   :root, :root:not([data-theme='light']), :root[data-theme='dark'] {
     --bg: #ffffff; --surface: #ffffff; --surface-2: #eef2f7; --line: #d9e0e9; --line-strong: #b7c2d0;

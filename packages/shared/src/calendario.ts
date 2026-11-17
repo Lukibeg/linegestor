@@ -609,11 +609,26 @@ export const RemoverEventoSchema = z.object({ escopo: z.enum(ESCOPOS_DA_SERIE).d
 /** A situação de um evento (o Feito e o Cancelado, sem abrir a janela). */
 export const SituacaoDoEventoSchema = z.object({ situacao: z.enum(SITUACOES_DO_EVENTO) });
 
+/**
+ * Os painéis que a janela do evento oferece: os ativos (o desativado só se o evento já está nele) e, dos pessoais, só o de quem
+ * está criando (2.4.8, o Luan: "N tem q aparecer os pessoais do outros aqui, só do meu" — o administrador vê os pessoais de todos
+ * na tela Painéis, mas o evento não vai para o pessoal de outra pessoa). O de outra pessoa só aparece se o evento já está nele.
+ */
+export function paineisParaOEvento<P extends { id: string; ativo: boolean; donoId?: string | null }>(
+  paineis: readonly P[], escolhidos: readonly string[], eu: string | null | undefined,
+): P[] {
+  return paineis.filter((p) => escolhidos.includes(p.id) || (p.ativo && (!p.donoId || p.donoId === eu)));
+}
+
 /** O que a tela do calendário precisa para montar a janela e os filtros. */
 export type CalendarioOpcoes = {
   tipos: TipoDeEvento[];
   /** os painéis que a pessoa vê, com quem vê cada um (as pessoas do evento saem daí) */
-  paineis: Array<{ id: string; nome: string; sigla: string; cor: string; ativo: boolean; pessoas: string[] }>;
+  paineis: Array<{
+    id: string; nome: string; sigla: string; cor: string; ativo: boolean; pessoas: string[];
+    /** o painel pessoal (2.4.7): de quem é; nulo, um painel da equipe. A janela do evento só oferece o pessoal da própria pessoa (2.4.8) */
+    donoId?: string | null;
+  }>;
   /** as pessoas ativas (os nomes), em ordem */
   pessoas: Array<{ id: string; nome: string }>;
   /** cria e edita eventos (trabalha nos chamados) */

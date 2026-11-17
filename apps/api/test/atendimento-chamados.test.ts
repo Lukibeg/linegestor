@@ -45,6 +45,7 @@ let operadoraB = '';
 let ramal = '';
 let semAudio = '';
 let assuntoDev = '';
+let fila = '';
 
 const SUP = 'painel-suporte';
 const DEV = 'painel-desenvolvimento';
@@ -117,9 +118,11 @@ beforeAll(async () => {
   operadoraB = ops[1].id;
 
   // os assuntos (a árvore nasce em branco: a equipe monta)
-  ramal = newId(); semAudio = newId(); assuntoDev = newId();
+  ramal = newId(); semAudio = newId(); assuntoDev = newId(); fila = newId();
   await app.db.insert(ticketSubjects).values([
     { id: ramal, panelId: SUP, name: 'Ramal', checklist: ['Testar o ramal', 'Conferir o registro'] },
+    // o assunto com prazo de solução (2.4.8): 20 h úteis
+    { id: fila, panelId: SUP, name: 'Fila', resolutionMinutes: 20 * 60 },
     { id: semAudio, panelId: SUP, parentId: ramal, name: 'Sem áudio', checklist: ['Pedir print do erro', 'Testar o ramal'] },
     { id: assuntoDev, panelId: DEV, name: 'Correção de tela' },
   ]);
@@ -592,7 +595,7 @@ describe('o problema e os incidentes', () => {
 
 describe('esperar e assumir', () => {
   it('esperar pede o motivo; esperando o cliente, o prazo de solução para', async () => {
-    const { id } = await abrir(operador, { gravidade: 'intermitencia', alcance: 'setor' });
+    const { id } = await abrir(operador, { gravidade: 'intermitencia', alcance: 'setor', assuntoId: fila });
     const sem = await operador.post(`/atendimento/chamados/${id}/esperar`, { tipo: 'cliente' });
     expect(sem.statusCode).toBe(400);
     expect(sem.json().error).toBe('Diga o motivo da espera.');
@@ -1425,7 +1428,7 @@ describe('as opções da tela', () => {
     expect(op.paineis.filter((p: any) => !p.donoId).map((p: any) => [p.sigla, p.etapas.length])).toEqual([['SUP', 8], ['DEV', 6]]);
     expect(op.paineis[0].abertos).toBeGreaterThan(0);
     expect(op.pessoas.map((p: any) => p.nome)).toEqual(expect.arrayContaining(['Marina Costa', 'Bruno Técnico', 'Rita Leitora']));
-    expect(op.assuntos.filter((a: any) => a.painelId === SUP).map((a: any) => a.nome)).toEqual(['Ramal', 'Sem áudio']);
+    expect(op.assuntos.filter((a: any) => a.painelId === SUP).map((a: any) => [a.nome, a.prazoSolucao])).toEqual([['Fila', 1200], ['Ramal', null], ['Sem áudio', null]]);
     expect(op.produtos.map((p: any) => p.id)).toContain(linepbx);
     expect(op.operadoras.map((o: any) => o.id)).toEqual(expect.arrayContaining([operadoraA, operadoraB]));
     // as etiquetas vêm com o painel e a cor (a que ninguém escolheu, cinza), painel por painel, em ordem de nome

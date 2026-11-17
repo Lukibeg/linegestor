@@ -572,12 +572,13 @@ describe('o LineChat simples: as quatro quantidades e o total (21/10)', () => {
     expect(q.licenca?.custo).toBe(14_990);
     expect(q.campos.map((x) => [x.rotulo, x.qtd, x.custo, x.incluso])).toEqual([
       ['Usuários', 5, 3_980, false], ['Canais oficiais', 1, 0, true], ['Canais não oficiais', 5, 34_950, false], ['Agentes de IA', 0, 0, false],
+      // 2.4.8: os contatos ativos e a transcrição também são campos (sem linha, começam com zero)
+      ['Contatos ativos no mês', 0, 0, false], ['Transcrição de áudio (usuários)', 0, 0, false],
     ]);
     expect(q.total).toBe(53_920);
     // o total do quadro é o que ele soma nos custos mensais
     expect(q.total).toBe(k.custoMensalFixo);
     expect(q.linhas).toHaveLength(5);
-    expect(q.outros).toEqual([]);
   });
 
   it('o custo do mês e o mês a mês juntam o Helena numa linha só, "Helena", com o total (2.3); o resto continua um a um', () => {
@@ -594,21 +595,24 @@ describe('o LineChat simples: as quatro quantidades e o total (21/10)', () => {
     expect(k.linhas.length).toBe(comNuvem.linhas.length);
   });
 
-  it('sem o produto LineChat, não há quadro; os outros da Helena só aparecem quando custam algo', () => {
+  it('sem o produto LineChat, não há quadro; os contatos ativos e a transcrição são campos do quadro (2.4.8)', () => {
     const c = cenarioNovo(a, { modelo: MODELO_DA_HELENA });
     expect(quadroDoLineChat({ ...c, produtos: [] }, contasDoCenario(c, a))).toBeNull();
-    // a simulação de antes de 21/10: os contatos (5.000, inclusos) e a transcrição (nenhuma) não aparecem…
+    // a simulação de antes de 21/10: os contatos (5.000, inclusos) e a transcrição (nenhuma) estão nos campos
     const contatos = linhaDaTabela(a.custos.find((x) => x.id === 'helena-contatos')!, { qtd: 5_000 });
     const transcricao = linhaDaTabela(a.custos.find((x) => x.id === 'helena-transcricao')!, { qtd: 0 });
     const antes = { ...c, linhas: [...c.linhas, contatos, transcricao] };
     let q = quadroDoLineChat(antes, contasDoCenario(antes, a))!;
-    expect(q.outros).toEqual([]);
+    const campo = (id: string) => q.campos.find((x) => x.custoId === id)!;
+    expect(campo('helena-contatos')).toMatchObject({ qtd: 5_000, custo: 0, incluso: true, inclusos: 5_000 });
+    expect(campo('helena-transcricao')).toMatchObject({ qtd: 0, custo: 0, incluso: false, linhaId: transcricao.id });
     expect(q.linhas).toHaveLength(7);
-    // …e com 8.000 contatos, sim (R$ 135,00), somando no total
-    const mais = { ...antes, linhas: antes.linhas.map((l) => (l.id === contatos.id ? { ...l, qtd: 8_000 } : l)) };
+    // com 8.000 contatos (R$ 135,00) e 4 usuários com transcrição (R$ 15,96), somando no total
+    let mais = { ...antes, linhas: mudarQuantidadeDoLineChat(antes, a, 'helena-contatos', 8_000) };
+    mais = { ...mais, linhas: mudarQuantidadeDoLineChat(mais, a, 'helena-transcricao', 4) };
     q = quadroDoLineChat(mais, contasDoCenario(mais, a))!;
-    expect(q.outros.map((x) => [x.qtd, x.custo])).toEqual([[8_000, 13_500]]);
-    expect(q.total).toBe(14_990 + 13_500);
+    expect([campo('helena-contatos').custo, campo('helena-transcricao').custo]).toEqual([13_500, 1_596]);
+    expect(q.total).toBe(14_990 + 13_500 + 1_596);
   });
 
   it('a quantidade que ainda não tem linha; o custo que saiu da tabela', () => {
@@ -661,7 +665,7 @@ describe('o LineChat simples: mudar as quantidades (21/10)', () => {
     expect(mudarQuantidadeDoLineChat(vazio, a, 'helena-agentes', 0)).toBe(vazio.linhas);
     // o que vem na licença, numa frase
     const q = quadroDoLineChat(c, contasDoCenario(c, a), a)!;
-    expect(textoDosInclusos(q)).toBe('3 usuários e 1 canal oficial');
+    expect(textoDosInclusos(q)).toBe('3 usuários, 1 canal oficial e 5.000 contatos ativos no mês');
   });
 });
 

@@ -100,7 +100,7 @@ export async function opcoes(db: Db, ator: Ator, agora = new Date()): Promise<Ca
   const [{ visiveis }, pessoas, tipos] = await Promise.all([paineisDe(db, ator), pessoasAtivas(db), lerTipos(db)]);
   return {
     tipos,
-    paineis: visiveis.map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, cor: p.cor, ativo: p.ativo, pessoas: quemVe(p, pessoas) })),
+    paineis: visiveis.map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, cor: p.cor, ativo: p.ativo, pessoas: quemVe(p, pessoas), donoId: p.donoId })),
     pessoas: pessoas.map((p) => ({ id: p.id, nome: p.nome })),
     podeEditar: podeTrabalhar(ator),
     podeCuidar: podeCuidar(ator),

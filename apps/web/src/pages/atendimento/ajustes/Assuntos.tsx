@@ -4,18 +4,19 @@
  * É a configuração do campo Assunto (que cada painel liga ou desliga na aba Campos; daqui se volta
  * para lá). A árvore de assuntos de cada painel (até 3 níveis, como Ramal › Configuração › Identidade), o
  * ponto principal para os relatórios: cada assunto com a descrição ("quando usar"), o checklist (os
- * passos que entram no chamado com este assunto) e o de-para (os nomes da lista antiga do LineChat
+ * passos que entram no chamado com este assunto), o de-para (os nomes da lista antiga do LineChat
  * que viram este assunto, para os relatórios compararem o antes e o depois; desde o 2.0.1, também a
- * resposta do menu do robô: o mapa do robô e o n8n acham o assunto por eles).
+ * resposta do menu do robô: o mapa do robô e o n8n acham o assunto por eles) e, desde o 2.4.8, o prazo
+ * de solução (em horas úteis; o subtópico sem prazo usa o do assunto de cima).
  *
  * Nada se apaga: o assunto que não serve mais é desativado (some da lista de quem abre chamado, e os
  * chamados antigos continuam com ele). A lista nasce em branco; quando a lista da equipe fechar, o
  * "Colar a lista" monta tudo de uma vez — com a prévia de como vai ficar antes de gravar.
  */
 import { useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowLeftRight, ClipboardPaste, CornerDownRight, ListChecks, Pencil, Plus, Search, X } from 'lucide-react';
+import { AlarmClock, ArrowLeft, ArrowLeftRight, ClipboardPaste, CornerDownRight, ListChecks, Pencil, Plus, Search, X } from 'lucide-react';
 import {
-  MAX_NIVEL_ASSUNTO, assuntoEDescendentes, caminhoDoAssunto, emOrdemDeArvore, lerListaDeAssuntos, nivelDoAssunto, paraBusca,
+  MAX_NIVEL_ASSUNTO, MAX_PRAZO_DO_ASSUNTO, MIN_PRAZO_DO_ASSUNTO, assuntoEDescendentes, caminhoDoAssunto, duracaoDoPrazo, emOrdemDeArvore, lerListaDeAssuntos, nivelDoAssunto, paraBusca, prazoDoAssunto,
   type Assunto, type AssuntoGravarEntrada, type Painel,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -49,6 +50,23 @@ function alturaDoAssunto(id: string, todos: Assunto[], n = 0): number {
 
 /** Uma linha por item, sem as vazias (o checklist, o de-para). */
 const linhas = (t: string) => t.split('\n').map((x) => x.trim()).filter(Boolean);
+
+/** O prazo escrito em horas e minutos (2.4.8): nulo com os dois vazios (herda do de cima). */
+function minutosDoPrazo(h: string, m: string): number | null | 'invalido' {
+  const th = h.trim(); const tm = m.trim();
+  if (!th && !tm) return null;
+  const nh = th ? Number(th) : 0; const nm = tm ? Number(tm) : 0;
+  if (!Number.isInteger(nh) || !Number.isInteger(nm) || nh < 0 || nm < 0 || nm > 59) return 'invalido';
+  return nh * 60 + nm;
+}
+
+/** O prazo de solução na linha da árvore (2.4.8): o próprio, o herdado do de cima (mais claro) ou "sem prazo". */
+function ChipDoPrazo({ a, assuntos }: { a: Assunto; assuntos: Assunto[] }) {
+  if (a.prazoSolucao) return <Chip tone="accent" title={`Prazo de solução: ${duracaoDoPrazo(a.prazoSolucao)} úteis`}><AlarmClock size={12} /> {duracaoDoPrazo(a.prazoSolucao)}</Chip>;
+  const herdado = prazoDoAssunto(a.id, assuntos);
+  if (herdado) return <Chip tone="muted" title={`Sem prazo próprio: usa o de ${caminhoDoAssunto(herdado.deId, assuntos)}`}><AlarmClock size={12} /> {duracaoDoPrazo(herdado.minutos)} <span className="font-normal">de {herdado.deNome}</span></Chip>;
+  return <Chip tone="muted" title="Sem prazo: os chamados com este assunto ficam sem prazo de solução">sem prazo</Chip>;
+}
 
 export function AjustesAssuntos({ painel, onVoltar }: { painel: Painel; onVoltar?: () => void }) {
   const opcoes = useOpcoes();
@@ -148,6 +166,7 @@ function LinhaAssunto({ a, assuntos, buscando, onEditar, onIncluirDentro }: {
             {buscando && pais.length > 0 && <span className="text-muted">{pais.join(' › ')} › </span>}{a.nome}
           </span>
           {!a.ativo && <Chip tone="muted">desativado</Chip>}
+          <ChipDoPrazo a={a} assuntos={assuntos} />
           {a.checklist.length > 0 && <Chip tone="neutral" title={`Checklist:\n${a.checklist.join('\n')}`}><ListChecks size={12} /> {a.checklist.length} {a.checklist.length === 1 ? 'passo' : 'passos'}</Chip>}
           {a.dePara.length > 0 && <Chip tone="neutral" title={`Da lista antiga: ${a.dePara.join(', ')}`}><ArrowLeftRight size={12} /> {a.dePara.length} {a.dePara.length === 1 ? 'nome antigo' : 'nomes antigos'}</Chip>}
         </div>
@@ -182,6 +201,9 @@ function JanelaAssunto({ painel, assuntos, assunto, paiInicial, onFechar }: {
     ativo: assunto?.ativo ?? true,
     checklist: (assunto?.checklist ?? []).join('\n'),
     dePara: (assunto?.dePara ?? []).join('\n'),
+    // o prazo de solução (2.4.8), em horas e minutos; os dois vazios: herda do de cima
+    prazoH: assunto?.prazoSolucao ? String(Math.floor(assunto.prazoSolucao / 60)) : '',
+    prazoMin: assunto?.prazoSolucao && assunto.prazoSolucao % 60 ? String(assunto.prazoSolucao % 60) : '',
   }));
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -197,6 +219,9 @@ function JanelaAssunto({ painel, assuntos, assunto, paiInicial, onFechar }: {
   const filhos = assunto ? assuntos.filter((a) => a.paiId === assunto.id).length : 0;
   const passos = linhas(f.checklist);
   const nomesAntigos = linhas(f.dePara);
+  const prazo = minutosDoPrazo(f.prazoH, f.prazoMin);
+  // o que vale com o prazo vazio: o do assunto de cima (o novo lugar, se mudou de lugar)
+  const doDeCima = f.paiId ? prazoDoAssunto(f.paiId, assuntos) : null;
 
   const salvar = async () => {
     if (!f.nome.trim()) { setErro('Dê um nome ao assunto.'); document.getElementById('assunto-nome')?.focus(); return; }
@@ -204,8 +229,12 @@ function JanelaAssunto({ painel, assuntos, assunto, paiInicial, onFechar }: {
     if (passos.some((p) => p.length > 160)) { setErro('Cada passo do checklist vai até 160 letras.'); return; }
     if (nomesAntigos.length > 50) { setErro('O de-para vai até 50 nomes.'); return; }
     if (nomesAntigos.some((p) => p.length > 120)) { setErro('Cada nome do de-para vai até 120 letras.'); return; }
+    if (prazo === 'invalido') { setErro('Prazo de solução: escreva as horas e os minutos só com números (os minutos até 59).'); document.getElementById('assunto-prazo-h')?.focus(); return; }
+    if (prazo !== null && prazo < MIN_PRAZO_DO_ASSUNTO) { setErro(`O prazo de solução vai de ${MIN_PRAZO_DO_ASSUNTO} minutos para cima (deixe vazio para usar o do assunto de cima).`); document.getElementById('assunto-prazo-h')?.focus(); return; }
+    if (prazo !== null && prazo > MAX_PRAZO_DO_ASSUNTO) { setErro(`O prazo de solução vai até ${MAX_PRAZO_DO_ASSUNTO / 60} horas úteis.`); document.getElementById('assunto-prazo-h')?.focus(); return; }
     const d: AssuntoGravarEntrada = {
       paiId: f.paiId || null, nome: f.nome.trim(), descricao: f.descricao.trim() || null, ativo: f.ativo, checklist: passos, dePara: nomesAntigos,
+      prazoSolucao: prazo,
     };
     setSalvando(true); setErro('');
     try {
@@ -242,6 +271,30 @@ function JanelaAssunto({ painel, assuntos, assunto, paiInicial, onFechar }: {
           <textarea className="input min-h-[60px]" id="assunto-descricao" value={f.descricao} maxLength={400} placeholder="Ex.: o nome ou o número que aparece no ramal está errado"
             onChange={(e) => mudar({ descricao: e.target.value })} />
         </Rotulo>
+        <div className="min-w-0" id="assunto-prazo">
+          <label className="label" htmlFor="assunto-prazo-h">Prazo de solução</label>
+          <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
+            <input type="number" inputMode="numeric" className="input w-[80px] py-1.5 tnum" id="assunto-prazo-h" min={0} value={f.prazoH} placeholder={doDeCima ? String(Math.floor(doDeCima.minutos / 60)) : '—'}
+              aria-label="Prazo de solução: horas" onChange={(e) => mudar({ prazoH: e.target.value })} />
+            <span className="text-muted">h</span>
+            <input type="number" inputMode="numeric" className="input w-[68px] py-1.5 tnum" id="assunto-prazo-min" min={0} max={59} value={f.prazoMin} placeholder="0"
+              aria-label="Prazo de solução: minutos" onChange={(e) => mudar({ prazoMin: e.target.value })} />
+            <span className="text-muted">min úteis</span>
+            {prazo !== null && prazo !== 'invalido' && (
+              <button type="button" className="btn-ghost btn-sm text-muted" onClick={() => mudar({ prazoH: '', prazoMin: '' })} id="assunto-prazo-limpar">
+                <X size={13} /> Limpar
+              </button>
+            )}
+          </div>
+          <div className="text-muted text-[12.5px] mt-1" id="assunto-prazo-dica">
+            {prazo !== null && prazo !== 'invalido'
+              ? <>Os chamados com este assunto (e os subtópicos dele sem prazo próprio) têm <b className="text-ink-2 font-medium">{duracaoDoPrazo(prazo)} úteis</b> para resolver.</>
+              : doDeCima
+                ? <>Vazio: usa o prazo de <b className="text-ink-2 font-medium">{caminhoDoAssunto(doDeCima.deId, assuntos)}</b>, {duracaoDoPrazo(doDeCima.minutos)} úteis.</>
+                : <>Vazio: os chamados com este assunto ficam <b className="text-ink-2 font-medium">sem prazo</b> (a ficha avisa que o assunto não tem prazo cadastrado).</>}
+            {' '}Em horas úteis: o relógio só anda no horário de atendimento.
+          </div>
+        </div>
         <label className="flex items-start gap-2.5 text-sm cursor-pointer">
           <Toggle checked={f.ativo} onChange={(v) => mudar({ ativo: v })} />
           <span>Ativo <span className="block text-[12.5px] text-muted">Desativado, some da lista de quem abre chamado; os chamados que já têm este assunto continuam com ele. Os assuntos de dentro não mudam.</span></span>

@@ -1,5 +1,5 @@
 /**
- * Relatórios › Tempo (2.1): o **Prazo cumprido**, o **Relógio do chamado**, a **Primeira resposta**, **A
+ * Relatórios › Tempo (2.1): o **Prazo cumprido** (2.4.8: a solução, pelo prazo do assunto), o **Relógio do chamado**, a **Primeira resposta**, **A
  * escada N1 → N2 → N3 → DEV**, **Onde o chamado empaca**, **A prioridade faz diferença?** e **Esperando a
  * operadora** (novo). Tudo em horas úteis, pelo horário de atendimento e os feriados dos Ajustes.
  */
@@ -18,57 +18,48 @@ export function Prazo({ r, abrir }: PropsDoRelatorio) {
   const x = r.prazo;
   const contra = r.periodo.anterior.nome;
   if (!x.contaPrazo) {
-    return <Cartao id="prazo"><Vazio titulo="Este painel não conta prazo" texto="Ligue o prazo nos ajustes do painel para ver se os chamados são respondidos e resolvidos a tempo." /></Cartao>;
+    return <Cartao id="prazo"><Vazio titulo="Este painel não conta prazo" texto="Ligue o prazo nos ajustes do painel (e o campo Assunto) para ver se os chamados são resolvidos a tempo." /></Cartao>;
   }
-  const linhas = x.porPrioridade;
+  const linhas = x.porAssunto;
   return (
-    <Cartao id="prazo" rodape={<>Os prazos de cada prioridade são os de Painéis › Ajustes › Prazos{linhas.some((l) => l.limites?.uteis) ? ', em horas úteis, com os feriados' : ''}. Esperando o cliente, o relógio para; esperando a operadora, continua. Conta os resolvidos no período que têm prioridade.</>}>
+    // 2.4.8: o prazo é o de solução do assunto (a primeira resposta não tem prazo)
+    <Cartao id="prazo" rodape={<>O prazo de solução é o do assunto (cadastrado na árvore de assuntos; o subtópico sem prazo usa o do assunto de cima), em horas úteis, com os feriados. Esperando o cliente, o relógio para; esperando a operadora, continua. Conta os resolvidos no período que têm prazo.</>}>
       <Numeros>
-        <Numero valor={x.resposta.pct === null ? '—' : `${x.resposta.pct}%`} rotulo="respondidos no prazo" abrir={abrir} ids={x.resposta.foraIds} janela="Respondidos fora do prazo"
-          titulo="Clique para ver os que foram respondidos fora do prazo"
-          sub={<span className="text-muted">{nf(x.resposta.noPrazo)} de {nf(x.resposta.comPrazo)} · <Variacao r={r} agora={x.resposta.pct} antes={x.resposta.antes} formato="pontos" contra={contra} /></span>} />
         <Numero valor={x.solucao.pct === null ? '—' : `${x.solucao.pct}%`} rotulo="resolvidos no prazo" abrir={abrir} ids={x.solucao.foraIds} janela="Resolvidos fora do prazo"
           titulo="Clique para ver os que foram resolvidos fora do prazo"
           sub={<span className="text-muted">{nf(x.solucao.noPrazo)} de {nf(x.solucao.comPrazo)} · <Variacao r={r} agora={x.solucao.pct} antes={x.solucao.antes} formato="pontos" contra={contra} /></span>} />
         <Numero valor={nf(x.vencidosAgora.n)} rotulo="vencidos em aberto agora" tom={x.vencidosAgora.n ? 'signal' : undefined} abrir={abrir} ids={x.vencidosAgora.ids} janela="Vencidos em aberto agora"
           sub={x.pertoAgora.n ? <span className="text-muted">e {plural(x.pertoAgora.n, 'perto de vencer', 'perto de vencer')}</span> : undefined} />
+        <Numero valor={nf(x.semPrazo.n)} rotulo="resolvidos sem prazo" abrir={abrir} ids={x.semPrazo.ids} janela="Resolvidos sem prazo (sem assunto, ou o assunto sem prazo cadastrado)"
+          titulo="Clique para ver os resolvidos sem prazo" sub={<span className="text-muted">sem assunto, ou o assunto sem prazo</span>} />
       </Numeros>
-      {!x.resolvidos ? <Vazio titulo="Nenhum chamado resolvido no período" texto="Escolha um período maior ou tire algum filtro." /> : (
+      {!x.resolvidos ? <Vazio titulo="Nenhum chamado resolvido no período" texto="Escolha um período maior ou tire algum filtro." /> : !linhas.length ? (
+        <Vazio titulo="Nenhum resolvido com prazo no período" texto="Cadastre o prazo de solução nos assuntos (Configurar › Assuntos) para os chamados ganharem prazo." />
+      ) : (
         <div className="overflow-x-auto">
-          <div className="eyebrow mb-2">Por prioridade · os {nf(x.resolvidos)} resolvidos no período · clique num número para ver os chamados</div>
+          <div className="eyebrow mb-2">Pelo assunto que dá o prazo · os {nf(x.solucao.comPrazo)} resolvidos com prazo no período · clique num número para ver os chamados</div>
           <table className="table">
-            <thead><tr><th>Prioridade e prazos</th><th className="!text-right">Resolvidos</th><th className="sm:min-w-[130px]">Resposta no prazo</th><th className="sm:min-w-[130px]">Solução no prazo</th></tr></thead>
+            <thead><tr><th>Assunto e prazo</th><th className="!text-right">Resolvidos</th><th className="sm:min-w-[150px]">No prazo</th></tr></thead>
             <tbody>
               {linhas.map((l) => {
-                const rp = pct(l.resposta.noPrazo, l.resposta.comPrazo);
-                const sp = pct(l.solucao.noPrazo, l.solucao.comPrazo);
+                const sp = pct(l.noPrazo, l.resolvidos);
                 return (
-                  <tr key={l.prioridade ?? 'sem'}>
+                  <tr key={l.assuntoId}>
                     <td className="text-[13px]">
-                      <ChipPrioridade p={l.prioridade} />
-                      {l.limites && <span className="block text-[11.5px] text-muted tnum mt-0.5">{tempoUtil(r, l.limites.resposta)} · {tempoUtil(r, l.limites.solucao)}{l.limites.uteis ? ' úteis' : ''}</span>}
+                      <span className="text-ink">{l.nome}</span>
+                      <span className="block text-[11.5px] text-muted tnum mt-0.5">{tempoUtil(r, l.prazo)} úteis</span>
                     </td>
-                    <td className="text-right text-[13px]"><NumeroClicavel ids={l.solucao.ids} n={l.resolvidos} titulo={`Resolvidos — ${l.nome}`} abrir={abrir} /></td>
+                    <td className="text-right text-[13px]"><NumeroClicavel ids={l.ids} n={l.resolvidos} titulo={`Resolvidos — ${l.nome}`} abrir={abrir} /></td>
                     <td className="text-[13px]">
-                      {l.resposta.comPrazo ? (
-                        <button type="button" className="w-full text-left" disabled={!l.resposta.foraIds.length} onClick={() => abrir({ titulo: `Respondidos fora do prazo — ${l.nome}`, ids: l.resposta.foraIds })} title={`${l.resposta.noPrazo} de ${l.resposta.comPrazo} no prazo${l.resposta.foraIds.length ? ' — clique para ver os de fora' : ''}`}>
-                          <BarraComTexto v={rp} max={100} texto={`${rp}%`} forte={rp < 80} largura={42} />
-                        </button>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="text-[13px]">
-                      {l.solucao.comPrazo ? (
-                        <button type="button" className="w-full text-left" disabled={!l.solucao.foraIds.length} onClick={() => abrir({ titulo: `Resolvidos fora do prazo — ${l.nome}`, ids: l.solucao.foraIds })} title={`${l.solucao.noPrazo} de ${l.solucao.comPrazo} no prazo${l.solucao.foraIds.length ? ' — clique para ver os de fora' : ''}`}>
-                          <BarraComTexto v={sp} max={100} texto={`${sp}%`} forte={sp < 80} largura={42} />
-                        </button>
-                      ) : <span className="text-muted">—</span>}
+                      <button type="button" className="w-full text-left" disabled={!l.foraIds.length} onClick={() => abrir({ titulo: `Resolvidos fora do prazo — ${l.nome}`, ids: l.foraIds })} title={`${l.noPrazo} de ${l.resolvidos} no prazo${l.foraIds.length ? ' — clique para ver os de fora' : ''}`}>
+                        <BarraComTexto v={sp} max={100} texto={`${sp}%`} forte={sp < 80} largura={42} />
+                      </button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {x.semPrioridade > 0 && <p className="text-[12px] text-muted mt-1.5">{plural(x.semPrioridade, 'resolvido sem prioridade ficou', 'resolvidos sem prioridade ficaram')} fora da conta (sem prioridade, não há prazo).</p>}
         </div>
       )}
     </Cartao>

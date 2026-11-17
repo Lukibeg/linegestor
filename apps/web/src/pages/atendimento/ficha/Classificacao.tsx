@@ -29,6 +29,7 @@ import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { BolinhaDoQueFalta, ErroPerto, MarcaFalta, Secao, useAberta, useAcao, usePosicaoFlutuante } from './base.js';
 import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
 import { Caixinhas } from './Caixinhas.js';
+import { ChecklistDoCard } from './ChecklistDoCard.js';
 
 /** Um campo da classificação: o rótulo (com a marca do que falta e a rodinha), o controle e o erro. */
 function Linha({ id, campo, rotulo, ocupado, erro, children, extra }: { id: string; campo: string; rotulo: string; ocupado?: boolean; erro?: string | null; children: ReactNode; extra?: ReactNode }) {
@@ -293,7 +294,7 @@ function CamposDoPainel() {
   const { f, opcoes } = useAberta();
   // os de uma parte (2.3) ficam no meio da ficha (as partes); o de um produto, só no chamado que tem o produto
   const campos = camposDoCartao(f, opcoes);
-  return <>{campos.map((c) => (ehCaixinhas(c.tipo) ? <Caixinhas key={c.id} c={c} /> : <CampoNaFicha key={c.id} c={c} />))}</>;
+  return <>{campos.map((c) => (ehCaixinhas(c.tipo) ? <Caixinhas key={c.id} c={c} /> : c.tipo === 'checklist' ? <ChecklistDoCard key={c.id} c={c} /> : <CampoNaFicha key={c.id} c={c} />))}</>;
 }
 
 /** Um campo do painel na ficha (na classificação, ou numa parte da implantação). */

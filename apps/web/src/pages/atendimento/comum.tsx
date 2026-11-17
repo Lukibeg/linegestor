@@ -9,9 +9,9 @@
 import { useCallback, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, ThumbsDown, TriangleAlert, Trophy, X } from 'lucide-react';
+import { Check, GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, ThumbsDown, TriangleAlert, Trophy, X } from 'lucide-react';
 import {
-  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, etiquetasDoPainel, paraBusca, parteDaEtapa, reaisInteiros, telefoneLegivel, textoDoPrazo,
+  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, ehPainelDaImplantacao, etiquetasDoPainel, paraBusca, partesNoCartao, reaisInteiros, telefoneLegivel, textoDoPrazo,
   type CartaoChamado, type CorEtiqueta, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type ResultadoDaVenda,
   type TipoEspera, caminhoDoAssunto, emOrdemDeArvore, type Assunto,
 } from '@gestor/shared';
@@ -344,15 +344,12 @@ export function ChipResultado({ r, motivo, em }: { r: ResultadoDaVenda | null; m
 const TOM_PRAZO: Record<EstadoPrazo['situacao'], TomChip> = { vencido: 'bad', perto: 'signal', no_prazo: 'neutral', pausado: 'muted', cumprido: 'ok', estourou: 'bad', sem: 'muted' };
 
 /**
- * O selo do prazo: o mais urgente entre a primeira resposta (enquanto ninguém respondeu) e a
- * solução. Vencido em vermelho, perto de vencer em laranja, parado em cinza.
+ * O selo do prazo: o da solução (2.4.8: o prazo vem do assunto; a primeira resposta não tem prazo).
+ * Vencido em vermelho, perto de vencer em laranja, parado em cinza. Sem prazo, nada.
  */
 export function SeloPrazo({ c, completo = false }: { c: Pick<CartaoChamado, 'prazos' | 'situacao'>; completo?: boolean }) {
-  const { resposta, solucao } = c.prazos;
   if (c.situacao === 'fechado' && !completo) return null;
-  const pendente = resposta.situacao !== 'cumprido' && resposta.situacao !== 'estourou' && resposta.situacao !== 'sem';
-  const peso = (e: EstadoPrazo) => ({ vencido: 0, perto: 1, no_prazo: 2, pausado: 3, estourou: 4, cumprido: 5, sem: 6 }[e.situacao]);
-  const qual = pendente && peso(resposta) <= peso(solucao) ? { nome: 'Resposta', e: resposta } : { nome: 'Solução', e: solucao };
+  const qual = { nome: 'Solução', e: c.prazos.solucao };
   if (qual.e.situacao === 'sem') return null;
   const icone = qual.e.situacao === 'vencido' ? <TriangleAlert size={12} /> : qual.e.situacao === 'pausado' ? <Hourglass size={12} /> : null;
   return (
@@ -494,7 +491,7 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
   const opcoes = useOpcoes();
   if (ehDeVendas(opcoes.data, c.painelId)) return <CartaoDaNegociacao c={c} cor={cor} mostrarEtapa={mostrarEtapa} nomeDaEtapa={nomeDaEtapa} arrastavel={arrastavel} />;
   return (
-    <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${c.prazos.solucao.situacao === 'vencido' || c.prazos.resposta.situacao === 'vencido' ? 'border-l-4 border-l-bad' : c.prioridade === 'critica' ? 'border-l-4 border-l-signal' : ''} ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+    <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${c.prazos.solucao.situacao === 'vencido' ? 'border-l-4 border-l-bad' : c.prioridade === 'critica' ? 'border-l-4 border-l-signal' : ''} ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}>
       <div className="flex items-center gap-1.5 flex-wrap">
         <CodigoChamado codigo={c.codigo} cor={cor} />
         {c.tipoChamado === 'problema' && <Chip tone="rosa" title="Problema: junta incidentes de várias empresas"><Layers size={12} /> Problema</Chip>}
@@ -528,13 +525,18 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
 /**
  * A conta da parte da etapa (2.3, a implantação): no card que está na Configuração, quanto da Configuração já foi feito
  * ("Configuração · 3 de 15"). Sem uma parte com o nome da etapa, nada.
+ *
+ * No painel da implantação (2.4.8), o andamento de todas as partes, em qualquer etapa (`AndamentoDasPartes`).
  */
 function ProgressoNoCartao({ c }: { c: CartaoChamado }) {
   const opcoes = useOpcoes();
-  if (!c.partes?.length) return null;
-  const etapa = painelDe(opcoes.data, c.painelId)?.etapas.find((e) => e.id === c.etapaId);
-  const p = parteDaEtapa(c.partes, etapa?.nome);
-  if (!p) return null;
+  const painel = painelDe(opcoes.data, c.painelId);
+  const todas = useMemo(() => !!painel && ehPainelDaImplantacao(painel, opcoes.data?.paineis ?? []), [painel, opcoes.data]);
+  if (!c.partes?.length || !painel) return null;
+  const lista = partesNoCartao(c.partes, painel.etapas, c.etapaId, todas);
+  if (!lista.length) return null;
+  if (todas) return <AndamentoDasPartes lista={lista} />;
+  const p = lista[0]!;
   const pct = Math.round((p.feitos / p.total) * 100);
   return (
     <div className="flex items-center gap-2 text-[11.5px] text-muted tnum" title={`${p.parte}: ${p.feitos} de ${p.total} feitos`} data-progresso>
@@ -542,6 +544,52 @@ function ProgressoNoCartao({ c }: { c: CartaoChamado }) {
         <span className={`block h-full rounded-full ${p.feitos === p.total ? 'bg-ok' : 'bg-accent'}`} style={{ width: `${pct}%` }} />
       </span>
       <span className="shrink-0">{p.feitos} de {p.total}</span>
+    </div>
+  );
+}
+
+/** A cor da barrinha e o que o "título" (o que aparece ao parar o mouse) diz de cada parte. */
+const BARRA_DA_PARTE: Record<'da-etapa' | 'ficou' | 'adiante', { barra: string; nome: string; diz: string }> = {
+  'da-etapa': { barra: 'bg-accent', nome: 'font-semibold text-ink-2', diz: 'a etapa em que o card está' },
+  ficou: { barra: 'bg-signal', nome: 'font-medium text-signal', diz: 'o card já passou desta etapa e ainda falta' },
+  adiante: { barra: 'bg-line-strong', nome: 'text-muted', diz: 'ainda vem' },
+};
+
+/**
+ * O andamento da implantação no cartão (2.4.8, o pedido do Luan: "a barrinha de acompanhamento das três fases do cliente…
+ * e se tiver ok… ficar só com um Vzinho"). As partes que acabaram, só o ✓, numa linha; as que faltam, uma barrinha cada, na
+ * ordem da ficha: azul a da etapa do card, laranja a que ficou para trás (a curadoria pela metade com o card já na
+ * Configuração) e cinza a que ainda vem.
+ */
+function AndamentoDasPartes({ lista }: { lista: ReturnType<typeof partesNoCartao> }) {
+  const feitas = lista.filter((p) => p.momento === 'feita');
+  const faltam = lista.filter((p) => p.momento !== 'feita');
+  return (
+    <div className="flex flex-col gap-1 py-0.5" data-andamento>
+      {feitas.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {feitas.map((p) => (
+            <span key={p.parte} className="inline-flex items-center gap-0.5 rounded-full bg-ok-soft text-ok text-[11px] font-semibold leading-none px-1.5 py-[3px]"
+              title={`${p.parte}: tudo feito (${p.feitos} de ${p.total})`} data-parte-feita={p.parte}>
+              <Check size={11} strokeWidth={3} aria-hidden /> {p.parte}
+            </span>
+          ))}
+        </div>
+      )}
+      {faltam.map((p) => {
+        const jeito = BARRA_DA_PARTE[p.momento as keyof typeof BARRA_DA_PARTE];
+        const pct = Math.round((p.feitos / p.total) * 100);
+        return (
+          <div key={p.parte} className="grid grid-cols-[5.25rem_1fr_auto] items-center gap-1.5 text-[11.5px] leading-tight tnum"
+            title={`${p.parte}: ${p.feitos} de ${p.total} feitos — ${jeito.diz}`} data-parte={p.parte} data-momento={p.momento}>
+            <span className={`truncate ${jeito.nome}`}>{p.parte}</span>
+            <span className="h-1.5 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
+              <span className={`block h-full rounded-full ${jeito.barra}`} style={{ width: `${pct}%` }} />
+            </span>
+            <span className="text-muted">{p.feitos}/{p.total}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

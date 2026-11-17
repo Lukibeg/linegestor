@@ -48,11 +48,19 @@ export const ALVO_DO_CAMPO: Record<string, string> = {
   checklist: 'campo-checklist', tempo: 'campo-tempo',
 };
 
-export function irParaOCampo(campo: string) {
+export function irParaOCampo(campo: string): void {
   // o campo do painel ("campo:<id>") mora em "campo-c-<id>"
   const id = idDaChave(campo);
   const el = document.getElementById(id ? `campo-c-${id}` : ALVO_DO_CAMPO[campo] ?? '');
-  if (!el) return;
+  if (!el) {
+    // o campo numa aba que não está aberta (2.4.8, as partes em abas): a aba dele abre, e aí a ficha rola até ele
+    if (id && !irParaOCampo.tentando) {
+      window.dispatchEvent(new CustomEvent('gestor:mostrar-campo', { detail: id }));
+      irParaOCampo.tentando = true;
+      window.setTimeout(() => { irParaOCampo(campo); irParaOCampo.tentando = false; }, 60);
+    }
+    return;
+  }
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.classList.add('ring-2', 'ring-signal');
   window.setTimeout(() => el.classList.remove('ring-2', 'ring-signal'), 1600);
@@ -63,6 +71,9 @@ export function irParaOCampo(campo: string) {
     if (campo === 'prioridade') window.setTimeout(() => document.getElementById('classificacao-prioridade')?.focus({ preventScroll: true }), 350);
   }
 }
+
+/** Já pediu a aba do campo e espera ela abrir (para não pedir de novo sem fim). */
+irParaOCampo.tentando = false;
 
 /**
  * "Para ir para Resolvido, falta: Assunto, Solução e Causa." — cada nome leva ao campo. Os filhos em

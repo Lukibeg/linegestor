@@ -5,7 +5,7 @@
  * não veem o Comercial.
  */
 import { describe, expect, it } from 'vitest';
-import { contasDoCenario, duplicarCenario, lerZipSemCompressao, linhaDaTabela, quadroDoLineChat, textoDoSePagaEm, type CenarioDaSimulacao } from '@gestor/shared';
+import { contasDoCenario, duplicarCenario, lerZipSemCompressao, linhaDaTabela, quadroDoLineChat, textoDoSePagaEm, textoDosInclusos, type CenarioDaSimulacao } from '@gestor/shared';
 import { demoApi } from './demo.js';
 import { ApiError } from './types.js';
 import { AJUSTES_DO_SIMULADOR_DEMO } from './demo-simulador.js';
@@ -74,7 +74,7 @@ describe('os exemplos e quem vê', () => {
     expect(textoDoSePagaEm(contas[0]!.sePagaEm)).toMatch(/^em \d+ meses$/);
   });
 
-  it('o LineChat simples (2.0.3): o quadro das quatro quantidades e o total; os contatos de antes aparecem quando custam', async () => {
+  it('o LineChat simples (2.0.3): o quadro das quantidades e o total; os contatos ativos e a transcrição são campos (2.4.8)', async () => {
     await entrar('camila');
     const lista = await api.listar();
     const quadro = async (inicio: string) => {
@@ -84,12 +84,15 @@ describe('os exemplos e quem vê', () => {
     };
     // a Clínica Vida: 5 usuários, 2 canais oficiais e 1 não oficial = R$ 289,50 (com a licença)
     const vida = await quadro('Clínica Vida');
-    expect(vida.campos.map((x) => [x.rotulo, x.qtd])).toEqual([['Usuários', 5], ['Canais oficiais', 2], ['Canais não oficiais', 1], ['Agentes de IA', 0]]);
+    expect(vida.campos.map((x) => [x.rotulo, x.qtd])).toEqual([
+      ['Usuários', 5], ['Canais oficiais', 2], ['Canais não oficiais', 1], ['Agentes de IA', 0], ['Contatos ativos no mês', 0], ['Transcrição de áudio (usuários)', 0],
+    ]);
     expect(vida.total).toBe(28_950);
-    expect(vida.outros).toEqual([]);
-    // a Academia (de antes de 21/10): os 12.000 contatos custam R$ 315,00 e aparecem no quadro
+    // a licença traz 3 usuários, 1 canal oficial e 5.000 contatos ativos no mês (as faixas de preço zero)
+    expect(textoDosInclusos(vida)).toBe('3 usuários, 1 canal oficial e 5.000 contatos ativos no mês');
+    // a Academia (de antes de 21/10): os 12.000 contatos custam R$ 315,00, no campo dos contatos
     const academia = await quadro('Academia');
-    expect(academia.outros.map((x) => [x.qtd, x.custo])).toEqual([[12_000, 31_500]]);
+    expect(academia.campos.find((x) => x.custoId === 'helena-contatos')).toMatchObject({ qtd: 12_000, custo: 31_500, incluso: false });
     // o Hotel: o quadro só com o LineChat (o PABX fica na lista)
     expect((await quadro('Hotel')).linhas.length).toBe(6);
     // a Padaria Estrela, sem o LineChat: sem quadro

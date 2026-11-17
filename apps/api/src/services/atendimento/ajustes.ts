@@ -20,15 +20,16 @@ import { newId, products, ticketFields, ticketPanels, ticketStages, ticketSubjec
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, MODELO_DA_IMPLANTACAO, temOpcoesEscritas,
   ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL, problemaNasEtapasDoTipo,
-  lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
+  lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, TIPOS_QUE_GERAM_ITENS, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
   EVENTOS_AVISO, EXEMPLOS_DOS_AVISOS, NOME_EVENTO_AVISO, modeloDoAviso, modelosParaGuardar, preencherAviso, variaveisDesconhecidas,
   type EventoAviso, type ResultadoDaVenda, type TipoDePainel,
   type AjustesDoPainel, type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoDoSistema,
-  type CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
+  CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
   type Painel, type PainelGravarSchema, type TipoEtapa,
   mudancasDasCaixinhas, nomeCompletoDoCampo, opcaoDoModelo, type CaixinhasGravarSchema, type OpcaoDoModelo,
   gruposDoPainel, mesmoGrupo, tipoTroca, NOME_LUGAR_DO_GRUPO, type GrupoDeCampos, type GruposGravar,
+  checklistLigadoNaImplantacao, GRUPO_DA_IMPLANTACAO, nomeDoChecklistDaImplantacao, podeLigarNaImplantacao,
   AJUSTES_DO_PAINEL_PESSOAL, ETAPAS_DO_PAINEL_PESSOAL, nomeDoPainelPessoal, siglasDoPainelPessoal,
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../../plugins/errors.js';
@@ -529,7 +530,7 @@ function conferirLugar(todos: Assunto[], id: string | null, d: AssuntoGravar) {
 }
 
 const proximaOrdem = (irmaos: Assunto[]) => Math.max(-1, ...irmaos.map((a) => a.ordem)) + 1;
-const assuntoParaAuditoria = (a: Assunto) => ({ nome: a.nome, paiId: a.paiId, descricao: a.descricao, ativo: a.ativo, checklist: a.checklist, dePara: a.dePara });
+const assuntoParaAuditoria = (a: Assunto) => ({ nome: a.nome, paiId: a.paiId, descricao: a.descricao, ativo: a.ativo, checklist: a.checklist, dePara: a.dePara, prazoSolucao: a.prazoSolucao });
 
 export async function criarAssunto(app: FastifyInstance, painelId: string, d: AssuntoGravar): Promise<Gravado<Assunto>> {
   const db = app.db;
@@ -539,6 +540,7 @@ export async function criarAssunto(app: FastifyInstance, painelId: string, d: As
   const [linha] = await db.insert(ticketSubjects).values({
     id: newId(), panelId: painelId, parentId: d.paiId, name: d.nome, description: d.descricao, active: d.ativo,
     sortOrder: proximaOrdem(todos.filter((a) => a.paiId === d.paiId)), checklist: unicos(d.checklist), aliases: unicos(d.dePara),
+    resolutionMinutes: d.prazoSolucao ?? null,
   }).returning();
   const a = assuntoDaLinha(linha!);
   return { valor: a, resumo: `Criou o assunto ${caminhoDoAssunto(a.id, [...todos, a])} no painel ${p.name}`, depois: assuntoParaAuditoria(a) };
@@ -556,6 +558,8 @@ export async function alterarAssunto(app: FastifyInstance, id: string, d: Assunt
   const mudouDeLugar = antes.paiId !== d.paiId;
   const [nova] = await db.update(ticketSubjects).set({
     parentId: d.paiId, name: d.nome, description: d.descricao, active: d.ativo, checklist: unicos(d.checklist), aliases: unicos(d.dePara),
+    // sem a chave do prazo, o prazo fica (2.4.8)
+    ...(d.prazoSolucao !== undefined ? { resolutionMinutes: d.prazoSolucao } : {}),
     // mudou de lugar na árvore: vai para o fim da lista dos irmãos novos
     ...(mudouDeLugar ? { sortOrder: proximaOrdem(todos.filter((a) => a.paiId === d.paiId && a.id !== id)) } : {}),
     updatedAt: new Date(),
@@ -635,7 +639,7 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
 const campoParaAuditoria = (c: CampoPersonalizado) => ({
   nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes, ativo: c.ativo, incluirNaHora: c.incluirNaHora,
   ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}), ...(c.anexos ? { anexos: true } : {}),
-  ...(c.largura ? { largura: c.largura } : {}),
+  ...(c.largura ? { largura: c.largura } : {}), ...(c.origens?.length ? { origens: c.origens } : {}),
 });
 
 /**
@@ -695,6 +699,7 @@ function conferirCampo(p: typeof ticketPanels.$inferSelect, outros: CampoPersona
   // os módulos são os do produto: trocar o produto trocaria as opções do que já foi marcado
   if (atual?.tipo === 'modulos' && atual.produtoId !== d.produtoId) throw new BadRequest(`O produto dos módulos não muda depois de criado (${atual.nome}). Crie outro campo e desative este.`);
   conferirEscolhidosEm(outros, d, atual?.id ?? null);
+  conferirOrigens(outros, d, atual?.id ?? null);
   // o mesmo nome pode estar em produtos diferentes (2.3: o Horário de atendimento do LineChat e o do LinePBX)
   const igual = outros.find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome) && (c.produtoId ?? null) === (d.produtoId ?? null));
   if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
@@ -716,6 +721,18 @@ function conferirEscolhidosEm(outros: CampoPersonalizado[], d: CampoGravar, atua
     throw new BadRequest('O checklist dos módulos segue um campo de módulos deste painel, do mesmo produto, em que os módulos são escolhidos.');
   }
   if (atualId && outros.some((c) => c.escolhidosEm === atualId)) throw new BadRequest(`Outro campo segue ${d.nome}: ele continua sendo a escolha dos módulos.`);
+}
+
+/**
+ * De onde vêm os itens do checklist do card (2.4.8): campos deste painel, de um tipo que gera itens (o texto, o texto longo, a
+ * lista de uma opção e a de várias), e não ele mesmo.
+ */
+function conferirOrigens(outros: CampoPersonalizado[], d: CampoGravar, atualId: string | null) {
+  for (const id of d.origens) {
+    const o = outros.find((c) => c.id === id);
+    if (!o || o.id === atualId) throw new BadRequest('Os itens do checklist vêm de outros campos deste painel.');
+    if (!TIPOS_QUE_GERAM_ITENS.includes(o.tipo)) throw new BadRequest(`${o.nome} (${NOME_TIPO_CAMPO[o.tipo]}) não gera itens: escolha um texto, um texto longo ou uma lista.`);
+  }
 }
 
 /**
@@ -786,6 +803,7 @@ export async function criarCampo(app: FastifyInstance, painelId: string, d: Camp
     await tx.insert(ticketFields).values({
       id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: d.tipo === 'lista' && d.incluirNaHora,
       sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId, followsFieldId: d.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos, width: d.largura,
+      sourceFieldIds: d.tipo === 'checklist' ? d.origens : [],
     });
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
@@ -811,6 +829,7 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
     await tx.update(ticketFields).set({
       name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date(),
       section: d.parte, productId: d.produtoId, followsFieldId: antes.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos, width: d.largura,
+      sourceFieldIds: antes.tipo === 'checklist' ? d.origens : [],
     }).where(eq(ticketFields.id, id));
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
@@ -961,11 +980,71 @@ export async function restaurarCampo(app: FastifyInstance, id: string): Promise<
   if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw new BadRequest(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos: exclua um antes de restaurar.`);
   // a escolha dos módulos que ele seguia pode ter saído: volta sem seguir ninguém
   const segue = c0.escolhidosEm && outros.some((c) => c.id === c0.escolhidosEm) ? c0.escolhidosEm : null;
-  await db.update(ticketFields).set({ deletedAt: null, updatedAt: new Date(), sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, followsFieldId: segue })
+  // as origens do checklist do card (2.4.8) que saíram também
+  const origens = (c0.origens ?? []).filter((o) => outros.some((c) => c.id === o));
+  await db.update(ticketFields).set({ deletedAt: null, updatedAt: new Date(), sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, followsFieldId: segue, sourceFieldIds: origens })
     .where(eq(ticketFields.id, id));
   const c = (await carregarCampos(db, p.id)).find((x) => x.id === id)!;
   const [nome] = await nomesDosCampos(db, [c]);
   return { valor: c, resumo: `Restaurou o campo ${nome} no painel ${p.name}`, depois: campoParaAuditoria(c) };
+}
+
+/**
+ * A caixinha "Checklist na Implantação" ao lado do campo (2.4.8, o Luan: "quero que crie sozinho, quero que tenha um checkbox
+ * … ao lado de um campo de configuração que quando eu clicar automaticamente ele já abra um campo na parte de implantação"):
+ *  - ligar: cria, no grupo Implantação (que nasce no meio da ficha, se não existe), o Checklist do card "<campo> (implantação)",
+ *    do mesmo produto, com os itens vindos do campo. O que já tinha sido ligado e foi para os Excluídos volta (com as marcas
+ *    dos cards). Se já está ligado, nada muda;
+ *  - desligar: o checklist que só tira os itens dele vai para os Excluídos (volta pelo Restaurar, ou ligando de novo); o que
+ *    tira de outros campos também só deixa de tirar deste.
+ */
+export async function checklistNaImplantacao(app: FastifyInstance, id: string, ligar: boolean): Promise<Gravado<CampoPersonalizado | null>> {
+  const db = app.db;
+  const [linha] = await db.select().from(ticketFields).where(and(eq(ticketFields.id, id), isNull(ticketFields.deletedAt))).limit(1);
+  if (!linha) throw new NotFound('Campo');
+  const p = await linhaDoPainel(db, linha.panelId).catch(() => { throw new NotFound('Campo'); });
+  const campos = await carregarCampos(db, p.id);
+  const c = campos.find((x) => x.id === id)!;
+  const [nomeDoCampo] = await nomesDosCampos(db, [c]);
+  const ja = checklistLigadoNaImplantacao(c, campos);
+  if (!ligar) {
+    if (!ja) return { valor: null, resumo: `O campo ${nomeDoCampo} não tinha checklist na Implantação (nada mudou)` };
+    const resto = (ja.origens ?? []).filter((o) => o !== c.id);
+    if (resto.length) {
+      // o checklist também tira de outros campos: só deixa de tirar deste
+      await db.update(ticketFields).set({ sourceFieldIds: resto, updatedAt: new Date() }).where(eq(ticketFields.id, ja.id));
+      return { valor: null, resumo: `O checklist ${ja.nome} da Implantação deixou de tirar os itens de ${nomeDoCampo}`, antes: { origens: ja.origens }, depois: { origens: resto } };
+    }
+    const r = await excluirCampo(app, ja.id);
+    return { valor: null, resumo: `Desligou o checklist na Implantação de ${nomeDoCampo}: ${r.resumo.charAt(0).toLowerCase()}${r.resumo.slice(1)}`, antes: r.antes };
+  }
+  if (!podeLigarNaImplantacao(c)) {
+    throw new BadRequest(mesmoGrupo(c.parte, GRUPO_DA_IMPLANTACAO)
+      ? `${c.nome} já está na Implantação.`
+      : `${c.nome} (${NOME_TIPO_CAMPO[c.tipo]}) não gera itens: o checklist vem de um texto, um texto longo ou uma lista.`);
+  }
+  if (ja) return { valor: ja, resumo: `O checklist ${ja.nome} já estava na Implantação (nada mudou)` };
+  // o grupo Implantação no meio da ficha, se ainda não está nos grupos do painel
+  const ajustes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
+  const garantirGrupo = async () => {
+    if (ajustes.partes.some((g) => mesmoGrupo(g.nome, GRUPO_DA_IMPLANTACAO))) return false;
+    await db.update(ticketPanels).set({ settings: { ...ajustes, partes: [...ajustes.partes, { nome: GRUPO_DA_IMPLANTACAO, lugar: 'meio' }] }, updatedAt: new Date() })
+      .where(eq(ticketPanels.id, p.id));
+    return true;
+  };
+  // o que já tinha sido ligado e foi excluído volta, com as marcas dos cards (se o nome dele ainda está livre)
+  const excluido = checklistLigadoNaImplantacao(c, await carregarCampos(db, p.id, true));
+  if (excluido && !campos.some((x) => paraBusca(x.nome) === paraBusca(excluido.nome) && (x.produtoId ?? null) === (excluido.produtoId ?? null))) {
+    const r = await restaurarCampo(app, excluido.id);
+    const novoGrupo = await garantirGrupo();
+    return { valor: r.valor, resumo: `Ligou o checklist na Implantação de ${nomeDoCampo}: restaurou ${r.valor.nome}${novoGrupo ? ' (e criou o grupo Implantação)' : ''}`, depois: r.depois };
+  }
+  const r = await criarCampo(app, p.id, CampoGravarSchema.parse({
+    nome: nomeDoChecklistDaImplantacao(c, campos), tipo: 'checklist', parte: GRUPO_DA_IMPLANTACAO, produtoId: c.produtoId ?? null, origens: [c.id],
+    dica: `Os itens vêm de ${c.nome}${c.parte ? ` (${c.parte})` : ''}: marque conforme fizer na implantação.`,
+  }));
+  const novoGrupo = await garantirGrupo();
+  return { valor: r.valor, resumo: `Ligou o checklist na Implantação de ${nomeDoCampo}: ${r.resumo.charAt(0).toLowerCase()}${r.resumo.slice(1)}${novoGrupo ? ' (e criou o grupo Implantação)' : ''}`, depois: r.depois };
 }
 
 /**

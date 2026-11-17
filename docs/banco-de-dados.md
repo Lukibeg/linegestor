@@ -1124,6 +1124,7 @@ Um ASSUNTO, em árvore (até 3 níveis), de um painel. Só diz "o quê" (o tipo,
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `checklist` | texto | Os passos que entram no checklist do chamado quando ele ganha este assunto | obrigatório · padrão: [] · lista |
 | `aliases` | texto | De-para: os nomes da lista antiga que viram este assunto | obrigatório · padrão: [] · lista |
+| `resolution_minutes` | número inteiro | O prazo de solução do chamado com este assunto, em minutos úteis (2.4.8). Nulo: herda do assunto de cima; se ninguém acima tiver, o chamado fica sem prazo. | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 
@@ -1145,6 +1146,7 @@ Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, en
 | `follows_field_id` | texto | O checklist dos módulos (2.3): o campo de módulos de onde vêm as opções — só os marcados lá (a Curadoria) aparecem aqui (a Configuração). Nulo: o campo é a escolha. | — |
 | `accepts_attachments` | sim/não | Recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha (os do modelo Implantação: os da Curadoria) | obrigatório · padrão: false |
 | `width` | texto | A largura no grupo do meio da ficha (2.4.7): metade ou inteiro; nulo, pelo tipo (o texto longo, a linha inteira; o curto, metade) | — |
+| `source_field_ids` | JSON | De onde vêm os itens do Checklist do card (2.4.8): os ids dos campos deste painel cujo conteúdo vira item (cada linha da Lista de ramais da Curadoria). Vazio nos outros tipos e no checklist só com itens incluídos à mão. | obrigatório · padrão: [] |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `deleted_at` | data e hora | Excluído (2.4, o Luan: "eu quero poder excluir os campos e n só desativar"): some dos Ajustes, da ficha, do Abrir chamado e das regras, e o nome fica livre para outro campo. O que os chamados tinham fica guardado; volta com o Restaurar (Ajustes › Campos › Excluídos). Nulo: no painel. | — |
@@ -1211,6 +1213,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `external_ref` | texto | De onde veio, quando veio de outro sistema (2.0.3, decisão 0054): "helena:<id do card>" — o Trazer do Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único. | — |
 | `board_position` | número inteiro | O lugar na coluna do quadro que a equipe escolheu arrastando (2.1, nas etapas abertas do painel de Vendas): 1 é o primeiro. Nulo: ninguém arrumou depois que o chamado chegou na etapa (mudar de etapa apaga), e ele vai pela regra de sempre, antes dos arrumados. | — |
 | `field_marks` | JSON | Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção: {campo: {opção: {porId, porNome, em}}}. O valor do campo (as marcadas) continua em `custom_fields`; desmarcar tira a marca. | obrigatório · padrão: {} |
+| `field_lists` | JSON | Os itens dos campos Checklist do card (2.4.8), pelo id do campo: {campo: [{id, texto, feito, porId, em, doAssunto}]}. Cada card monta a sua lista (os ramais do telefone mudam de cliente para cliente), ao contrário das caixinhas, que são as mesmas em todos os cards do painel. O valor do campo em `custom_fields` fica vazio. | obrigatório · padrão: {} |
 | `source_ticket_id` | texto | A negociação que abriu este card na implantação (2.3, a etapa que abre a implantação no painel de Vendas). Uma negociação abre um card só (fora da lixeira). | — |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |

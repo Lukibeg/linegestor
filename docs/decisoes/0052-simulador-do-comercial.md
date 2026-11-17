@@ -370,3 +370,21 @@ vem, isso ai vc já deveria contabilizar no simulador"*.
   casos (o da Clínica SOS; o sem prazo com a ativação combinada, os aparelhos vendidos, alugados e comprados parcelado; só a
   ativação combinada; e sem condições).
 - As condições mudam só na ficha da negociação; a simulação aberta lê de novo quando abre.
+
+## 2.4.8 — O LineChat (Helena) é um item só na tabela dos custos mensais
+
+O Luan (17/11), com o print do **Da tabela** dos Custos mensais (os sete custos da Helena, um embaixo do outro) e do quadro
+do LineChat: *"Sobre o Helena, não precisa ter essa quantidade de itens, apenas o item Helena, e eu já possa fazer todas
+essas edições nas opções, como já tem lá: usuários, canais não oficiais, agentes."*
+
+- **Na tabela da simulação, a Helena é um item só: LineChat (Helena).** Os sete custos dela (a licença, os usuários, os canais
+  oficiais e os não oficiais, os contatos ativos, a transcrição e os agentes; `ehCustoDoLineChat`) não aparecem mais um a um.
+  O item põe o LineChat no cenário, igual ao "+ produto" (`cenarioComProdutos`: o produto, o preço por produto e as linhas do
+  modelo do LineChat), fecha o painel e mostra o quadro. Com o LineChat no cenário, o item sai da lista.
+- **O quadro do LineChat ganha os contatos ativos no mês e a transcrição de áudio** como campos (eram "outros", que só
+  apareciam quando custavam): seis quantidades, em três colunas. Eles começam vazios, e a linha entra da tabela quando a
+  pessoa põe uma quantidade (`mudarQuantidadeDoLineChat`, como os outros). A frase da licença diz os 5.000 contatos inclusos
+  ("inclui a licença base: 3 usuários, 1 canal oficial e 5.000 contatos ativos no mês").
+- **A tabela de custos (Simulador › Ajustes) continua com os sete**: é lá que se muda o preço e as faixas da Helena. O modelo
+  LineChat (Helena) do "Do modelo" também continua.
+- A conta, o Excel e o que está guardado não mudam: por baixo, continuam as mesmas linhas da tabela da Helena.

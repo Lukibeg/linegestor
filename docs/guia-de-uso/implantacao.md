@@ -55,14 +55,34 @@ Voltar a negociação e mover de novo não abre outro card.
   com a conta. Quem cuida dos chamados muda ali mesmo: **Editar as caixinhas** › Nova pasta, Incluir caixinha, as setas
   (levam a caixinha de uma pasta para a outra), a lixeira (desde o 2.4, exclui de verdade: some de todos os cards, mesmo
   dos que a marcaram; o campo pode ficar sem nenhuma) › Salvar. Vale para todos os cards do painel.
+- **O checklist do card (2.4.8).** O que muda de cliente para cliente (os ramais a configurar no telefone, os do
+  softphone) vai num campo do tipo **Checklist do card**: cada card monta a sua lista na ficha. Escreva um item e Enter, ou
+  **cole a lista** (cada linha vira um item; o botão diz **Incluir 3**). Marque conforme faz (cada item mostra quem marcou e
+  quando); o lápis corrige o texto e o × tira. A lista vazia conta como uma coisa por fazer na parte; cada item conta como
+  um. Pedido numa etapa, o campo só está feito com itens, todos marcados.
+- **O checklist na Implantação, com um clique.** Em Configurar › Campos, marque **Checklist na Implantação** ao lado de um
+  campo (a Lista de ramais, por exemplo): o Gestor cria sozinho, na aba Implantação, o **Lista de ramais (implantação)**, com
+  um item por linha. Desmarcar manda esse checklist para os Excluídos; marcar de novo traz de volta, com as marcas.
+- **Os itens que vêm de outros campos.** Na janela do checklist, **Os itens vêm de**: marque, por exemplo, a **Lista de
+  ramais** da Curadoria (e outros campos, se o checklist junta mais de um). Cada linha dela vira um item no checklist (numa lista de várias, cada opção escolhida; num texto
+  curto ou numa lista de uma opção, um item com o nome do campo). A Curadoria mudou a lista? O checklist acompanha: o que
+  entrou aparece, o que saiu some, e o que já foi marcado continua marcado. Para corrigir o texto, mude na Lista de ramais.
+  O **×** tira o item só daquele card (a Lista de ramais não muda): ele vai para **Tirados deste card**, com o **Voltar**.
 - **Todos os produtos.** Cada parte mostra um bloco para cada produto do card; o que ainda não tem campo naquela parte
   (o VoiceNet, por exemplo) aparece vazio, com o aviso.
 - **Os anexos.** Cada campo da Curadoria tem o **Anexar**: imagens, PDF, Word, Excel, até 30 MB cada. A Configuração e os
   Testes ficam sem (o Recebe anexos, em Painéis › Ajustes › Campos, liga em qualquer campo; nas caixinhas, o anexo vai
   no clipe de cada uma). A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
   Sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
-- Cada parte mostra a conta (**3 de 5**); a parte da etapa em que o card está fica aberta, e as outras abrem com um
-  clique. O cartão do quadro mostra a barrinha da parte da etapa.
+- **As abas (2.4.8).** As partes ficam em abas no meio da ficha: **Curadoria · Configuração · Testes · Implantação**. Cada
+  aba mostra a conta (**3/5**) ou o ✓ quando acabou, e a bolinha vermelha quando a próxima etapa pede algo dela. A ficha abre
+  na aba da etapa em que o card está (as etapas "Implantado - …" abrem a Implantação). A aba Implantação é um grupo como os
+  outros: crie em Configurar › Campos › **Novo grupo** (no meio da ficha).
+- **O cartão do quadro (2.4.8)** mostra o andamento de **todas as partes**, em qualquer etapa — uma barrinha para cada:
+  **azul** a da etapa em que o card está, **laranja** a que ficou para trás (a curadoria pela metade com o card já na
+  Configuração; a configuração faltando com o card no Implantado) e **cinza** a que ainda vem. A parte que acabou vira só
+  o **✓** com o nome, numa linha em cima. Vale para o painel da implantação (o que o Comercial abre, ou o que tem a etapa que
+  liga no cadastro); nos outros painéis, o cartão continua mostrando só a barrinha da parte da etapa.
 - **O que falta (2.4.4).** O campo que ainda falta tem uma **bolinha vermelha** antes do nome — o mesmo que a conta da
   parte conta. Nas caixinhas, a bolinha fica até a última ser marcada.
 - **O documento conta (2.4.4).** O campo com um arquivo anexado conta como preenchido, mesmo sem nada escrito: na conta da
@@ -103,7 +123,9 @@ E dois tipos novos: **Caixinhas** (o que já foi feito, com quem marcou e quando
 janela do campo) e **Módulos do produto** (os módulos do catálogo; o produto não muda depois de criado). Num campo de
 módulos, **Os módulos que aparecem** › **Só os marcados em …** faz dele o checklist de outro campo de módulos do mesmo
 produto. E, desde o 2.4, o tipo **Documento**: o arquivo anexado (conta como feito com o primeiro); o texto curto e o longo
-viram documento sem perder o que foi escrito.
+viram documento sem perder o que foi escrito. Desde o 2.4.8, o **Checklist do card**: a lista de tarefas que cada card monta
+(as caixinhas são as mesmas em todos os cards do painel; o checklist do card, não). Ele não pode ser pedido para abrir o
+chamado (a lista nasce depois), só para entrar nas etapas.
 
 E a opção **Recebe anexos**: com ela, o campo ganha o Anexar na ficha (nas caixinhas, o clipe de cada uma). No modelo
 Implantação, vem ligada nos campos da Curadoria.

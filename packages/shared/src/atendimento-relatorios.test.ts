@@ -21,11 +21,12 @@ const ctx: ContextoDosRelatorios = {
     { id: 'fechado', nome: 'Fechado', tipo: 'fechado', nivel: null, ordem: 6, ativa: true },
   ],
   assuntos: [
-    { id: 'ramal', paiId: null, nome: 'Ramal', ordem: 0, ativo: true },
+    // os prazos de solução (2.4.8): o Ramal com 20 h úteis (a Configuração e o Sem áudio herdam), a Criação com 8 h, a Operadora com 8 h
+    { id: 'ramal', paiId: null, nome: 'Ramal', ordem: 0, ativo: true, prazoSolucao: 20 * 60 },
     { id: 'ramal-conf', paiId: 'ramal', nome: 'Configuração', ordem: 0, ativo: true },
-    { id: 'ramal-conf-cria', paiId: 'ramal-conf', nome: 'Criação', ordem: 0, ativo: true },
+    { id: 'ramal-conf-cria', paiId: 'ramal-conf', nome: 'Criação', ordem: 0, ativo: true, prazoSolucao: 8 * 60 },
     { id: 'ramal-mudo', paiId: 'ramal', nome: 'Sem áudio', ordem: 1, ativo: true },
-    { id: 'op', paiId: null, nome: 'Operadora', ordem: 1, ativo: true },
+    { id: 'op', paiId: null, nome: 'Operadora', ordem: 1, ativo: true, prazoSolucao: 8 * 60 },
     { id: 'op-inc', paiId: 'op', nome: 'Incidente', ordem: 0, ativo: true },
   ],
   campos: [{ id: 'resp', nome: 'Responsabilidade', opcoes: [{ id: 'o-ing', nome: 'Ingline' }, { id: 'o-cli', nome: 'Cliente' }, { id: 'o-op', nome: 'Operadora' }, { id: 'o-for', nome: 'Fornecedor' }], ativo: true }],
@@ -67,7 +68,7 @@ const CHAMADOS: ChamadoParaRelatorios[] = [
     subidas: [{ em: em('2026-10-05', '17:50'), de: 1, para: 2, sentido: 'sobe', motivo: 'Precisa de acesso ao servidor', porId: 'luan' }],
     tempos: [{ minutos: 90, dia: '2026-10-06', pessoaId: 'marina' }],
   }),
-  // quarta 07/10, 9h: aberto, ninguém pegou; crítica (resposta vencida); sem assunto
+  // quarta 07/10, 9h: aberto, ninguém pegou; crítica; sem assunto (sem prazo, 2.4.8)
   chamadoParaRelatorios({ id: 'a3', codigo: 'SUP-3', etapaId: 'novo', criadoEm: em('2026-10-07', '09:00'), clienteId: 'norte', prioridade: 'critica', ultimaAtividadeEm: em('2026-10-07', '09:00') }),
   // terça 13/10, 10h: aberto no N2 (subiu às 11h), baixa (a solução venceu), parado desde o dia 13
   chamadoParaRelatorios({
@@ -77,7 +78,7 @@ const CHAMADOS: ChamadoParaRelatorios[] = [
     subidas: [{ em: em('2026-10-13', '11:00'), de: 1, para: 2, sentido: 'sobe', motivo: 'Defeito no aparelho', porId: 'luan' }],
     tempos: [{ minutos: 45, dia: '2026-10-13', pessoaId: 'luan' }],
   }),
-  // terça 20/10, 10h → quarta, 10h (10 h úteis = 1 dia útil); o mesmo assunto do a1, 15 dias depois; reaberto; respondido em 3 h (fora do prazo)
+  // terça 20/10, 10h → quarta, 10h (10 h úteis = 1 dia útil, além das 8 h da Criação); o mesmo assunto do a1, 15 dias depois; reaberto; respondido em 3 h
   chamadoParaRelatorios({
     id: 'a5', codigo: 'SUP-5', etapaId: 'resolvido', situacao: 'resolvido', criadoEm: em('2026-10-20', '10:00'), respondidoEm: em('2026-10-20', '13:00'), resolvidoEm: em('2026-10-21', '10:00'),
     responsavelId: 'marina', clienteId: 'aurora', assuntoId: 'ramal-conf-cria', prioridade: 'media', temSolucao: true, temCausa: true, reaberto: 1, repete: ['a1'],
@@ -190,12 +191,15 @@ describe('os relatórios do painel (outubro, até o dia 22)', () => {
     expect(r.chamados.find((c) => c.id === 'a1')).toMatchObject({ codigo: 'SUP-1', assunto: 'Ramal › Configuração › Criação', cliente: 'Clínica Aurora', etapa: 'Resolvido' });
   });
 
-  it('Prazo cumprido: a resposta do a5 passou do prazo; os vencidos agora são o a3 e o a4', () => {
+  it('Prazo cumprido (2.4.8, pelo prazo do assunto): a solução do a5 passou das 8 h da Criação; vencido agora só o a4 (o a3 não tem assunto)', () => {
     expect(r.prazo.resolvidos).toBe(3);
-    expect(r.prazo.resposta).toMatchObject({ comPrazo: 3, noPrazo: 2, pct: 67, antes: 50, foraIds: ['a5'] });
-    expect(r.prazo.solucao).toMatchObject({ comPrazo: 3, noPrazo: 3, pct: 100, antes: 100 });
-    expect(r.prazo.vencidosAgora.ids.sort()).toEqual(['a3', 'a4']);
-    expect(r.prazo.porPrioridade.map((l) => [l.prioridade, l.resolvidos])).toEqual([['critica', 0], ['alta', 1], ['media', 2], ['baixa', 0]]);
+    expect(r.prazo.solucao).toMatchObject({ comPrazo: 3, noPrazo: 2, pct: 67, antes: 100, foraIds: ['a5'] });
+    expect(r.prazo.vencidosAgora.ids).toEqual(['a4']);
+    expect(r.prazo.semPrazo.n).toBe(0);
+    // separado pelo assunto que dá o prazo: o a2 (Sem áudio, sem prazo próprio) conta no Ramal
+    expect(r.prazo.porAssunto.map((l) => [l.nome, l.prazo, l.resolvidos, l.noPrazo, l.foraIds])).toEqual([
+      ['Ramal › Configuração › Criação', 480, 2, 1, ['a5']], ['Ramal', 1200, 1, 1, []],
+    ]);
   });
 
   it('Relógio: mediana de 2 h úteis, 9 em 10 em até 1 dia útil, contra 11 h em setembro', () => {
@@ -275,7 +279,7 @@ describe('os relatórios do painel (outubro, até o dia 22)', () => {
     expect(r.arvore.chegaram).toBe(5);
     expect(r.arvore.semAssunto).toMatchObject({ n: 1, ids: ['a3'], abertos: 1 });
     const ramal = r.arvore.raiz[0]!;
-    expect(ramal).toMatchObject({ nome: 'Ramal', n: 4, abertos: 1, resolvidos: 3, mediana: 120, noPrazo: 3, comPrazo: 3 });
+    expect(ramal).toMatchObject({ nome: 'Ramal', n: 4, abertos: 1, resolvidos: 3, mediana: 120, noPrazo: 2, comPrazo: 3 });
     expect(ramal.filhos.map((f) => [f.nome, f.n])).toEqual([['Configuração', 3], ['Sem áudio', 1]]);
     expect(ramal.filhos[0]!.filhos.map((f) => [f.nome, f.n])).toEqual([['Criação', 2]]);
     expect(r.arvore.raiz).toHaveLength(1);
@@ -335,7 +339,8 @@ describe('os relatórios do painel (outubro, até o dia 22)', () => {
 
   it('A equipe, o tempo gasto e o chamado bem preenchido', () => {
     expect(r.equipe.linhas.map((l) => [l.nome, l.emAberto.n, l.vencidos.n, l.parados.n, l.resolvidos.n, l.mediana, l.escalonou])).toEqual([
-      ['Luan', 1, 1, 1, 1, 120, 2], ['Marina', 0, 0, 0, 2, 360, 0], ['Sem responsável', 1, 1, 1, 0, null, 0],
+      // o a3 (sem responsável) não tem assunto: sem prazo, não vence (2.4.8)
+      ['Luan', 1, 1, 1, 1, 120, 2], ['Marina', 0, 0, 0, 2, 360, 0], ['Sem responsável', 1, 0, 1, 0, null, 0],
     ]);
     expect(r.equipe.semanas).toHaveLength(8);
     expect(r.tempogasto).toMatchObject({ minutos: 165, lancamentos: 3 });
@@ -374,7 +379,7 @@ describe('os filtros', () => {
   });
   it('o painel que não conta prazo não tem prazo nenhum', () => {
     const r = rel({}, { painel: { ...ctx.painel, contaPrazo: false } });
-    expect(r.prazo.resposta.comPrazo).toBe(0);
+    expect(r.prazo.solucao.comPrazo).toBe(0);
     expect(r.prazo.vencidosAgora.n).toBe(0);
     expect(r.aplicaveis).not.toContain('prazo');
   });

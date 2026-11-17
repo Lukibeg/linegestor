@@ -38,6 +38,7 @@ import {
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO, MAX_BYTES_ANEXO_DO_CAMPO,
   type CampoPersonalizado, condicoesGuardadas, mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES,
+  listaDepois, itensDoChecklist, type AcaoNaLista, type ListasDosCampos,
 } from '@gestor/shared';
 import type { Tx } from './ajustes.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
@@ -853,7 +854,7 @@ async function conferirMovimento(
 ): Promise<'sobe' | 'desce' | null> {
   const painel = o.painel ?? e.painel;
   const dados = {
-    ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id), (await camposComAnexoDe(db, [e.t.id])).get(e.t.id)),
+    ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id), (await camposComAnexoDe(db, [e.t.id])).get(e.t.id), camposDoPainel(e.ctx, e.t.panelId, true)),
     ...(o.responsavelId !== undefined ? { responsavelId: o.responsavelId } : {}),
     // o motivo da perda vem junto com o marcar como perdido (o de antes, de uma perda desfeita, não vale)
     ...(para.resultado === 'perdido' ? { motivoPerda: o.venda?.motivoPerda ?? null } : {}),
@@ -1136,7 +1137,7 @@ export async function assumir(app: FastifyInstance, ator: Ator, ref: string, opt
   if (opts.mover !== false && e.painel.tipo !== 'vendas' && e.etapa?.tipo === 'entrada') {
     const alvo = etapaAoAssumir(e.painel.etapas, t.stageId);
     if (alvo) {
-      const dados = { ...dadosDaLinha(t, await minutosGastos(app.db, t.id), (await camposComAnexoDe(app.db, [t.id])).get(t.id)), responsavelId: ator.id };
+      const dados = { ...dadosDaLinha(t, await minutosGastos(app.db, t.id), (await camposComAnexoDe(app.db, [t.id])).get(t.id), camposDoPainel(e.ctx, t.panelId, true)), responsavelId: ator.id };
       if (!faltaParaEtapa(dados, alvo, { de: e.etapa, painel: e.painel }).length) para = alvo;
     }
   }
@@ -1642,6 +1643,36 @@ export async function mexerNoChecklist(app: FastifyInstance, ator: Ator, ref: st
   });
   await camposAosObservadores(app, ator, t, ['Checklist']);
   return { ...nada(t), resumo };
+}
+
+/**
+ * O checklist do card (2.4.8): incluir (cada linha colada vira um item), marcar, corrigir e tirar os itens de um campo
+ * Checklist do card. Cada card tem a sua lista; o histórico diz o campo ("incluiu em Ramais no telefone: 201, 202").
+ */
+export async function mexerNaListaDoCampo(app: FastifyInstance, ator: Ator, ref: string, campoId: string, d: AcaoNaLista): Promise<Feito> {
+  exigirTrabalhar(ator);
+  const e = await carregar(app, ator, ref);
+  const { t, ctx, agora } = e;
+  const c = camposDoPainel(ctx, t.panelId, true).find((x) => x.id === campoId);
+  if (!c) throw new NotFound('Campo do painel');
+  if (c.tipo !== 'checklist') throw new BadRequest(`${c.nome} não é um checklist do card.`);
+  const nome = nomeCompletoDoCampo(c, ctx.produtos);
+  const listas = (t.fieldLists as ListasDosCampos | null) ?? {};
+  // a lista como a ficha mostra: com os itens que vêm de outros campos (2.4.8), que aqui só se marcam
+  const campos = camposDoPainel(ctx, t.panelId, true);
+  const atual = itensDoChecklist(c, campos, t.customFields as ValoresDosCampos | null, listas[c.id]);
+  const nomeDaOrigem = (id: string) => { const o = campos.find((x) => x.id === id); return o ? `${nomeCompletoDoCampo(o, ctx.produtos)}${o.parte ? ` (${o.parte})` : ''}` : undefined; };
+  const r = listaDepois(atual, { nome }, d, pessoaDoAtor(ator), agora.toISOString(), newId, nomeDaOrigem);
+  if (!r.ok) throw new BadRequest(r.erro);
+  if (!r.mudou) return nada(t);
+  const novas: ListasDosCampos = { ...listas };
+  if (r.lista.length) novas[c.id] = r.lista; else delete novas[c.id];
+  await app.db.transaction(async (tx) => {
+    await tx.update(tickets).set({ fieldLists: novas, updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+    await registrarEvento(tx, t.id, 'checklist', ator, r.evento, e.quando());
+  });
+  await camposAosObservadores(app, ator, t, [nome]);
+  return { ...nada(t), resumo: `${r.resumo} (${t.code})` };
 }
 
 /** O tempo de trabalho (o dia é o de Brasília, se não vier). */

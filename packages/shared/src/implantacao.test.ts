@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type Obrigatorio } from './atendimento.js';
+import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, faltaParaEtapa, larguraDoCampo, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, tipoTroca, type CampoPersonalizado, type EtapaPainel, type ItemChecklist, type Obrigatorio } from './atendimento.js';
 import {
-  etapaDoFimDaImplantacao,
+  checklistLigadoNaImplantacao, nomeDoChecklistDaImplantacao, podeLigarNaImplantacao,
+  ehPainelDaImplantacao, etapaDoFimDaImplantacao, etapaEhDaParte, itensDoChecklist, linhasDaLista, listaDepois, listasEfetivas, partesNoCartao, textosDaOrigem,
   gruposDoPainel, gruposNaLateral, mesmoGrupo,
   MODELO_DA_IMPLANTACAO, opcaoDoModelo, modulosDoChecklist, modulosSemMarcar, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
   planoDaImplantacao, planoDoCadastro, progressoDasPartes, tituloDaImplantacao,
@@ -97,6 +98,55 @@ describe('as partes da ficha', () => {
     expect(parteDaEtapa(partes, 'configuracao')?.parte).toBe('Configuração');
     expect(parteDaEtapa(partes, 'Testes')).toBeNull();
     expect(parteDaEtapa(partes, null)).toBeNull();
+  });
+
+  // 2.4.8: no painel da implantação, o cartão mostra todas as partes; a que acabou, só o ✓
+  describe('no cartão do quadro', () => {
+    const ETAPAS = ['Stand By', 'Curadoria', 'Configuração', 'Implantado - Em acompanhamento', 'Implantado - Concluído'].map((nome, i) => ({ id: `e${i}`, nome }));
+    const PARTES = [
+      { parte: 'Curadoria', feitos: 4, total: 5 },
+      { parte: 'Configuração', feitos: 3, total: 15 },
+      // sem a etapa Testes neste painel: fica logo depois da Configuração
+      { parte: 'Testes', feitos: 0, total: 6 },
+      { parte: 'Vazia', feitos: 0, total: 0 },
+    ];
+    const momentos = (etapaId: string, partes = PARTES, todas = true) => partesNoCartao(partes, ETAPAS, etapaId, todas).map((p) => [p.parte, p.momento]);
+
+    it('fora da implantação, só a parte da etapa, como antes (cheia continua barra)', () => {
+      expect(momentos('e1', PARTES, false)).toEqual([['Curadoria', 'da-etapa']]);
+      expect(momentos('e3', PARTES, false)).toEqual([]);
+      expect(momentos('e1', [{ parte: 'Curadoria', feitos: 5, total: 5 }], false)).toEqual([['Curadoria', 'da-etapa']]);
+    });
+
+    it('na implantação, todas, em qualquer etapa: a da etapa, as que ficaram para trás e as que ainda vêm', () => {
+      expect(momentos('e1')).toEqual([['Curadoria', 'da-etapa'], ['Configuração', 'adiante'], ['Testes', 'adiante']]);
+      // na Configuração com a curadoria pela metade
+      expect(momentos('e2')).toEqual([['Curadoria', 'ficou'], ['Configuração', 'da-etapa'], ['Testes', 'adiante']]);
+      // implantado com a configuração e os testes faltando
+      expect(momentos('e3')).toEqual([['Curadoria', 'ficou'], ['Configuração', 'ficou'], ['Testes', 'ficou']]);
+      // no Stand By, nada ficou para trás; a parte sem nada a fazer não aparece
+      expect(momentos('e0')).toEqual([['Curadoria', 'adiante'], ['Configuração', 'adiante'], ['Testes', 'adiante']]);
+    });
+
+    it('a parte que acabou vira o ✓, mesmo a da etapa', () => {
+      const partes = [{ parte: 'Curadoria', feitos: 5, total: 5 }, { parte: 'Configuração', feitos: 15, total: 15 }, { parte: 'Testes', feitos: 2, total: 6 }];
+      expect(momentos('e2', partes)).toEqual([['Curadoria', 'feita'], ['Configuração', 'feita'], ['Testes', 'adiante']]);
+      expect(momentos('e4', partes)).toEqual([['Curadoria', 'feita'], ['Configuração', 'feita'], ['Testes', 'ficou']]);
+    });
+
+    it('o painel da implantação: o que tem a etapa que liga no cadastro, ou o que o Comercial abre', () => {
+      const etapa = (extra: Partial<EtapaPainel> = {}) => ({ id: 'x', nome: 'x', tipo: 'andamento', nivel: null, obrigatorios: [], avisar: [], resultado: null, ...extra }) as EtapaPainel;
+      const imp = { id: 'imp', tipo: 'gestao' as const, ativo: true, etapas: [etapa()] };
+      const suporte = { id: 'sup', tipo: 'gestao' as const, ativo: true, etapas: [etapa()] };
+      const comercial = { id: 'com', tipo: 'vendas' as const, ativo: true, etapas: [etapa({ abreImplantacao: 'imp' })] };
+      expect(ehPainelDaImplantacao(imp, [imp, suporte, comercial])).toBe(true);
+      expect(ehPainelDaImplantacao(suporte, [imp, suporte, comercial])).toBe(false);
+      // o Comercial desativado não conta; a etapa que liga no cadastro, sim
+      expect(ehPainelDaImplantacao(imp, [imp, { ...comercial, ativo: false }])).toBe(false);
+      expect(ehPainelDaImplantacao({ ...suporte, etapas: [etapa({ ligaNoCadastro: true })] }, [suporte])).toBe(true);
+      // um painel de Vendas nunca é
+      expect(ehPainelDaImplantacao({ ...comercial, etapas: [etapa({ ligaNoCadastro: true })] }, [comercial])).toBe(false);
+    });
   });
 
   it('as partes do painel, sem repetir, e o nome com o produto', () => {
@@ -405,5 +455,225 @@ describe('o anexo conta como preenchido no que a etapa pede (2.4.4)', () => {
     const etapa = { tipo: 'andamento' as const, obrigatorios: ['campo:chatbot' as Obrigatorio] };
     expect(faltaParaEtapa(dados, etapa)).toEqual(['campo:chatbot']);
     expect(faltaParaEtapa({ ...dados, camposComAnexo: ['chatbot'] }, etapa)).toEqual([]);
+  });
+});
+
+// 2.4.8: o checklist do card — cada card monta a sua lista (o Luan: "uma lista de ramais que tenho que configurar no telefone e
+// outra no soft phone isso varia ent n pode ser um check list fixo")
+describe('o checklist do card (2.4.8)', () => {
+  const item = (id: string, texto: string, feito = false) => ({ id, texto, feito, porId: feito ? 'u1' : null, em: feito ? '2026-11-13T12:00:00.000Z' : null, doAssunto: false });
+  const telefone = campo('tel', { nome: 'Ramais no telefone', tipo: 'checklist', parte: 'Configuração', produtoId: 'pbx' });
+  let n = 0;
+  const novoId = () => `i${++n}`;
+
+  it('cada linha colada vira um item, sem a marca de lista e sem as linhas em branco', () => {
+    expect(linhasDaLista('200 Recepção\n\n- 201 Reservas\r\n• 202 Governança\n  [ ] 203   Cozinha  \n1. 204 Bar\n[x] 205')).toEqual(['200 Recepção', '201 Reservas', '202 Governança', '203 Cozinha', '204 Bar', '205']);
+    expect(linhasDaLista(['a', 'b\nc'])).toEqual(['a', 'b', 'c']);
+    expect(linhasDaLista('x'.repeat(300))[0]).toHaveLength(200);
+  });
+
+  it('incluir: os que já estão na lista não entram de novo; o histórico diz o campo', () => {
+    const r = listaDepois([item('a', '200 Recepção')], telefone, { acao: 'incluir', textos: ['200 recepcao\n201 Reservas\n202 Governança'] }, 'u1', 'agora', novoId);
+    expect(r.ok && r.lista.map((i) => i.texto)).toEqual(['200 Recepção', '201 Reservas', '202 Governança']);
+    expect(r.ok && r.resumo).toBe('Incluiu 2 itens em Ramais no telefone');
+    expect(r.ok && textoDoEvento('checklist', r.evento)).toBe('incluiu em Ramais no telefone: 201 Reservas, 202 Governança');
+    expect(listaDepois([item('a', '200')], telefone, { acao: 'incluir', textos: ['200'] }, 'u1', 'agora', novoId)).toEqual({ ok: false, erro: 'Esses itens já estão na lista.' });
+    expect(listaDepois([], telefone, { acao: 'incluir', textos: ['  \n '] }, 'u1', 'agora', novoId)).toEqual({ ok: false, erro: 'Escreva o item.' });
+    const cheia = Array.from({ length: 199 }, (_, k) => item(`x${k}`, `ramal ${k}`));
+    expect(listaDepois(cheia, telefone, { acao: 'incluir', textos: ['novo 1\nnovo 2'] }, 'u1', 'agora', novoId)).toEqual({ ok: false, erro: 'A lista vai até 200 itens (já tem 199).' });
+  });
+
+  it('marcar guarda quem e quando; desmarcar tira; o mesmo clique duas vezes não muda nada', () => {
+    const r = listaDepois([item('a', '201')], telefone, { acao: 'marcar', itemId: 'a', feito: true }, 'u2', '2026-11-13T15:00:00.000Z', novoId);
+    expect(r.ok && r.lista[0]).toMatchObject({ feito: true, porId: 'u2', em: '2026-11-13T15:00:00.000Z' });
+    expect(r.ok && textoDoEvento('checklist', r.evento)).toBe('marcou em Ramais no telefone: 201');
+    const de = listaDepois(r.ok ? r.lista : [], telefone, { acao: 'marcar', itemId: 'a', feito: false }, 'u2', 'depois', novoId);
+    expect(de.ok && de.lista[0]).toMatchObject({ feito: false, porId: null, em: null });
+    expect(listaDepois([item('a', '201', true)], telefone, { acao: 'marcar', itemId: 'a', feito: true }, 'u2', 'x', novoId)).toMatchObject({ ok: true, mudou: false });
+    expect(listaDepois([], telefone, { acao: 'marcar', itemId: 'sumiu', feito: true }, 'u2', 'x', novoId).ok).toBe(false);
+  });
+
+  it('corrigir o texto (sem repetir outro item) e tirar', () => {
+    const lista = [item('a', '201'), item('b', '202', true)];
+    const r = listaDepois(lista, telefone, { acao: 'editar', itemId: 'b', texto: '202 Governança' }, 'u1', 'x', novoId);
+    expect(r.ok && r.lista[1]).toMatchObject({ texto: '202 Governança', feito: true, porId: 'u1' });
+    expect(r.ok && textoDoEvento('checklist', r.evento)).toBe('corrigiu em Ramais no telefone: "202" para "202 Governança"');
+    expect(listaDepois(lista, telefone, { acao: 'editar', itemId: 'b', texto: '201' }, 'u1', 'x', novoId)).toEqual({ ok: false, erro: '"201" já está na lista.' });
+    const t = listaDepois(lista, telefone, { acao: 'tirar', itemId: 'a' }, 'u1', 'x', novoId);
+    expect(t.ok && t.lista.map((i) => i.id)).toEqual(['b']);
+    expect(t.ok && textoDoEvento('checklist', t.evento)).toBe('tirou de Ramais no telefone: 201');
+    // o checklist do chamado continua como sempre
+    expect(textoDoEvento('checklist', { acao: 'incluiu', item: 'Testar' })).toBe('incluiu no checklist: Testar');
+    expect(textoDoEvento('checklist', { acao: 'tirou', item: 'Testar' })).toBe('tirou do checklist: Testar');
+  });
+
+  it('conta na parte: cada item; sem nenhum, um que falta', () => {
+    expect(contaDoCampo(telefone, null, null, null, [])).toEqual({ feitos: 0, total: 1 });
+    expect(contaDoCampo(telefone, null, null, null, [item('a', '1', true), item('b', '2')])).toEqual({ feitos: 1, total: 2 });
+    const campos = [...CAMPOS, telefone];
+    const [, conf] = progressoDasPartes(campos, ['pbx'], { 'conf-pbx': ['x', 'y'] }, [], [], { tel: [item('a', '1', true), item('b', '2'), item('c', '3', true)] });
+    expect(conf).toEqual({ parte: 'Configuração', feitos: 4, total: 5 });
+    // a bolinha do que falta: o checklist com item por marcar
+    const partes = partesDoChamado(campos, ['pbx'], { 'conf-pbx': ['x', 'y'] }, [], [], { tel: [item('a', '1')] });
+    expect(partes[1]!.faltam).toEqual(['tel']);
+  });
+
+  it('pedido numa etapa: só está feito com itens, todos marcados', () => {
+    const dados = {
+      tipoChamado: 'chamado' as const, clienteId: null, contatoNome: null, contatoTelefone: null, relato: null, descricao: null, assuntoId: null, tipo: null,
+      gravidade: null, alcance: null, prioridade: null, produtos: [], operadoras: [], responsavelId: 'u1', solucao: null, causa: null, validacao: null,
+      checklist: [], tempoMinutos: 0, campos: {},
+    };
+    const etapa = { tipo: 'andamento' as const, obrigatorios: ['campo:tel' as Obrigatorio] };
+    expect(faltaParaEtapa(dados, etapa)).toEqual(['campo:tel']);
+    expect(faltaParaEtapa({ ...dados, listas: { tel: [] } }, etapa)).toEqual(['campo:tel']);
+    expect(faltaParaEtapa({ ...dados, listas: { tel: [item('a', '1', true), item('b', '2')] } }, etapa)).toEqual(['campo:tel']);
+    expect(faltaParaEtapa({ ...dados, listas: { tel: [item('a', '1', true)] } }, etapa)).toEqual([]);
+  });
+
+  it('o campo: sem opções, sem incluir na hora, nunca pedido na abertura; o valor não entra pelo "alterar"', () => {
+    const c = CampoGravarSchema.parse({ nome: 'Ramais no softphone', tipo: 'checklist', opcoes: [{ nome: 'x', ativa: true }], incluirNaHora: true });
+    expect(c).toMatchObject({ opcoes: [], incluirNaHora: false });
+    expect(CampoGravarSchema.safeParse({ nome: 'Ramais', tipo: 'checklist', obrigatorioAoAbrir: true }).success).toBe(false);
+    expect(normalizarValorDoCampo(telefone, ['201'])).toEqual({ ok: false, erro: 'Ramais no telefone: inclua os itens pela ficha (o checklist do card)' });
+    expect(larguraDoCampo(telefone)).toBe('inteiro');
+  });
+});
+
+// 2.4.8: o checklist que vem dos campos das outras abas (o Luan: "quero que os campos de outras etapas que eu selecionar em
+// algum lugar gere esse checklist na implantação"), e a aba Implantação das etapas "Implantado - …"
+describe('o checklist do card gerado de outros campos (2.4.8)', () => {
+  const ramais = campo('ramais', { nome: 'Lista de ramais', tipo: 'texto_longo', parte: 'Curadoria' });
+  const ip = campo('ip', { nome: 'IP do cliente', tipo: 'texto', parte: 'Curadoria' });
+  const fila = campo('fila', { nome: 'Filas', tipo: 'lista_varios', parte: 'Curadoria', opcoes: [{ id: 'f1', nome: 'Vendas', ativa: true }, { id: 'f2', nome: 'Suporte', ativa: true }] });
+  const plano = campo('plano', { nome: 'Plano', tipo: 'lista', parte: 'Curadoria', opcoes: [{ id: 'p1', nome: 'Completo', ativa: true }] });
+  const data = campo('data', { nome: 'Data', tipo: 'data', parte: 'Curadoria' });
+  const imp = campo('imp', { nome: 'O que fazer', tipo: 'checklist', parte: 'Implantação', origens: ['ramais', 'ip', 'fila', 'plano', 'data', 'sumiu'] });
+  const CS = [ramais, ip, fila, plano, data, imp];
+  const valores = { ramais: '200 Recepção\n- 201 Reservas\n\n200 recepcao', ip: '189.45.12.90', fila: ['f2', 'f1'], plano: 'p1', data: '2026-11-20' };
+  const textos = (itens: { texto: string }[]) => itens.map((i) => i.texto);
+
+  it('cada linha do texto longo, cada opção escolhida; o texto curto e a lista de uma opção com o nome do campo', () => {
+    expect(textosDaOrigem(ramais, valores.ramais)).toEqual(['200 Recepção', '201 Reservas', '200 recepcao']);
+    expect(textosDaOrigem(fila, ['f2', 'f1', 'x'])).toEqual(['Suporte', 'Vendas']);
+    expect(textosDaOrigem(ip, ' 189.45.12.90 ')).toEqual(['IP do cliente: 189.45.12.90']);
+    expect(textosDaOrigem(plano, 'p1')).toEqual(['Plano: Completo']);
+    expect(textosDaOrigem(data, '2026-11-20')).toEqual([]);
+    expect(textosDaOrigem(ramais, '')).toEqual([]);
+  });
+
+  it('os que vêm primeiro (sem repetir), depois os incluídos à mão; a origem que saiu não conta', () => {
+    const manual = { id: 'm1', texto: 'Treinar a recepção', feito: false, porId: null, em: null, doAssunto: false };
+    const itens = itensDoChecklist(imp, CS, valores, [manual]);
+    expect(textos(itens)).toEqual(['200 Recepção', '201 Reservas', 'IP do cliente: 189.45.12.90', 'Suporte', 'Vendas', 'Plano: Completo', 'Treinar a recepção']);
+    expect(itens.map((i) => i.origem ?? null)).toEqual(['ramais', 'ramais', 'ip', 'fila', 'fila', 'plano', null]);
+    // o id do que veio é o mesmo a cada leitura (a marca não se perde)
+    expect(itensDoChecklist(imp, CS, valores, [])[0]!.id).toBe(itens[0]!.id);
+    expect(itens[0]!.id).toMatch(/^g-/);
+    // o campo de origem desativado não dá nada
+    expect(textos(itensDoChecklist(imp, [{ ...ramais, ativo: false }, imp], valores, []))).toEqual([]);
+  });
+
+  it('a marca fica com o item; o que sai da origem some; o incluído à mão com o mesmo texto passa a ser do campo', () => {
+    let lista = itensDoChecklist(imp, CS, { ramais: '200 Recepção\n201 Reservas' }, [{ id: 'm', texto: '201 reservas', feito: true, porId: 'u1', em: 'x', doAssunto: false }]);
+    expect(lista.map((i) => [i.texto, i.feito, i.origem])).toEqual([['200 Recepção', false, 'ramais'], ['201 Reservas', true, 'ramais']]);
+    const r = listaDepois(lista, imp, { acao: 'marcar', itemId: lista[0]!.id, feito: true }, 'u2', 'agora', () => 'n');
+    lista = r.ok ? r.lista : [];
+    // a curadoria tirou o 201 e pôs o 202: o 200 continua marcado, o 201 some, o 202 chega por fazer
+    const depois = itensDoChecklist(imp, CS, { ramais: '200 RECEPÇÃO\n202 Governança' }, lista);
+    expect(depois.map((i) => [i.texto, i.feito, i.porId])).toEqual([['200 RECEPÇÃO', true, 'u2'], ['202 Governança', false, null]]);
+    // sem origens, os que vieram saem e ficam os incluídos à mão
+    expect(itensDoChecklist({ ...imp, origens: [] }, CS, valores, [...lista, { id: 'm2', texto: 'à mão', feito: false, porId: null, em: null, doAssunto: false }]).map((i) => i.texto)).toEqual(['à mão']);
+  });
+
+  it('o que veio de outro campo se corrige lá; incluir à mão o que já veio não repete', () => {
+    const lista = itensDoChecklist(imp, CS, valores, []);
+    const nome = (id: string) => (id === 'ramais' ? 'Lista de ramais (Curadoria)' : undefined);
+    expect(listaDepois(lista, imp, { acao: 'editar', itemId: lista[0]!.id, texto: 'outro' }, 'u', 'x', () => 'n', nome))
+      .toEqual({ ok: false, erro: 'Esse item vem de Lista de ramais (Curadoria): para corrigir, mude lá.' });
+    expect(listaDepois(lista, imp, { acao: 'incluir', textos: ['201 RESERVAS'] }, 'u', 'x', () => 'n')).toEqual({ ok: false, erro: 'Esses itens já estão na lista.' });
+  });
+
+  // o Luan: "tem que ter um xzinho se eu quiser remover algum item"
+  it('o × tira do card o que veio de outro campo: fica guardado como tirado, fora da conta, e volta', () => {
+    let lista = itensDoChecklist(imp, CS, valores, []);
+    const r201 = lista[1]!;
+    lista = (listaDepois(lista, imp, { acao: 'marcar', itemId: r201.id, feito: true }, 'u', 'x', () => 'n') as { lista: ItemChecklist[] }).lista;
+    const t = listaDepois(lista, imp, { acao: 'tirar', itemId: r201.id }, 'u', 'x', () => 'n');
+    expect(t.ok && textoDoEvento('checklist', t.evento)).toBe('tirou de O que fazer: 201 Reservas');
+    lista = t.ok ? t.lista : [];
+    expect(lista.find((i) => i.id === r201.id)).toMatchObject({ tirado: true, feito: true });
+    // a leitura seguinte (a linha continua na Lista de ramais) não traz de volta; a conta não conta
+    const relida = itensDoChecklist(imp, CS, valores, lista);
+    expect(relida.find((i) => i.id === r201.id)?.tirado).toBe(true);
+    expect(contaDoCampo(imp, null, null, null, relida)).toEqual({ feitos: 0, total: 5 });
+    // tirado não se marca; o Voltar traz como estava; incluir o mesmo texto também traz de volta
+    expect(listaDepois(relida, imp, { acao: 'marcar', itemId: r201.id, feito: false }, 'u', 'x', () => 'n')).toEqual({ ok: false, erro: 'Esse item foi tirado da lista: traga de volta antes.' });
+    const v = listaDepois(relida, imp, { acao: 'voltar', itemId: r201.id }, 'u', 'x', () => 'n');
+    expect(v.ok && v.lista.find((i) => i.id === r201.id)).toEqual(expect.objectContaining({ feito: true, texto: '201 Reservas' }));
+    expect(v.ok && 'tirado' in v.lista.find((i) => i.id === r201.id)!).toBe(false);
+    expect(v.ok && textoDoEvento('checklist', v.evento)).toBe('trouxe de volta em O que fazer: 201 Reservas');
+    const inc = listaDepois(relida, imp, { acao: 'incluir', textos: ['201 reservas\nNovo'] }, 'u', 'x', () => 'n2');
+    expect(inc.ok && inc.lista.filter((i) => !i.tirado).map((i) => i.texto)).toEqual(['200 Recepção', '201 Reservas', 'IP do cliente: 189.45.12.90', 'Suporte', 'Vendas', 'Plano: Completo', 'Novo']);
+    // a etapa: o tirado não é pedido
+    const dados = {
+      tipoChamado: 'chamado' as const, clienteId: null, contatoNome: null, contatoTelefone: null, relato: null, descricao: null, assuntoId: null, tipo: null,
+      gravidade: null, alcance: null, prioridade: null, produtos: [], operadoras: [], responsavelId: 'u1', solucao: null, causa: null, validacao: null,
+      checklist: [], tempoMinutos: 0, campos: {},
+    };
+    const so201 = [{ ...r201, feito: false, tirado: true }, { id: 'm', texto: 'x', feito: true, porId: 'u', em: 'x', doAssunto: false }];
+    expect(faltaParaEtapa({ ...dados, listas: { imp: so201 } }, { tipo: 'andamento', obrigatorios: ['campo:imp' as Obrigatorio] })).toEqual([]);
+    // sai da origem: some, mesmo tirado
+    expect(itensDoChecklist(imp, CS, { ramais: '200 Recepção' }, lista).some((i) => i.id === r201.id)).toBe(false);
+  });
+
+  it('a conta da parte e as listas da ficha já trazem os que vieram', () => {
+    const partes = partesDoChamado(CS, [], valores, [], [], {});
+    expect(partes.find((p) => p.nome === 'Implantação')).toMatchObject({ feitos: 0, total: 6 });
+    expect(Object.keys(listasEfetivas(CS, valores, {}))).toEqual(['imp']);
+    expect(listasEfetivas(CS, {}, {})).toEqual({});
+  });
+
+  it('o campo grava as origens sem repetir; nos outros tipos, nenhuma', () => {
+    expect(CampoGravarSchema.parse({ nome: 'O que fazer', tipo: 'checklist', origens: ['a', 'b', 'a'] }).origens).toEqual(['a', 'b']);
+    expect(CampoGravarSchema.parse({ nome: 'Obs', tipo: 'texto', origens: ['a'] }).origens).toEqual([]);
+  });
+
+  it('as etapas "Implantado - …" são da aba Implantação; nomes parecidos de verdade não casam', () => {
+    expect(etapaEhDaParte('Implantado - Em acompanhamento', 'Implantação')).toBe(true);
+    expect(etapaEhDaParte('Implantado - Comcluído', 'Implantação')).toBe(true);
+    expect(etapaEhDaParte('Configuração', 'configuracao')).toBe(true);
+    expect(etapaEhDaParte('Teste final', 'Testes')).toBe(true);
+    expect(etapaEhDaParte('Novos', 'Novidades')).toBe(false);
+    expect(etapaEhDaParte('Concluído', 'Configuração')).toBe(false);
+    expect(etapaEhDaParte('Stand By', 'Curadoria')).toBe(false);
+    // no cartão: a Implantação é a da etapa nas duas etapas "Implantado"; os Testes (sem etapa) ficaram para trás
+    const etapas = ['Stand By', 'Curadoria', 'Configuração', 'Implantado - Em acompanhamento', 'Implantado - Concluído'].map((nome, i) => ({ id: `e${i}`, nome }));
+    const partes = [{ parte: 'Curadoria', feitos: 5, total: 5 }, { parte: 'Configuração', feitos: 1, total: 3 }, { parte: 'Testes', feitos: 0, total: 2 }, { parte: 'Implantação', feitos: 2, total: 9 }];
+    const m = (e: string) => partesNoCartao(partes, etapas, e, true).map((p) => [p.parte, p.momento]);
+    expect(m('e3')).toEqual([['Curadoria', 'feita'], ['Configuração', 'ficou'], ['Testes', 'ficou'], ['Implantação', 'da-etapa']]);
+    expect(m('e4')).toEqual([['Curadoria', 'feita'], ['Configuração', 'ficou'], ['Testes', 'ficou'], ['Implantação', 'da-etapa']]);
+    expect(m('e2')).toEqual([['Curadoria', 'feita'], ['Configuração', 'da-etapa'], ['Testes', 'adiante'], ['Implantação', 'adiante']]);
+  });
+});
+
+// 2.4.8: a caixinha "Checklist na Implantação" ao lado do campo
+describe('o checklist na Implantação ligado pelo campo (2.4.8)', () => {
+  const ramais = campo('ramais', { nome: 'Lista de ramais', tipo: 'texto_longo', parte: 'Curadoria', produtoId: 'pbx' });
+  it('só um texto ou uma lista, fora da Implantação', () => {
+    expect(podeLigarNaImplantacao(ramais)).toBe(true);
+    expect(podeLigarNaImplantacao({ tipo: 'lista_varios', parte: null })).toBe(true);
+    expect(podeLigarNaImplantacao({ tipo: 'data', parte: 'Curadoria' })).toBe(false);
+    expect(podeLigarNaImplantacao({ tipo: 'texto', parte: 'implantacao' })).toBe(false);
+  });
+  it('acha o checklist ligado e dá o nome, com um número se já existe', () => {
+    const chk = campo('chk', { nome: 'Lista de ramais (implantação)', tipo: 'checklist', parte: 'Implantação', origens: ['ramais'], produtoId: 'pbx' });
+    expect(checklistLigadoNaImplantacao(ramais, [ramais, chk])?.id).toBe('chk');
+    expect(checklistLigadoNaImplantacao(ramais, [ramais, { ...chk, parte: 'Configuração' }])).toBeNull();
+    expect(nomeDoChecklistDaImplantacao(ramais, [ramais])).toBe('Lista de ramais (implantação)');
+    expect(nomeDoChecklistDaImplantacao(ramais, [ramais, chk])).toBe('Lista de ramais (implantação) 2');
+    // de outro produto não conta; o nome cabe nas 40 letras
+    expect(nomeDoChecklistDaImplantacao(ramais, [{ ...chk, produtoId: 'chat' }])).toBe('Lista de ramais (implantação)');
+    expect(nomeDoChecklistDaImplantacao({ nome: 'Configurações especiais do cliente xyz', produtoId: null }, [])).toHaveLength(40);
   });
 });
