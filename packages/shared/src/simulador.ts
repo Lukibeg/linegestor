@@ -296,7 +296,8 @@ export const CUSTOS_DA_HELENA: CustoDaTabela[] = [
 /**
  * O modelo do LineChat: a licença e as quatro quantidades do quadro do LineChat (`LINECHAT_DO_SIMULADOR`), com o que
  * vem na licença (3 usuários e 1 canal oficial). Os contatos ativos e a transcrição saíram do modelo em 21/10 (o
- * Luan só quer as quatro quantidades) e ficam na tabela.
+ * Luan só quer as quatro quantidades); desde o 2.4.8 são campos do quadro, que começam vazios (a linha entra
+ * quando a pessoa põe uma quantidade).
  */
 export const MODELO_DA_HELENA: ModeloDeSimulacao = {
   id: 'linechat-helena', nome: 'LineChat (Helena)', produto: 'linechat',
@@ -323,27 +324,30 @@ export const LINECHAT_DO_SIMULADOR = {
   produto: 'linechat',
   /** a licença base: entra sozinha, com 1 */
   licenca: 'helena-licenca',
-  /** as quatro quantidades, na ordem do quadro */
+  /**
+   * as quantidades, na ordem do quadro. Os contatos ativos e a transcrição viraram campos no 2.4.8 (o Luan, 17/11:
+   * "não precisa ter essa quantidade de itens, apenas o item Helena, e eu já possa fazer todas essas edições nas
+   * opções"): a tabela mostra só o LineChat, e tudo da Helena se mexe aqui.
+   */
   campos: [
     { custoId: 'helena-usuarios', rotulo: 'Usuários', um: 'usuário', varios: 'usuários' },
     { custoId: 'helena-canais', rotulo: 'Canais oficiais', um: 'canal oficial', varios: 'canais oficiais' },
     { custoId: 'helena-zapi', rotulo: 'Canais não oficiais', um: 'canal não oficial', varios: 'canais não oficiais' },
     { custoId: 'helena-agentes', rotulo: 'Agentes de IA', um: 'agente de IA', varios: 'agentes de IA' },
-  ],
-  /** as outras linhas da tabela da Helena: no quadro só quando custam algo (as simulações de antes de 21/10) */
-  outros: [
-    { custoId: 'helena-contatos', rotulo: 'Contatos ativos no mês' },
-    { custoId: 'helena-transcricao', rotulo: 'Transcrição de áudio' },
+    { custoId: 'helena-contatos', rotulo: 'Contatos ativos no mês', um: 'contato ativo no mês', varios: 'contatos ativos no mês' },
+    { custoId: 'helena-transcricao', rotulo: 'Transcrição de áudio (usuários)', um: 'usuário com transcrição', varios: 'usuários com transcrição' },
   ],
 } as const;
 
-const IDS_DO_LINECHAT: readonly string[] = [LINECHAT_DO_SIMULADOR.licenca, ...LINECHAT_DO_SIMULADOR.campos.map((x) => x.custoId), ...LINECHAT_DO_SIMULADOR.outros.map((x) => x.custoId)];
+const IDS_DO_LINECHAT: readonly string[] = [LINECHAT_DO_SIMULADOR.licenca, ...LINECHAT_DO_SIMULADOR.campos.map((x) => x.custoId)];
+/** O custo da tabela é da Helena (o LineChat)? Na tabela da simulação, eles entram juntos, pelo item do LineChat (2.4.8). */
+export const ehCustoDoLineChat = (custoId: string) => IDS_DO_LINECHAT.includes(custoId);
 /** A linha é do quadro do LineChat (um custo da tabela da Helena)? */
 export const ehLinhaDoLineChat = (l: Pick<LinhaDoCenario, 'custoId'>) => !!l.custoId && IDS_DO_LINECHAT.includes(l.custoId);
 /** O cenário leva o LineChat (o quadro aparece)? */
 export const temLineChat = (c: Pick<CenarioDaSimulacao, 'produtos'>) => c.produtos.includes(LINECHAT_DO_SIMULADOR.produto);
 
-/** Uma das quatro quantidades do quadro: a linha dela (nula = ainda não está no cenário), a quantidade e o custo do mês. */
+/** Uma das quantidades do quadro: a linha dela (nula = ainda não está no cenário), a quantidade e o custo do mês. */
 export type CampoDoLineChat = {
   custoId: string;
   rotulo: string;
@@ -369,11 +373,9 @@ export type QuadroDoLineChat = {
   /** a licença base, quando está no cenário */
   licenca: { linhaId: string; custo: number } | null;
   campos: CampoDoLineChat[];
-  /** as outras linhas da Helena que custam algo (os contatos acima de 5.000, a transcrição) */
-  outros: Array<{ linhaId: string; rotulo: string; nome: string; qtd: number; unidade: string | null; custo: number }>;
   /** as linhas que o quadro mostra ou soma: saem da lista dos custos mensais */
   linhas: string[];
-  /** o total do LineChat no mês (centavos): a licença, as quantidades e os outros */
+  /** o total do LineChat no mês (centavos): a licença e as quantidades */
   total: number;
 };
 
@@ -401,12 +403,9 @@ export function quadroDoLineChat(c: CenarioDaSimulacao, k: Pick<ContasDoCenario,
       falta: ls.some((l) => custoDa.get(l.id)?.falta), foraDaTabela: !ls.length && !!a && !a.custos.some((y) => y.id === x.custoId),
     };
   });
-  const outros = LINECHAT_DO_SIMULADOR.outros.flatMap((x) => de(x.custoId).map((l) => ({ l, rotulo: x.rotulo })))
-    .map(({ l, rotulo }) => ({ linhaId: l.id, rotulo, nome: l.nome, qtd: l.qtd, unidade: l.unidade, custo: custoDa.get(l.id)?.custo ?? 0 }))
-    .filter((x) => x.custo > 0);
   return {
     licenca: lic.length ? { linhaId: lic[0]!.id, custo: custo(lic) } : null,
-    campos, outros,
+    campos,
     linhas: doLineChat.map((l) => l.id),
     total: custo(doLineChat),
   };

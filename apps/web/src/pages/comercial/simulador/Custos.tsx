@@ -12,13 +12,18 @@
  *
  * O LineChat (2.0.3; o Luan, 21/10: "eu só quero colocar quantidade de canais oficiais, usuários, canais n oficiais,
  * agentes de ia, e vc já me dar o total como é na planilha deles"): com o produto LineChat no cenário, os Custos
- * mensais abrem com o quadro do LineChat — as quatro quantidades, o custo de cada uma e o total do mês. As linhas da
+ * mensais abrem com o quadro do LineChat — as quantidades, o custo de cada uma e o total do mês. As linhas da
  * tabela da Helena saem da lista (o quadro mostra e soma) e as faixas não aparecem (valem por trás, nos Ajustes).
+ *
+ * A tabela dos custos mensais (2.4.8; o Luan, 17/11: "não precisa ter essa quantidade de itens, apenas o item Helena,
+ * e eu já possa fazer todas essas edições nas opções"): os sete custos da Helena viram um item só, o LineChat
+ * (Helena), que põe o LineChat no cenário (como o "+ produto") e abre o quadro, agora com os contatos ativos e a
+ * transcrição de áudio também.
  */
 import { useMemo, useState } from 'react';
 import { Layers, ListPlus, MessagesSquare, PackagePlus, Plus, Repeat, Search, Wallet, X } from 'lucide-react';
 import {
-  AJUDA_DA_MODALIDADE, AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_PARCELAS_DA_COMPRA, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE,
+  LINECHAT_DO_SIMULADOR, ehCustoDoLineChat, AJUDA_DA_MODALIDADE, AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_PARCELAS_DA_COMPRA, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE,
   NOME_DO_GRUPO, NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, UM_CUSTO_DO_GRUPO, dividirEmParcelas, ehLinhaDoLineChat, ehPercentual, linhaDaTabela, linhaNova, linhasDoModelo,
   mudarQuantidadeDoLineChat, paraBusca, percentual, precoDaUnidade, quadroDoLineChat, textoDasFaixasDePreco, textoDosInclusos,
   type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type CustoDaTabela, type GrupoDeCusto, type LinhaDoCenario, type QuadroDoLineChat, type TipoDeCusto,
@@ -43,10 +48,13 @@ export function valorDoCusto(c: Pick<CustoDaTabela, 'tipo' | 'valor' | 'faixas' 
   return `${precoDaUnidade(c.valor)} ${cada}${c.tipo === 'mensal' ? ' por mês' : c.tipo === 'unica' ? ', uma vez' : ''}`;
 }
 
-/** `nomeDoProduto`: com dois produtos ou mais, cada linha diz de qual produto veio (a instalação do LinePBX e a do LineChat). */
-export function OsCustos({ c, k, ajustes, mudar, podeEditar, nomeDoProduto }: {
+/**
+ * `nomeDoProduto`: com dois produtos ou mais, cada linha diz de qual produto veio (a instalação do LinePBX e a do LineChat).
+ * `porOLineChat`: pôr o LineChat no cenário (o item LineChat da tabela dos custos mensais, 2.4.8).
+ */
+export function OsCustos({ c, k, ajustes, mudar, podeEditar, nomeDoProduto, porOLineChat }: {
   c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean;
-  nomeDoProduto?: (codigo: string) => string;
+  nomeDoProduto?: (codigo: string) => string; porOLineChat?: () => void;
 }) {
   const mudarLinha = (id: string, m: Partial<LinhaDoCenario>) => mudar({ linhas: c.linhas.map((l) => (l.id === id ? { ...l, ...m } : l)) });
   const tirar = (id: string) => mudar({ linhas: c.linhas.filter((l) => l.id !== id) });
@@ -72,7 +80,7 @@ export function OsCustos({ c, k, ajustes, mudar, podeEditar, nomeDoProduto }: {
       <div className="mt-3 flex flex-col gap-4">
         {GRUPOS_DE_CUSTO.map((g) => (
           <GrupoDeCustos key={g} grupo={g} c={c} k={k} ajustes={ajustes} podeEditar={podeEditar} nomeDoProduto={c.produtos.length > 1 ? nomeDoProduto : undefined}
-            mudarLinha={mudarLinha} tirar={tirar} incluir={incluir} mudar={mudar} />
+            mudarLinha={mudarLinha} tirar={tirar} incluir={incluir} mudar={mudar} porOLineChat={porOLineChat} />
         ))}
       </div>
     </section>
@@ -83,10 +91,10 @@ export function OsCustos({ c, k, ajustes, mudar, podeEditar, nomeDoProduto }: {
  * Um grupo de custos (o investimento ou os mensais), num quadro com a cor dele: a faixa do alto com o nome, o que
  * entra nele e o total; a tabela e o "digitar" dele; as linhas.
  */
-function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, nomeDoProduto, mudarLinha, tirar, incluir, mudar }: {
+function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, nomeDoProduto, mudarLinha, tirar, incluir, mudar, porOLineChat }: {
   grupo: GrupoDeCusto; c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador; podeEditar: boolean; nomeDoProduto?: (codigo: string) => string;
   mudarLinha: (id: string, m: Partial<LinhaDoCenario>) => void; tirar: (id: string) => void; incluir: (novas: LinhaDoCenario[]) => void;
-  mudar: (m: Partial<CenarioDaSimulacao>) => void;
+  mudar: (m: Partial<CenarioDaSimulacao>) => void; porOLineChat?: () => void;
 }) {
   // o quadro do LineChat (nos custos mensais, com o produto LineChat no cenário): as linhas dele saem da lista
   const quadro = grupo === 'mensal' ? quadroDoLineChat(c, k, ajustes) : null;
@@ -116,8 +124,9 @@ function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, nomeDoProduto, mudarL
       <div className="px-2.5 pb-2">
         {podeEditar && (
           <div className="flex flex-wrap gap-1.5 pt-2 -ml-1.5">
-            {/* com o quadro do LineChat, os custos da Helena ficam nele (não entram de novo pela tabela) */}
-            <DaTabela grupo={grupo} custos={ajustes.custos.filter((x) => GRUPO_DO_TIPO[x.tipo] === grupo && !(quadro && ehLinhaDoLineChat({ custoId: x.id })))} incluir={(x) => incluir([linhaDaTabela(x)])} />
+            {/* os custos da Helena não entram um a um: o item LineChat põe o LineChat no cenário, e o quadro mexe em todos (2.4.8) */}
+            <DaTabela grupo={grupo} custos={ajustes.custos.filter((x) => GRUPO_DO_TIPO[x.tipo] === grupo && !ehCustoDoLineChat(x.id))} incluir={(x) => incluir([linhaDaTabela(x)])}
+              lineChat={grupo === 'mensal' && !quadro && porOLineChat ? { licenca: ajustes.custos.find((x) => x.id === LINECHAT_DO_SIMULADOR.licenca) ?? null, por: porOLineChat } : undefined} />
             <button type="button" className="btn-ghost btn-sm" onClick={() => incluir([linhaNova(TIPO_NOVO_DO_GRUPO[grupo])])} id={`simulador-digitar-${grupo}`}>
               <Plus size={14} /> Digitar um custo
             </button>
@@ -145,9 +154,9 @@ function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, nomeDoProduto, mudarL
 }
 
 /**
- * O quadro do LineChat: as quatro quantidades (usuários, canais oficiais, canais não oficiais e agentes de IA), o custo
- * de cada uma em letra pequena e o total do mês em destaque, como na planilha da Helena. A licença base entra
- * sozinha; os outros custos da Helena (os contatos acima de 5.000, a transcrição) só aparecem quando custam algo.
+ * O quadro do LineChat: as quantidades (usuários, canais oficiais, canais não oficiais, agentes de IA e, desde o 2.4.8,
+ * os contatos ativos no mês e os usuários com transcrição de áudio), o custo de cada uma em letra pequena e o total do
+ * mês em destaque, como na planilha da Helena. A licença base entra sozinha.
  */
 function QuadroLineChat({ q, c, ajustes, mudar, podeEditar }: {
   q: QuadroDoLineChat; c: CenarioDaSimulacao; ajustes: AjustesDoSimulador; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean;
@@ -171,7 +180,7 @@ function QuadroLineChat({ q, c, ajustes, mudar, podeEditar }: {
           <span className="block text-[11.5px] text-muted">o total do LineChat</span>
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-2.5">
+      <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-2.5">
         {q.campos.map((f) => (
           <label key={f.custoId} className="min-w-0" data-linechat={f.custoId}>
             <span className="block text-[12.5px] font-semibold text-ink-2 mb-1">{f.rotulo}</span>
@@ -180,14 +189,6 @@ function QuadroLineChat({ q, c, ajustes, mudar, podeEditar }: {
             <span className={`block mt-1 text-[11.5px] tabular-nums ${f.foraDaTabela ? 'text-signal' : 'text-muted'}`} data-campo="custo">
               {f.foraDaTabela ? 'fora da tabela de custos' : custoDoCampo(f.custo, f.incluso)}
             </span>
-          </label>
-        ))}
-        {q.outros.map((o) => (
-          <label key={o.linhaId} className="min-w-0 col-span-2" data-linechat-outro={o.linhaId}>
-            <span className="block text-[12.5px] font-semibold text-ink-2 mb-1 truncate" title={o.nome}>{o.rotulo}</span>
-            <CampoInteiro valor={o.qtd} onChange={(qtd) => mudar({ linhas: c.linhas.map((l) => (l.id === o.linhaId ? { ...l, qtd } : l)) })} aria-label={o.nome} disabled={!podeEditar} data-campo="qtd"
-              className="max-w-[calc(50%-6px)]" />
-            <span className="block mt-1 text-[11.5px] text-muted tabular-nums" data-campo="custo">{custoDoCampo(o.custo, false)}</span>
           </label>
         ))}
       </div>
@@ -302,26 +303,51 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar, produto }:
   );
 }
 
-/** A tabela dos Ajustes (os custos do grupo): um clique põe o custo, com o valor de hoje (o painel fica aberto para pôr outros). */
-function DaTabela({ grupo, custos, incluir }: { grupo: GrupoDeCusto; custos: CustoDaTabela[]; incluir: (c: CustoDaTabela) => void }) {
+/**
+ * A tabela dos Ajustes (os custos do grupo): um clique põe o custo, com o valor de hoje (o painel fica aberto para pôr outros).
+ * `lineChat` (2.4.8): o item LineChat (Helena), no lugar dos custos da Helena um a um — põe o LineChat no cenário e
+ * fecha o painel, para o quadro aparecer.
+ */
+function DaTabela({ grupo, custos, incluir, lineChat }: {
+  grupo: GrupoDeCusto; custos: CustoDaTabela[]; incluir: (c: CustoDaTabela) => void;
+  lineChat?: { licenca: CustoDaTabela | null; por: () => void };
+}) {
   const [busca, setBusca] = useState('');
   const [postos, setPostos] = useState<string[]>([]);
   const lista = useMemo(() => {
     const q = paraBusca(busca);
     return q ? custos.filter((c) => paraBusca(c.nome).includes(q)) : custos;
   }, [custos, busca]);
+  const mostrarLineChat = !!lineChat && (!busca.trim() || paraBusca('LineChat Helena').includes(paraBusca(busca)));
+  const porOLineChat = () => {
+    lineChat!.por();
+    // fecha o painel (o Popover fecha com o Esc) e mostra o quadro que acabou de abrir
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    setTimeout(() => document.getElementById('simulador-linechat')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
+  };
+  const total = custos.length + (lineChat ? 1 : 0);
   return (
     <Popover largura="w-[340px]" titulo={`Pôr um ${UM_CUSTO_DO_GRUPO[grupo]} da tabela`}
       botao={() => <span className="inline-flex items-center gap-1.5" id={`simulador-da-tabela-${grupo}`}><ListPlus size={14} /> Da tabela</span>}>
-      {!custos.length ? <p className="text-sm text-muted">A tabela não tem {grupo === 'fixo' ? 'custos de investimento' : 'custos mensais'}. Quem cuida dos painéis põe em Simulador › Ajustes.</p> : (
+      {!total ? <p className="text-sm text-muted">A tabela não tem {grupo === 'fixo' ? 'custos de investimento' : 'custos mensais'}. Quem cuida dos painéis põe em Simulador › Ajustes.</p> : (
         <div className="flex flex-col gap-2" id={`simulador-tabela-lista-${grupo}`}>
-          {custos.length > 6 && (
+          {total > 6 && (
             <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
               <input className="input pl-8 py-1.5" placeholder="Procurar" value={busca} onChange={(e) => setBusca(e.target.value)} aria-label="Procurar na tabela" autoFocus />
             </div>
           )}
           <ul className="flex flex-col -mx-1">
+            {mostrarLineChat && (
+              <li>
+                <button type="button" className="w-full text-left px-2 py-1.5 rounded-md hover:bg-surface-2" onClick={porOLineChat} data-custo="linechat" id="simulador-tabela-linechat">
+                  <span className="text-[13px] font-semibold text-ink inline-flex items-center gap-1.5"><MessagesSquare size={14} className="text-turquesa" aria-hidden /> LineChat (Helena)</span>
+                  <span className="block text-[12px] text-muted">
+                    Por mês · a licença base{lineChat!.licenca?.valor != null ? ` (${precoDaUnidade(lineChat!.licenca.valor)})` : ''} e, no quadro do LineChat, os usuários, os canais, os agentes de IA, os contatos ativos e a transcrição
+                  </span>
+                </button>
+              </li>
+            )}
             {lista.map((c) => (
               <li key={c.id}>
                 <button type="button" className="w-full text-left px-2 py-1.5 rounded-md hover:bg-surface-2" onClick={() => { incluir(c); setPostos((p) => [...p, c.id]); }} data-custo={c.id}>
@@ -331,7 +357,7 @@ function DaTabela({ grupo, custos, incluir }: { grupo: GrupoDeCusto; custos: Cus
                 </button>
               </li>
             ))}
-            {!lista.length && <li className="text-[13px] text-muted px-2 py-1">Nada com "{busca}".</li>}
+            {!lista.length && !mostrarLineChat && <li className="text-[13px] text-muted px-2 py-1">Nada com "{busca}".</li>}
           </ul>
         </div>
       )}
