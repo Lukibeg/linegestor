@@ -18,7 +18,7 @@ import type { z } from 'zod';
 import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { newId, products, ticketFields, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, MODELO_DA_IMPLANTACAO, temOpcoesEscritas,
+  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, MODELO_DA_IMPLANTACAO, opcoesDaCaixinhaUnica, temOpcoesEscritas,
   ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL, problemaNasEtapasDoTipo,
   lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, TIPOS_QUE_GERAM_ITENS, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
@@ -90,11 +90,11 @@ async function conferirPessoas(db: Db, ids: string[]) {
 const painelParaAuditoria = (p: Painel) => ({
   nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, tipo: p.tipo, acesso: p.acesso, pessoas: p.pessoas, ajustes: p.ajustes, ativo: p.ativo,
 });
-const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean }) =>
+const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean; abreFaturamento?: string | null }) =>
   ({
     nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar, ...(e.resultado ? { resultado: e.resultado } : {}),
     ...(e.abreImplantacao ? { abreImplantacao: e.abreImplantacao } : {}), ...(e.ligaNoCadastro ? { ligaNoCadastro: true } : {}),
-    ...(e.recebeImplantacao ? { recebeImplantacao: true } : {}),
+    ...(e.recebeImplantacao ? { recebeImplantacao: true } : {}), ...(e.abreFaturamento ? { abreFaturamento: e.abreFaturamento } : {}),
   });
 /** O tipo do painel guardado (Gestão, se for de antes do 2.0.1). */
 const tipoDaLinha = (p: { kind: string }): TipoDePainel => (p.kind === 'vendas' ? 'vendas' : 'gestao');
@@ -171,10 +171,13 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     // os motivos de perda e a meta (do painel de Vendas): sem o campo no pedido, ficam como estão
     motivosDePerda: etiquetasUnicas(d.ajustes.motivosDePerda ?? guardados?.motivosDePerda ?? deFabrica.motivosDePerda),
     metaMensal: d.ajustes.metaMensal !== undefined ? d.ajustes.metaMensal : guardados?.metaMensal ?? null,
+    // 2.4.11: o prazo escrito em cada chamado e a marca do chamado parado (sem o campo no pedido, ficam como estão)
+    prazoManual: d.ajustes.prazoManual ?? guardados?.prazoManual ?? false,
+    horasSemAtualizacao: d.ajustes.horasSemAtualizacao !== undefined ? d.ajustes.horasSemAtualizacao : guardados?.horasSemAtualizacao ?? null,
     // os grupos de campos (2.4) mudam na aba Campos: salvar o painel não mexe neles (o novo do modelo nasce com os do modelo)
     partes: guardados?.partes ?? modelo?.ajustes.partes ?? [],
     // a negociação não tem prazo nem fecha sozinha
-    ...(tipo === 'vendas' ? { contaPrazo: false, fecharSozinhoDias: null } : {}),
+    ...(tipo === 'vendas' ? { contaPrazo: false, fecharSozinhoDias: null, prazoManual: false } : {}),
     // a implantação também não (2.3: leva o tempo dela)
     ...(modelo ? { contaPrazo: modelo.ajustes.contaPrazo, fecharSozinhoDias: modelo.ajustes.fecharSozinhoDias } : {}),
   };
@@ -187,9 +190,9 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     const novoId = newId();
     // as etapas da janela (todas novas: um painel novo não tem etapa nenhuma ainda) ou as de fábrica do tipo
     const etapas: EtapaGravar[] = d.etapas ?? (
-      modelo ? modelo.etapas.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: false }))
-        : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS.map((e) => ({ ...e, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false }))
-          : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false }))
+      modelo ? modelo.etapas.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: false, abreFaturamento: null }))
+        : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS.map((e) => ({ ...e, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false, abreFaturamento: null }))
+          : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false, abreFaturamento: null }))
     ).map((e) => ({ ...e, avisar: [] }));
     const plano = await planejarEtapas(db, novoId, etapas, {}, validos, tipo);
     // o painel de Vendas nasce com os campos do Comercial do Helena (CNPJ, contatos, origem, indicação); o da
@@ -337,7 +340,7 @@ export type PlanoDasEtapas = {
   atuais: LinhaDaEtapa[];
   porId: Map<string, LinhaDaEtapa>;
   /** a lista final, na ordem: as novas já com o id que vão ter */
-  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null; abreImplantacao: string | null; ligaNoCadastro: boolean; recebeImplantacao: boolean }>;
+  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null; abreImplantacao: string | null; ligaNoCadastro: boolean; recebeImplantacao: boolean; abreFaturamento: string | null }>;
   saem: LinhaDaEtapa[];
   destino: Record<string, string>;
 };
@@ -375,6 +378,8 @@ export async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGrav
     ligaNoCadastro: tipo === 'gestao' && !!e.ligaNoCadastro,
     // e a de Vendas, fora do Ganho e do Perdido, que recebe a negociação quando a implantação termina
     recebeImplantacao: tipo === 'vendas' && !e.resultado && !!e.recebeImplantacao,
+    // 2.4.11: a de Gestão que abre o card de faturamento (no administrativo)
+    abreFaturamento: tipo === 'gestao' ? e.abreFaturamento ?? null : null,
   }));
   if (novas.filter((e) => e.recebeImplantacao).length > 1) throw new BadRequest('Só uma etapa recebe a negociação quando a implantação termina: escolha uma.');
   await conferirPessoas(db, novas.flatMap((e) => e.avisar));
@@ -386,6 +391,19 @@ export async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGrav
       const p = achados.find((x) => x.id === id);
       if (!p || id === painelId) throw new BadRequest('O painel da implantação escolhido numa etapa não existe mais. Recarregue a tela e escolha de novo.');
       if (p.kind === 'vendas') throw new BadRequest(`A implantação abre num painel de chamados (Gestão): o ${p.nome} é de Vendas.`);
+    }
+  }
+  // 2.4.11: o card de faturamento abre noutro painel de Gestão (o administrativo), que existe
+  const doFaturamento = [...new Set(novas.map((e) => e.abreFaturamento).filter((x): x is string => !!x))];
+  if (doFaturamento.length) {
+    const achados = await db.select({ id: ticketPanels.id, nome: ticketPanels.name, kind: ticketPanels.kind, dono: ticketPanels.ownerId }).from(ticketPanels)
+      .where(and(inArray(ticketPanels.id, doFaturamento), isNull(ticketPanels.deletedAt)));
+    for (const id of doFaturamento) {
+      const p = achados.find((x) => x.id === id);
+      if (!p) throw new BadRequest('O painel do faturamento escolhido numa etapa não existe mais. Recarregue a tela e escolha de novo.');
+      if (id === painelId) throw new BadRequest('O card de faturamento abre noutro painel (o administrativo), não neste.');
+      if (p.kind === 'vendas') throw new BadRequest(`O card de faturamento abre num painel de chamados (Gestão): o ${p.nome} é de Vendas.`);
+      if (p.dono) throw new BadRequest(`O card de faturamento abre num painel da equipe: o ${p.nome} é um painel pessoal.`);
     }
   }
 
@@ -421,6 +439,7 @@ export async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, a
     const campos = {
       name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: e.ordem, requiredFields: e.obrigatorios, notifyUserIds: e.avisar, outcome: e.resultado,
       opensPanelId: e.abreImplantacao, activatesProducts: e.ligaNoCadastro, receivesImplementation: e.recebeImplantacao,
+      opensBillingPanelId: e.abreFaturamento,
     };
     if (e.nova) await tx.insert(ticketStages).values({ id: e.id, panelId: painelId, ...campos });
     else await tx.update(ticketStages).set(campos).where(eq(ticketStages.id, e.id));
@@ -468,7 +487,8 @@ export function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   const ajustadas = ficaram.filter((e) => {
     const a = porId.get(e.id)!;
     return a.kind !== e.tipo || (a.level ?? null) !== e.nivel || (a.outcome ?? null) !== e.resultado || !mesmaLista(a.requiredFields, e.obrigatorios) || !mesmaLista(a.notifyUserIds, e.avisar)
-      || (a.opensPanelId ?? null) !== e.abreImplantacao || a.activatesProducts !== e.ligaNoCadastro || a.receivesImplementation !== e.recebeImplantacao;
+      || (a.opensPanelId ?? null) !== e.abreImplantacao || a.activatesProducts !== e.ligaNoCadastro || a.receivesImplementation !== e.recebeImplantacao
+      || (a.opensBillingPanelId ?? null) !== e.abreFaturamento;
   }).map((e) => e.nome);
   const ordemAntes = atuais.filter((e) => ficaram.some((x) => x.id === e.id)).map((e) => e.id).join();
   const partes = [
@@ -481,7 +501,7 @@ export function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   ].filter(Boolean);
   return {
     partes,
-    antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds, resultado: e.outcome, abreImplantacao: e.opensPanelId, ligaNoCadastro: e.activatesProducts, recebeImplantacao: e.receivesImplementation })),
+    antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds, resultado: e.outcome, abreImplantacao: e.opensPanelId, ligaNoCadastro: e.activatesProducts, recebeImplantacao: e.receivesImplementation, abreFaturamento: e.opensBillingPanelId })),
     depois: novas.map(etapaParaAuditoria),
   };
 }
@@ -705,6 +725,8 @@ function conferirCampo(p: typeof ticketPanels.$inferSelect, outros: CampoPersona
   if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
   // o texto curto, o longo e o documento trocam entre si (2.4: "aqui tem q ter o tipo, documento"); os outros não
   if (atual && !tipoTroca(atual.tipo, d.tipo)) throw new BadRequest(`O tipo do campo ${atual.nome} (${NOME_TIPO_CAMPO[atual.tipo]}) não muda para ${NOME_TIPO_CAMPO[d.tipo]}. Crie outro campo e exclua este.`);
+  // a caixinha única (2.4.11): uma só, a "Feito", com o mesmo id de antes
+  if (d.tipo === 'feito') return opcoesDaCaixinhaUnica(atual?.opcoes ?? [], newId);
   if (!temOpcoesEscritas(d.tipo)) return [];
   return opcoesConferidas(d.tipo, d.opcoes, atual?.opcoes ?? []);
 }
@@ -1290,7 +1312,7 @@ export async function garantirPainelPessoal(app: FastifyInstance, ator: Ator): P
     await gravarPainel(app, ator, null, {
       nome: nomeDoPainelPessoal(nome), sigla, descricao: `As atividades de ${nome}`, cor: 'accent', tipo: 'gestao', acesso: 'escolhidos', pessoas: [ator.id], ativo: true,
       ajustes: { ...AJUSTES_DO_PAINEL_PESSOAL, camposDesligados: [...AJUSTES_DO_PAINEL_PESSOAL.camposDesligados] },
-      etapas: ETAPAS_DO_PAINEL_PESSOAL.map((e) => ({ ...e, avisar: [], resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false })),
+      etapas: ETAPAS_DO_PAINEL_PESSOAL.map((e) => ({ ...e, avisar: [], resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false, abreFaturamento: null })),
       destino: {}, modelo: null,
     }, { dono: ator.id });
   } catch (e) {

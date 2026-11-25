@@ -9,6 +9,9 @@
  *
  * As caixinhas em pastas (o Servidor, o Asterisk, o LinePBX Web…) ficam juntas, com a conta de cada pasta; quem cuida dos
  * chamados muda as caixinhas e as pastas ali mesmo, no "Editar as caixinhas" (vale para todos os cards do painel).
+ *
+ * Desde o 2.4.11, as caixinhas e os módulos começam recolhidos (o nome e a conta à vista; a setinha mostra tudo), e a caixinha
+ * única é uma linha só: a caixinha com o nome do campo, quem marcou e quando.
  */
 import { useMemo, useRef, useState } from 'react';
 import { Check, ChevronRight, Folder, ListChecks } from 'lucide-react';
@@ -18,15 +21,17 @@ import { Modal, Spinner, mensagemErro } from '../../../components/ui/index.js';
 import { useDepoisDeMudar } from '../comum.js';
 import { caixinhasParaGravar, EditorDasCaixinhas, pastasDoEditor, problemaNasPastas, type PastaRascunho } from '../ajustes/EditorDasCaixinhas.js';
 import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
-import { BolinhaDoQueFalta, ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
+import { BolinhaDoQueFalta, BotaoRecolher, ErroPerto, MarcaFalta, useAberta, useAcao, useCampoAberto } from './base.js';
 import { dataCompleta, emQuando } from './Cabecalho.js';
 
 const comoLista = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
 export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comTitulo?: boolean }) {
-  const { f, pode, cuida, opcoes: doModulo } = useAberta();
+  const { f, cuida, opcoes: doModulo } = useAberta();
   const acao = useAcao();
   const [editando, setEditando] = useState(false);
+  // começa recolhido (2.4.11): o nome e a conta à vista
+  const { aberto: mostra, alternar } = useCampoAberto(c.id);
   const doServidor = useMemo(() => comoLista(f.campos[c.id]), [f.campos, c.id]);
   // o que está na tela enquanto os cliques vão para o servidor (nulo: o que o servidor tem)
   const [naTela, setNaTela] = useState<string[] | null>(null);
@@ -68,23 +73,47 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
   const contam = opcoes.filter((o) => !fora.has(o.id));
   const feitos = contam.filter((o) => marcados.includes(o.id)).length;
   const podeEditar = cuida && c.tipo === 'caixinhas' && c.ativo;
+  // a caixinha única (2.4.11): uma linha só, sem recolher
+  if (c.tipo === 'feito') {
+    const o = c.opcoes.find((x) => x.ativa) ?? c.opcoes[0];
+    return (
+      <div id={`campo-c-${c.id}`} className="min-w-0 scroll-mt-24" data-caixinha-unica>
+        {o ? <CaixinhaUnica c={c} o={o} marcado={marcados.includes(o.id)} onTrocar={trocar} ocupado={acao.ocupado} />
+          : <p className="text-[13px] text-muted italic">{c.nome}: o campo está sem a caixinha (recarregue a tela).</p>}
+        <ErroPerto erro={acao.erro} />
+      </div>
+    );
+  }
+  // a escolha dos módulos não é tarefa: a conta diz quantos foram escolhidos
+  const escolha = c.tipo === 'modulos' && !checklist;
+  const tudo = !escolha && contam.length > 0 && feitos === contam.length;
+  const recolhe = comTitulo;
+  const conteudo = `campo-c-${c.id}-caixinhas`;
   return (
-    <div id={`campo-c-${c.id}`} className="min-w-0 scroll-mt-24">
+    <div id={`campo-c-${c.id}`} className="min-w-0 scroll-mt-24" data-aberto={mostra || !recolhe ? '' : undefined}>
       {comTitulo && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
+        <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${mostra ? 'mb-1.5' : ''}`}>
           <BolinhaDoQueFalta campo={`campo:${c.id}`} />
-          <h3 className="font-display font-semibold text-[14.5px]">{c.nome}</h3>
-          {(c.tipo === 'caixinhas' || checklist) && contam.length > 0 && <span className="text-[12px] text-muted">{feitos} de {contam.length}</span>}
+          <h3 className="font-display font-semibold text-[14.5px] min-w-0">
+            <button type="button" className="text-left hover:underline decoration-dotted underline-offset-2" aria-expanded={mostra} aria-controls={conteudo} onClick={alternar}>{c.nome}</button>
+          </h3>
+          {contam.length > 0 && (escolha
+            ? <span className="text-[12px] text-muted tnum">{feitos ? `${feitos} ${feitos === 1 ? 'escolhido' : 'escolhidos'}` : 'nenhum escolhido'}</span>
+            : <span className={`text-[12px] tnum ${tudo ? 'text-ok font-medium' : 'text-muted'}`}>{feitos} de {contam.length}{tudo ? ' · feito' : ''}</span>)}
           <MarcaFalta campo={`campo:${c.id}`} />
           {acao.ocupado && <Spinner className="!w-3.5 !h-3.5" />}
-          {/* sem o Anexar do campo todo (2.3, o Luan: "nas configurações n precisa de ter anexar"): o anexo vai no clipe de cada caixinha */}
-          {podeEditar && (
-            <button type="button" className="btn-ghost btn-sm -my-1 ml-auto text-[12.5px]" onClick={() => setEditando(true)} title="Criar, renomear e tirar caixinhas e pastas (vale para todos os cards do painel)">
-              <ListChecks size={14} /> Editar as caixinhas
-            </button>
-          )}
+          <span className="ml-auto flex items-center gap-1">
+            {/* sem o Anexar do campo todo (2.3, o Luan: "nas configurações n precisa de ter anexar"): o anexo vai no clipe de cada caixinha */}
+            {podeEditar && mostra && (
+              <button type="button" className="btn-ghost btn-sm -my-1 text-[12.5px]" onClick={() => setEditando(true)} title="Criar, renomear e tirar caixinhas e pastas (vale para todos os cards do painel)">
+                <ListChecks size={14} /> Editar as caixinhas
+              </button>
+            )}
+            <BotaoRecolher aberto={mostra} alternar={alternar} nome={c.nome} conteudo={conteudo} />
+          </span>
         </div>
       )}
+      {(mostra || !recolhe) && <div id={conteudo} className="min-w-0">
       {c.dica && <p className="text-[12px] text-muted -mt-0.5 mb-2">{c.dica}</p>}
       {!opcoes.length ? (
         <p className="text-[13px] text-muted italic">
@@ -98,8 +127,50 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
       ) : (
         <ListaDeCaixinhas c={c} opcoes={opcoes} marcados={marcados} onTrocar={trocar} fora={fora} foraDe={fonte?.nome} />
       )}
+      </div>}
       <ErroPerto erro={acao.erro} />
       {editando && <JanelaDasCaixinhas c={c} onFechar={() => setEditando(false)} />}
+    </div>
+  );
+}
+
+/**
+ * A caixinha única (2.4.11): a caixinha com o nome do campo (a atividade) e, marcada, quem marcou e quando; o clipe dos anexos ao
+ * lado, como nas caixinhas.
+ */
+function CaixinhaUnica({ c, o, marcado, onTrocar, ocupado }: { c: CampoPersonalizado; o: OpcaoDoCampo; marcado: boolean; onTrocar: (id: string) => void; ocupado: boolean }) {
+  const { f, pode, opcoes: doModulo } = useAberta();
+  const anexos = useAnexosDe(c.id, o.id);
+  const m = f.marcas[c.id]?.[o.id];
+  const quem = m ? (m.porId ? doModulo.pessoas.find((p) => p.id === m.porId)?.nome ?? 'alguém que saiu' : m.porNome ?? 'uma integração') : null;
+  return (
+    <div className="group min-w-0">
+      <div className="flex items-start gap-1">
+        <label className={`flex flex-1 min-w-0 items-start gap-2.5 rounded-md px-1.5 py-1 -ml-1.5 ${pode ? 'cursor-pointer hover:bg-surface-2' : ''}`}>
+          <input type="checkbox" className="sr-only peer" checked={marcado} disabled={!pode} onChange={() => onTrocar(o.id)} aria-label={`${c.nome}: feito`} />
+          <span aria-hidden className={`mt-[3px] grid place-items-center w-[18px] h-[18px] rounded-[5px] border shrink-0 peer-focus-visible:ring-2 peer-focus-visible:ring-accent transition-colors ${
+            marcado ? 'bg-ok border-ok text-white' : 'border-line-strong bg-surface'}`}>
+            {marcado && <Check size={12} strokeWidth={3} />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <BolinhaDoQueFalta campo={`campo:${c.id}`} />
+              <span className="font-display font-semibold text-[14.5px] leading-snug">{c.nome}</span>
+              {marcado && <span className="text-[12px] text-ok font-medium">feito</span>}
+              <MarcaFalta campo={`campo:${c.id}`} />
+              {ocupado && <Spinner className="!w-3.5 !h-3.5" />}
+            </span>
+            {marcado && m && quem && (
+              <span className="block text-[11.5px] text-muted leading-tight mt-0.5" title={dataCompleta(m.em)}>{quem} · {emQuando(m.em)}</span>
+            )}
+            {c.dica && <span className="block text-[12px] text-muted mt-0.5">{c.dica}</span>}
+          </span>
+        </label>
+        {/* o clipe (só no campo que recebe anexos) fica claro até passar o mouse, como nas caixinhas */}
+        <BotaoAnexar campoId={c.id} opcaoId={o.id} rotulo={`Anexar em ${c.nome}`} soIcone
+          className={`mt-0.5 shrink-0 ${anexos.length ? '' : 'opacity-50 group-hover:opacity-100 focus-within:opacity-100'}`} />
+      </div>
+      {anexos.length > 0 && <div className="pl-[26px] pb-1"><ListaDeAnexos anexos={anexos} pequeno /></div>}
     </div>
   );
 }

@@ -11,8 +11,10 @@
  * "Abrir um problema a partir deste…"), que vira o primeiro incidente dele.
  *
  * O que o Luan pediu e está aqui:
- *  - ao escolher o cliente, os chamados recentes dele aparecem com "Reabrir este em vez de abrir
- *    outro": o cliente que volta à tarde com o mesmo ramal reabre o chamado da manhã;
+ *  - (até o 2.4.10, ao escolher o cliente, os chamados recentes dele apareciam com "Reabrir este em vez de abrir outro"; no
+ *    2.4.11 o Luan: "não precisa disso na hora de abrir o chamado" — saiu; reabrir continua na ficha do chamado);
+ *  - as imagens no relato e na descrição (2.4.11): o print com Ctrl+V na caixa, ou o botão Imagem; vão junto com o chamado;
+ *  - o prazo escrito (2.4.11): no painel que conta o prazo escrito em cada chamado, o dia e a hora do prazo;
  *  - a prioridade vem sugerida pela gravidade e pelo alcance (a matriz dos Ajustes › Prazos); trocar a
  *    sugerida grava sem pedir o motivo (2.2);
  *  - o cliente só recebe aviso quando o atendente marca (desmarcado por padrão);
@@ -38,14 +40,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, GitBranch, Layers, MessageCircle, MessagesSquare, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
+import { Check, ChevronDown, GitBranch, Layers, MessageCircle, MessagesSquare, Plus, Siren, UserRoundPlus, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
   acharContato, caminhoDoAssunto, emailValido, campoAparece, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
   paraBusca, prioridadeSugeridaDoPainel, valorPreenchido, MAX_LETRAS_DO_LINK_DA_CONVERSA, sessaoDaConversa,
+  MAX_IMAGENS_DE_UMA_VEZ, instanteLocal, prazoEscritoNoChamado, prazoEscritoLegivel,
   type CorEtiqueta,
-  type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
-  type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo, type ValoresDosProdutos,
+  type Alcance, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type ChamadoCriarEntrada,
+  type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TextoComImagem, type TipoChamado, type ValorDoCampo, type ValoresDosProdutos,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
@@ -55,13 +58,11 @@ import { JanelaContato, usePodeMexerNosContatos } from '../clientes/Contatos.js'
 import { SeletorDeEtiquetas } from './SeletorDeEtiquetas.js';
 import { PontoDoPainel } from './quadro/filtros.js';
 import {
-  assuntosEmPastas, CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
+  assuntosEmPastas, CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL,
   painelDe, telefoneLegivel, useAbrirChamado, useDepoisDeMudar, useFecharJanela, useFicha, useIncluirOpcao, useOpcoes, usePode,
 } from './comum.js';
+import { BotaoImagem, MiniaturasNovas, imagensColadas, lerImagens, type ImagemNova } from './ImagensDoTexto.js';
 import { ValorDaNegociacao, type ModoDoValor } from './venda.js';
-
-/** O motivo que o "Reabrir este" grava (o pedido do Luan: o cliente voltou com o mesmo problema). */
-const MOTIVO_REABRIR = 'O cliente voltou com o mesmo problema';
 
 /** Os campos que o formulário tem; o resto (solução, causa, checklist, tempo) só existe depois de aberto. */
 const CAMPOS_DO_FORMULARIO: CampoObrigatorio[] = [
@@ -122,6 +123,11 @@ type Form = {
   ativacaoValida: boolean;
   ativacoes: ValoresDosProdutos;
   ativacoesInvalidas: string[];
+  /** as imagens do relato e da descrição (2.4.11), que vão junto com o chamado */
+  imagens: Record<TextoComImagem, ImagemNova[]>;
+  /** o prazo escrito (2.4.11, no painel com o prazo escrito em cada chamado): o dia (AAAA-MM-DD) e a hora (HH:MM), em Brasília */
+  prazoDia: string;
+  prazoHora: string;
 };
 
 /**
@@ -143,8 +149,6 @@ export type AbrirNaJanela = {
   pai?: string; incidente?: string; painelId?: string; painelFixo?: boolean;
   /** aberto: o código do novo */
   onAberto: (codigo: string) => void;
-  /** em vez de abrir, reabriu um recente do cliente: o código dele */
-  onReaberto: (codigo: string) => void;
   onCancelar: () => void;
   /** a pessoa já escreveu alguma coisa (fechar a janela pergunta antes) */
   onEscreveu?: (sim: boolean) => void;
@@ -157,7 +161,7 @@ export function NovoChamadoNaJanela(p: AbrirNaJanela) {
  * O "Abrir chamado" do alto das telas do módulo, numa janela por cima da tela (o pedido do Luan na
  * prévia, em 14/10: "o abrir chamado tem que ser como pop up e não a tela toda"). A tela de baixo fica
  * como estava (o quadro com os filtros, a lista na mesma página); o endereço é o do Abrir chamado, e o
- * Voltar do navegador fecha a janela, como na ficha. Aberto (ou reaberto um recente), a janela vira a
+ * Voltar do navegador fecha a janela, como na ficha. Aberto, a janela vira a
  * ficha do chamado, por cima da mesma tela. Com algo escrito, fechar pergunta antes.
  */
 export function JanelaAbrirChamado() {
@@ -182,8 +186,7 @@ export function JanelaAbrirChamado() {
         </span>
       )}>
         <div id="janela-abrir-chamado">
-          <NovoChamadoNaJanela painelId={pedido} painelFixo onEscreveu={setEscreveu} onCancelar={fechar}
-            onAberto={abrirChamado} onReaberto={abrirChamado} />
+          <NovoChamadoNaJanela painelId={pedido} painelFixo onEscreveu={setEscreveu} onCancelar={fechar} onAberto={abrirChamado} />
         </div>
       </Modal>
       <Confirmar open={descartar} onClose={() => setDescartar(false)} onConfirm={() => { setDescartar(false); fecharJanela(); }} perigoso botao="Descartar"
@@ -265,6 +268,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       // é cliente pq a maioria dos casos vão ser assim"); nos chamados a escolha não aparece
       jaECliente: false, empresa: '', valor: null, valorValido: true,
       modoValor: 'unico', valores: {}, valoresInvalidos: [], ativacao: null, ativacaoValida: true, ativacoes: {}, ativacoesInvalidas: [],
+      imagens: { relato: [], descricao: [] }, prazoDia: '', prazoHora: '',
     };
   });
   const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
@@ -351,7 +355,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
 
   // não sair sem querer com o relato pela metade
   const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim() || f.empresa.trim() || f.valor !== null || f.ativacao !== null
-    || Object.keys(f.valores).length || Object.keys(f.ativacoes).length);
+    || Object.keys(f.valores).length || Object.keys(f.ativacoes).length || f.imagens.relato.length || f.imagens.descricao.length || f.prazoDia);
   const avisarEscreveu = useRef(naJanela?.onEscreveu);
   avisarEscreveu.current = naJanela?.onEscreveu;
   useEffect(() => { avisarEscreveu.current?.(escreveu); }, [escreveu]);
@@ -361,6 +365,38 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     window.addEventListener('beforeunload', aviso);
     return () => window.removeEventListener('beforeunload', aviso);
   }, [escreveu]);
+
+  // ---------- as imagens do relato e da descrição (2.4.11): esperam o Abrir; de uma vez, até 10 nos dois ----------
+  const [lendoImagem, setLendoImagem] = useState<TextoComImagem | null>(null);
+  const [avisoDaImagem, setAvisoDaImagem] = useState<{ campo: TextoComImagem; texto: string } | null>(null);
+  const todasAsImagens = [...f.imagens.relato, ...f.imagens.descricao];
+  const porImagens = async (campo: TextoComImagem, arquivos: File[]) => {
+    if (!arquivos.length) return;
+    setAvisoDaImagem(null);
+    setLendoImagem(campo);
+    const lidas = await lerImagens(arquivos, MAX_IMAGENS_DE_UMA_VEZ - todasAsImagens.length, todasAsImagens.reduce((t, i) => t + i.tamanho, 0));
+    setLendoImagem(null);
+    if (lidas.imagens.length) setF((x) => ({ ...x, imagens: { ...x.imagens, [campo]: [...x.imagens[campo], ...lidas.imagens] } }));
+    if (lidas.imagens.length) setMexeu(true);
+    if (lidas.problemas.length) setAvisoDaImagem({ campo, texto: lidas.problemas.join(' ') });
+  };
+  const tirarImagem = (campo: TextoComImagem, id: number) => setF((x) => ({ ...x, imagens: { ...x.imagens, [campo]: x.imagens[campo].filter((i) => i.id !== id) } }));
+  /** O Imagem e as miniaturas de um texto. */
+  const imagensDoCampo = (campo: TextoComImagem, nome: string) => (
+    <>
+      <MiniaturasNovas lista={f.imagens[campo]} onTirar={(id) => tirarImagem(campo, id)} />
+      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+        <BotaoImagem rotulo={`Pôr imagem em ${nome}`} id={`novo-${campo}-imagem`} ocupado={lendoImagem === campo} desativado={todasAsImagens.length >= MAX_IMAGENS_DE_UMA_VEZ} onEscolher={(xs) => void porImagens(campo, xs)} />
+        <span className="text-[11.5px] text-muted">ou cole o print com Ctrl+V na caixa</span>
+      </div>
+      {avisoDaImagem?.campo === campo && <p className="text-signal text-[12.5px] mt-1" role="status">{avisoDaImagem.texto}</p>}
+    </>
+  );
+
+  // ---------- o prazo escrito (2.4.11) ----------
+  const prazoEscrito = !vendas && prazoEscritoNoChamado(painel.ajustes);
+  const prazo = prazoEscrito && f.prazoDia ? instanteLocal(f.prazoDia, f.prazoHora || '18:00') : null;
+  const prazoInvalido = !!prazo && (Number.isNaN(prazo.getTime()) || prazo.getUTCFullYear() < 2020);
 
   /** Outro painel: o assunto e o tipo que não existem lá saem. */
   const trocarPainel = (id: string) => {
@@ -395,6 +431,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
     if (emailInvalido) { setErro('O e-mail do contato está errado: use o jeito nome@empresa.com.br.'); document.getElementById('novo-email')?.focus(); return; }
     if (conversa && !conversa.ok) { setErro(`A conversa no LineChat: ${conversa.erro}`); document.getElementById('novo-conversa')?.focus(); return; }
+    if (prazoInvalido) { setErro('O prazo vai com o dia e a hora, como 28/11/2026 às 18:00.'); document.getElementById('novo-prazo-dia')?.focus(); return; }
     if (vendas && !porProduto && !f.valorValido) { setErro('Escreva a mensalidade como 1.200,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
     if (vendas && !porProduto && !f.ativacaoValida) { setErro('Escreva a ativação como 1.500,00.'); document.getElementById('novo-valor-ativacao')?.focus(); return; }
     const errado = porProduto ? f.produtos.find((id) => f.valoresInvalidos.includes(id) || f.ativacoesInvalidas.includes(id)) : undefined;
@@ -445,6 +482,12 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       paiId: pai.data?.id ?? null,
       incidentes: tipoChamado === 'problema' && incidente.data ? [incidente.data.id] : [],
       origem: sessao ? 'botao' : 'manual',
+      // o prazo escrito (2.4.11) e as imagens do relato e da descrição (as do relato só no painel que usa o relato)
+      ...(prazoEscrito && prazo ? { prazo: prazo.toISOString() } : {}),
+      imagens: [
+        ...(!vendas && usa('relato') ? f.imagens.relato.map((i) => ({ campo: 'relato' as const, fileName: i.nome, conteudo: i.conteudo })) : []),
+        ...f.imagens.descricao.map((i) => ({ campo: 'descricao' as const, fileName: i.nome, conteudo: i.conteudo })),
+      ],
     };
     setEnviando(true);
     try {
@@ -463,31 +506,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       }
     } finally {
       setEnviando(false);
-    }
-  };
-
-  // ---------- reabrir um recente em vez de abrir outro ----------
-  const [reabrindo, setReabrindo] = useState<string | null>(null);
-  const [erroReabrir, setErroReabrir] = useState<{ id: string; msg: string } | null>(null);
-  const reabrir = async (c: CartaoChamado) => {
-    setReabrindo(c.id); setErroReabrir(null);
-    try {
-      let ficha: FichaChamado = await depois(api.atendimento.reabrir(c.id, { motivo: MOTIVO_REABRIR }));
-      // o que já foi escrito aqui não se perde: o relato novo vai como anotação do chamado reaberto
-      const relato = f.relato.trim();
-      let anotou = false;
-      if (relato) {
-        try { ficha = await depois(api.atendimento.anotar(c.id, { texto: `Relato do cliente ao voltar: ${relato}`, anexos: [] })); anotou = true; }
-        catch (e) { toast.push('erro', `${ficha.codigo} foi reaberto, mas o relato escrito aqui não entrou nas anotações: ${mensagemErro(e)}`); }
-      }
-      setMexeu(false);
-      toast.push('ok', `${ficha.codigo} reaberto${anotou ? ', com o relato novo nas anotações' : ''}`);
-      if (naJanela) naJanela.onReaberto(ficha.codigo);
-      else navigate(`/atendimento/${encodeURIComponent(ficha.codigo)}`);
-    } catch (e) {
-      setErroReabrir({ id: c.id, msg: mensagemErro(e) });
-    } finally {
-      setReabrindo(null);
     }
   };
 
@@ -628,10 +646,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             <JanelaContato clienteId={f.clienteId} clienteNome={nomeDoCliente} contato={null} inicial={janelaContato.inicial}
               onFechar={() => setJanelaContato(null)} onSalvo={(c) => { escolherContato(c); setJanelaContato(null); }} />
           )}
-          {/* "Reabrir este em vez de abrir outro" é dos chamados (a negociação nova é sempre nova) */}
-          {f.clienteId && !vendas && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
-            opcoes={opcoes} reabrindo={reabrindo} erro={erroReabrir} onReabrir={reabrir} levaRelato={!!f.relato.trim()}
-            onAbrirOutro={naJanela ? (codigo) => naJanela.onReaberto(codigo) : undefined} />}
         </Secao>}
 
         {/* ---------- o que aconteceu (na venda, a negociação) ---------- */}
@@ -686,14 +700,32 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             )}
             {!vendas && usa('relato') && <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
               <textarea className="input min-h-[96px]" id="novo-relato" value={f.relato} maxLength={20_000}
-                onChange={(e) => { mudar({ relato: e.target.value }); tirarFalta('relato'); }} />
+                onChange={(e) => { mudar({ relato: e.target.value }); tirarFalta('relato'); }}
+                onPaste={(e) => { const xs = imagensColadas(e); if (xs.length) void porImagens('relato', xs); }} />
+              {imagensDoCampo('relato', 'Relato do cliente')}
             </Rotulado>}
             {/* a descrição está sempre aqui (o pedido do Luan na prévia: "sempre vai ter a descrição") */}
             <Rotulado rotulo={vendas ? 'Sobre a negociação' : 'Descrição'} id="novo-descricao" obrigatorio={pede('descricao')} falta={falta('descricao')}
               dica={vendas ? 'O que o cliente precisa, quem decide, a concorrência, o que já foi conversado.' : 'O que já foi feito e os dados técnicos (ramal, número, IP, horário).'}>
               <textarea className="input min-h-[84px]" id="novo-descricao" value={f.descricao} maxLength={20_000}
-                onChange={(e) => { mudar({ descricao: e.target.value }); tirarFalta('descricao'); }} />
+                onChange={(e) => { mudar({ descricao: e.target.value }); tirarFalta('descricao'); }}
+                onPaste={(e) => { const xs = imagensColadas(e); if (xs.length) void porImagens('descricao', xs); }} />
+              {imagensDoCampo('descricao', vendas ? 'Sobre a negociação' : 'Descrição')}
             </Rotulado>
+            {/* o prazo escrito (2.4.11, o Luan: "tem q ter a opção do painel dos prazos serem manuais e serem preenchidos em cada chamado") */}
+            {prazoEscrito && (
+              <Rotulado rotulo="Prazo" id="novo-prazo" grupo erro={prazoInvalido ? 'Escreva o dia e a hora do prazo.' : undefined}
+                dica={prazo && !prazoInvalido ? `Vence em ${prazoEscritoLegivel(prazo)} (horário de Brasília). Dá para mudar depois, na ficha.`
+                  : `O painel ${painel.nome} conta o prazo escrito em cada chamado: o dia e a hora em que tem de estar resolvido. Sem ele, o chamado fica sem prazo até alguém escrever (na ficha).`}>
+                <div className="flex flex-wrap items-center gap-2" id="novo-prazo">
+                  <input className="input w-auto" id="novo-prazo-dia" type="date" value={f.prazoDia} aria-label="O dia do prazo"
+                    onChange={(e) => mudar({ prazoDia: e.target.value, prazoHora: f.prazoHora || (e.target.value ? '18:00' : '') })} />
+                  <input className="input w-auto" id="novo-prazo-hora" type="time" value={f.prazoHora} aria-label="A hora do prazo" disabled={!f.prazoDia}
+                    onChange={(e) => mudar({ prazoHora: e.target.value })} />
+                  {f.prazoDia && <button type="button" className="btn-ghost btn-sm" onClick={() => mudar({ prazoDia: '', prazoHora: '' })}>Sem prazo</button>}
+                </div>
+              </Rotulado>
+            )}
           </div>
         </Secao>
 
@@ -935,6 +967,19 @@ function CampoDoPainel({ c, valor, obrigatorio, falta, onChange }: {
           </select>
         </Rotulado>
       );
+    // a caixinha única (2.4.11): um botão só, o "Feito"
+    case 'feito': {
+      const o = ativas[0];
+      const feito = !!o && Array.isArray(valor) && valor.includes(o.id);
+      return (
+        <Rotulado {...comum} grupo>
+          <button type="button" id={id} aria-pressed={feito} disabled={!o} onClick={() => onChange(feito || !o ? null : [o.id])}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13.5px] ${feito ? 'border-ok bg-ok-soft text-ok font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+            <Check size={14} aria-hidden className={feito ? '' : 'opacity-40'} /> {feito ? 'Feito' : 'Marcar como feito'}
+          </button>
+        </Rotulado>
+      );
+    }
     case 'lista_varios':
     case 'caixinhas':
     case 'modulos': {
@@ -1003,63 +1048,6 @@ function ChamadoLigado({ rotulo, icone, consulta, referencia, opcoes, dica, apag
         {c.cliente && <span className="text-muted">· {c.cliente.nome}</span>}
       </div>
       <p className="text-[12px] text-muted">{dica}</p>
-    </div>
-  );
-}
-
-/**
- * Os chamados recentes do cliente (abertos, ou criados nos últimos 7 dias): o pedido do Luan — o
- * cliente que volta à tarde com o mesmo ramal reabre o chamado da manhã, em vez de abrir outro.
- */
-function Recentes({ cadastro, carregando, erroCarregar, opcoes, reabrindo, erro, onReabrir, levaRelato, onAbrirOutro }: {
-  cadastro: CadastroDoCliente | undefined; carregando: boolean; erroCarregar: string; opcoes: OpcoesAtendimento;
-  reabrindo: string | null; erro: { id: string; msg: string } | null; onReabrir: (c: CartaoChamado) => void; levaRelato: boolean;
-  /** na janela (o filho): abrir um recente fecha a janela antes (a ficha de baixo troca para ele) */
-  onAbrirOutro?: (codigo: string) => void;
-}) {
-  if (carregando) return <div className="mt-3 text-[13px] text-muted flex items-center gap-2"><Spinner /> Procurando os chamados recentes deste cliente…</div>;
-  if (erroCarregar) return <p className="mt-3 text-[13px] text-bad">{erroCarregar}</p>;
-  const lista = cadastro?.recentes ?? [];
-  if (!lista.length) return <p className="mt-3 text-[12.5px] text-muted">Nenhum chamado deste cliente aberto ou dos últimos 7 dias.</p>;
-  return (
-    <div className="mt-3 rounded-lg border border-signal bg-signal-soft p-3" id="novo-recentes">
-      <div className="text-[13px] font-semibold text-ink">Chamados recentes deste cliente <span className="text-muted font-normal">— é o mesmo problema? Reabra em vez de abrir outro.</span></div>
-      <ul className="mt-2 flex flex-col divide-y divide-line">
-        {lista.map((c) => {
-          const cor = painelDe(opcoes, c.painelId)?.cor;
-          const etapa = etapaDe(opcoes, c.painelId, c.etapaId)?.nome;
-          const fechado = c.situacao !== 'aberto';
-          return (
-            <li key={c.id} className="py-2 first:pt-0 last:pb-0 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 min-w-0">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <CodigoChamado codigo={c.codigo} cor={cor} />
-                  <ChipSituacao s={c.situacao} />
-                  {etapa && paraBusca(etapa) !== paraBusca(NOME_SITUACAO_CHAMADO[c.situacao]) && <span className="text-[12px] text-muted">{etapa}</span>}
-                </div>
-                <div className="text-[13.5px] font-semibold text-ink mt-0.5 break-words">{c.titulo}</div>
-                <div className="text-[12px] text-muted">
-                  aberto {dataHoraCurta(c.criadoEm)} ({haQuanto(c.criadoEm)})
-                  {c.fechadoEm ? ` · fechado ${dataHoraCurta(c.fechadoEm)}` : c.resolvidoEm ? ` · resolvido ${dataHoraCurta(c.resolvidoEm)}` : ''}
-                  {c.contato?.nome ? ` · ${c.contato.nome}` : ''}
-                  {c.responsavel ? ` · com ${c.responsavel.nome}` : ''}
-                </div>
-                {erro?.id === c.id && <p className="text-bad text-[12.5px] mt-1" role="alert">{erro.msg}</p>}
-              </div>
-              {fechado ? (
-                <button type="button" className="btn-secondary btn-sm shrink-0 self-start sm:self-center" disabled={!!reabrindo} onClick={() => onReabrir(c)}
-                  title={`Volta o ${c.codigo} para o atendimento com o motivo "${MOTIVO_REABRIR}"${levaRelato ? ', e o relato escrito aqui vai junto, como anotação' : ''}`}>
-                  {reabrindo === c.id ? <Spinner /> : <RotateCcw size={14} />} Reabrir este em vez de abrir outro
-                </button>
-              ) : onAbrirOutro ? (
-                <button type="button" className="btn-secondary btn-sm shrink-0 self-start sm:self-center" onClick={() => onAbrirOutro(c.codigo)}>Abrir este</button>
-              ) : (
-                <LinkDoChamado codigo={c.codigo} className="btn-secondary btn-sm shrink-0 self-start sm:self-center">Abrir este</LinkDoChamado>
-              )}
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }

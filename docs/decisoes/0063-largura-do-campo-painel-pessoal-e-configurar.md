@@ -87,3 +87,9 @@ O Luan, 12/11, com o print do Repetir: *"quero ter a opção de repetir por dia 
 - O texto: "Toda terça e quinta", "Toda segunda, quarta e sexta", "Todo sábado e domingo"; com dia de semana e fim de semana
   juntos, "Toda semana: terça e sábado".
 - "Este e os próximos" com outros dias é outra regra: as datas agendadas andam para os dias novos, como na troca de frequência.
+
+## Revisto no 2.4.11 (25/11/2026): o Trocar sem os painéis pessoais dos outros
+
+O Luan, com o print do Trocar: *"Aqui n precisa aparecer os painéis pessoais"*, e depois: *"o de cada eu quero que tenha, n
+quero que apareça os dos outros"*. O Trocar do alto do painel lista os da equipe e o seu painel pessoal, e não lista mais os
+pessoais das outras pessoas (o painel aberto continua na lista). A tela Painéis não mudou. Ver a **0066** (seção 8).

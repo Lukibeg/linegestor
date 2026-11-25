@@ -83,6 +83,8 @@ const DICA_DO_TIPO: Record<CampoPersonalizado['tipo'], (c: CampoPersonalizado) =
   lista: (c) => `Uma das opções: ${opcoesAtivas(c)}. A resposta enfeitada do menu também serve, se uma opção aparecer nela.`,
   lista_varios: (c) => `As opções, separadas por vírgula: ${opcoesAtivas(c)}.`,
   caixinhas: (c) => `As caixinhas marcadas, separadas por ponto e vírgula: ${opcoesAtivas(c)}.`,
+  // a caixinha única (2.4.11): o sim marca como feito
+  feito: () => 'Sim marca como feito; não desmarca.',
   modulos: (c) => `Os módulos, separados por ponto e vírgula: ${opcoesAtivas(c)}.`,
   // o documento (2.4) é o arquivo anexado na ficha: o robô não preenche
   documento: () => 'Um arquivo anexado na ficha: o robô não preenche.',

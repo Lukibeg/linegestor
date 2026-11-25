@@ -7,16 +7,16 @@
  */
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CalendarClock, Check, Copy, Handshake, History, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Bot, CalendarClock, Check, Copy, Handshake, History, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, Rocket, RotateCcw } from 'lucide-react';
 import { DICA_TIPO_ETAPA, NOME_ORIGEM, campoLigado, reaisInteiros, type Origem } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Chip, Spinner, useToast, type TomChip } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
-import { ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
+import { ChipEspera, ChipPrioridade, ChipResultado, ChipSemAtualizacao, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
 import { ErroPerto, linkDaFicha, nomeComNivel, useAberta, useAcao } from './base.js';
 import { useNiaNoCampo } from './NiaNoCampo.js';
 
-const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug, helena: History, comercial: Handshake };
+const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug, helena: History, comercial: Handshake, implantacao: Rocket };
 const TOM_SITUACAO: Record<string, TomChip> = { aberto: 'accent', resolvido: 'ok', fechado: 'muted' };
 
 /** A data inteira, para o "passar o mouse". */
@@ -72,6 +72,7 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
         {f.reaberto > 0 && <Chip tone="signal" title={`Reaberto ${f.reaberto} ${f.reaberto === 1 ? 'vez' : 'vezes'}`}><RotateCcw size={11} /> Reaberto {f.reaberto === 1 ? '1 vez' : `${f.reaberto} vezes`}</Chip>}
         <ChipEspera e={f.espera} mostrarDesde />
         <SeloPrazo c={f} />
+        <ChipSemAtualizacao c={f} ajustes={painel?.ajustes} />
       </div>
 
       <Titulo />
@@ -82,10 +83,10 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
           <time dateTime={f.criadoEm} title={dataCompleta(f.criadoEm)}>{emQuando(f.criadoEm)}</time>
         </span>
         <span className="inline-flex items-center gap-1" title="De onde o chamado veio"><Icone size={13} aria-hidden /> {NOME_ORIGEM[f.origem] ?? f.origem}</span>
-        {/* o card da implantação (2.3): a negociação de onde ele veio */}
+        {/* o card da implantação (2.3): a negociação de onde ele veio; o de faturamento (2.4.11): o card da implantação */}
         {f.daNegociacao && (
-          <span className="inline-flex items-center gap-1" id="ficha-da-negociacao">
-            da negociação {f.daNegociacao.podeAbrir
+          <span className="inline-flex items-center gap-1" id="ficha-da-negociacao" title={f.daNegociacao.painel ? `Do painel ${f.daNegociacao.painel}` : undefined}>
+            {f.daNegociacao.deVendas === false ? 'do card' : 'da negociação'} {f.daNegociacao.podeAbrir
               ? <LinkDoChamado codigo={f.daNegociacao.codigo} className="font-mono font-semibold text-ink-2 hover:text-accent" title={f.daNegociacao.titulo}>{f.daNegociacao.codigo}</LinkDoChamado>
               : <b className="font-mono text-ink-2" title={f.daNegociacao.titulo}>{f.daNegociacao.codigo}</b>}
           </span>

@@ -13,7 +13,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  ajustesDaNiaCompletos, condicoesGuardadas, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, estadoDosPrazos, prazoDoAssunto, progressoDasPartes, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
+  ajustesDaNiaCompletos, condicoesGuardadas, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, prazoEscritoNoChamado, estadoDosPrazos, prazoDoAssunto, progressoDasPartes, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
   valoresVisiveis,
   type AjustesDaNia, type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
   type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type PessoaCurta, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
@@ -68,6 +68,8 @@ export function etapaDaLinha(e: LinhaEtapa): EtapaPainel {
     abreImplantacao: e.opensPanelId ?? null, ligaNoCadastro: e.activatesProducts,
     // e a de Vendas que recebe a negociação quando a implantação termina
     recebeImplantacao: e.receivesImplementation,
+    // 2.4.11: a de Gestão que abre o card de faturamento (o Implantado - Concluído → o administrativo)
+    abreFaturamento: e.opensBillingPanelId ?? null,
   };
 }
 
@@ -302,6 +304,8 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     assuntoId: usa('assunto') ? t.subjectId : null,
     prazoSolucao: usa('assunto') ? prazoDoAssunto(t.subjectId, ctx.assuntos)?.minutos ?? null : null,
     contaPrazo: painel ? painelContaPrazo(painel.ajustes) : true,
+    // 2.4.11: no painel com o prazo escrito em cada chamado, vale o do chamado
+    prazoManual: painel ? prazoEscritoNoChamado(painel.ajustes) : false, prazoEscrito: iso(t.dueAt),
   }, ctx.prazos, ctx.agora);
   return {
     id: t.id, codigo: t.code, numero: t.number, tipoChamado: t.kind as TipoChamado, titulo: t.title,
@@ -343,6 +347,8 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     // as partes da ficha (2.3, a implantação), com a conta de cada uma: só dos campos do produto que o chamado tem
     partes: progressoDasPartes(camposDoPainel(ctx, t.panelId, true), usa('produtos') ? t.productIds : [], t.customFields as ValoresDosCampos | null, painel?.ajustes.partes,
       par.camposComAnexo?.get(t.id) ?? [], t.fieldLists as ListasDosCampos | null),
+    // o prazo escrito à mão (2.4.11): guardado mesmo no painel pelo assunto (volta se o painel passar para o manual)
+    prazoEscrito: iso(t.dueAt),
   };
 }
 

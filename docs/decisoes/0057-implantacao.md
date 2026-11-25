@@ -159,3 +159,13 @@ escrito.").
   como preenchido no que a etapa pede (`DadosObrigatorios.camposComAnexo`). O servidor lê os campos com anexo de cada card
   (`camposComAnexoDe`) para o quadro, a lista, a ficha e o mover; a prévia, do mesmo jeito. Tirar o anexo volta a faltar.
   O valor do campo não muda (o texto continua vazio; o tipo Documento, do 2.4, continua contando os arquivos).
+
+## Revisto no 2.4.11 (25/11/2026): o fim da implantação abre o card de faturamento
+
+O Luan: *"Quero que quando eu arraste pra concluído seja gerado um card no administrativo de faturamento"*. A etapa de Gestão
+pode **abrir o card de faturamento** num outro painel de Gestão (o Grupo Line - ADM): a janela do Implantado (a que liga no
+cadastro) passa a mostrar também o card que nasce, já preenchido com a negociação e a simulação principal, e o card fica
+ligado ao da implantação pelo mesmo `source_ticket_id` (um card abre um só). Os detalhes estão na **0066** (seção 5).
+
+No mesmo patch, as caixinhas e os módulos da ficha **começam recolhidos** (o nome e a conta à vista; a setinha mostra tudo), e
+há um tipo de campo novo, a **caixinha única** (uma caixinha só, "feito", com quem marcou e quando): **0066**, seções 10 e 11.

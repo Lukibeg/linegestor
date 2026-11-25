@@ -10,14 +10,18 @@
  *    que fechou, ou o motivo da perda — e o confete é do Ganho;
  *  - a implantação (2.3): a etapa que abre a implantação (a negociação) mostra antes o cliente (o do cadastro, ou o
  *    novo, com o CNPJ), os produtos e o card; a que liga no cadastro (o Implantado) mostra o que fica ativo na ficha
- *    do cliente. Nada trava além do CNPJ do cliente novo.
+ *    do cliente. Nada trava além do CNPJ do cliente novo;
+ *  - o faturamento (2.4.11): a etapa que abre o card de faturamento (o Implantado - Concluído) mostra antes o card que nasce
+ *    no painel administrativo, já preenchido (o título, o e-mail do faturamento, o vencimento, o CNPJ e as informações), e
+ *    tudo se muda ali; se a etapa também liga no cadastro, a mesma janela mostra o que fica ativo na ficha do cliente.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Building2, CheckCircle2, CircleDashed, Handshake, KanbanSquare, Package } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, CircleDashed, Handshake, KanbanSquare, Package, Receipt } from 'lucide-react';
 import {
-  FRASE_DO_MODULO, FRASE_DO_PRODUTO, cadastroMuda, cnpjEnquantoDigita, cnpjLimpo, movimentoDeNivel, nomeDoObrigatorio,
-  type EtapaPainel, type FichaChamado, type NegociacaoNoFim, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PessoaCurta, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosProdutos,
+  FRASE_DO_MODULO, FRASE_DO_PRODUTO, cadastroMuda, cnpjEnquantoDigita, cnpjLimpo, descricaoDoFaturamento, movimentoDeNivel, nomeDoObrigatorio,
+  type EtapaPainel, type FichaChamado, type NegociacaoNoFim, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PedidoDoFaturamento, type PessoaCurta,
+  type PlanoDaImplantacao, type PlanoDoCadastro, type PlanoDoFaturamento, type ValoresDosProdutos,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
@@ -39,6 +43,8 @@ type Etapando = { c: Movivel; para: EtapaPainel; lugar: { depoisDe?: string | nu
 type Extra = {
   motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null;
   implantacao?: PedidoDoCliente;
+  /** o card de faturamento (2.4.11): o que a janela deixou em cada campo */
+  faturamento?: PedidoDoFaturamento;
 };
 
 /** O confete do "fechou!" — sem biblioteca: uns papeizinhos que caem e somem. */
@@ -92,8 +98,8 @@ export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { de
       const f = await depois(api.atendimento.mover(c.id, { etapaId: para.id, ...extra }));
       // o confete: o chamado que fechou; na negociação, só a ganha
       if (para.resultado ? para.resultado === 'ganho' : para.tipo === 'fechado') comemorar();
-      // a negociação que abriu a implantação diz qual card nasceu
-      const aberta = extra.implantacao && f.implantacoes.length ? f.implantacoes[f.implantacoes.length - 1] : null;
+      // a negociação que abriu a implantação (e o card que abriu o faturamento, 2.4.11) diz qual card nasceu
+      const aberta = (extra.implantacao || extra.faturamento) && f.implantacoes.length ? f.implantacoes[f.implantacoes.length - 1] : null;
       toast.push('ok', `${c.codigo} foi para ${para.nome}${aberta ? ` e abriu ${aberta.codigo} em ${aberta.painel}` : ''}`);
       return f;
     } catch (e) {
@@ -118,9 +124,10 @@ export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { de
     // o Ganho e o Perdido pedem o resultado (o valor e o dia, ou o motivo)
     if (para.resultado) { setMarcando({ c, para, painel }); return null; }
     const ondeSoltou = lugar.depoisDe !== undefined ? { depoisDe: lugar.depoisDe } : {};
-    // a etapa que abre a implantação ou liga no cadastro (2.3): a janela mostra antes o que vai acontecer (a negociação que já
-    // abriu o card, e o Implantado que não muda nada no cadastro, vão direto)
-    if (painel && ((painel.tipo === 'vendas' && para.abreImplantacao) || (painel.tipo !== 'vendas' && para.ligaNoCadastro))) {
+    // a etapa que abre a implantação ou liga no cadastro (2.3), ou abre o card de faturamento (2.4.11): a janela mostra antes o
+    // que vai acontecer (a negociação que já abriu o card, o Implantado que não muda nada no cadastro e o card que já abriu o
+    // faturamento vão direto)
+    if (painel && ((painel.tipo === 'vendas' && para.abreImplantacao) || (painel.tipo !== 'vendas' && (para.ligaNoCadastro || para.abreFaturamento)))) {
       setOcupado(c.id);
       let plano: OQueAEtapaFaz;
       try { plano = await api.atendimento.aoMover(c.id, { etapaId: para.id }); } catch (e) { toast.push('erro', mensagemErro(e)); setOcupado(null); return null; }
@@ -128,7 +135,7 @@ export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { de
       const abre = !!plano.implantacao && !plano.implantacao.jaAberta;
       // o Implantado que leva a negociação para o Implantado do Comercial também mostra antes
       const liga = !!plano.cadastro && (!plano.cadastro.cliente || cadastroMuda(plano.cadastro) || !!plano.negociacao);
-      if (abre || liga) { setEtapando({ c, para, lugar: ondeSoltou, plano }); return null; }
+      if (abre || liga || faturaAgora(plano)) { setEtapando({ c, para, lugar: ondeSoltou, plano }); return null; }
     }
     const sentido = movimentoDeNivel(de, para);
     if (sentido) { setEscalonando({ c, para, de, sentido }); return null; }
@@ -158,7 +165,11 @@ export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { de
           const f = await executar(e.c, e.para, { ...e.lugar, implantacao: pedido }, naoFoi);
           if (f) setEtapando(null);
         }} />}
-      {etapando?.plano.cadastro && !etapando.plano.implantacao && <JanelaDoCadastro e={etapando} plano={etapando.plano.cadastro} negociacao={etapando.plano.negociacao} onFechar={() => setEtapando(null)}
+      {etapando && !etapando.plano.implantacao && faturaAgora(etapando.plano) && (
+        <JanelaDoFaturamento e={etapando} plano={etapando.plano.faturamento!} cadastro={etapando.plano.cadastro} negociacao={etapando.plano.negociacao} onFechar={() => setEtapando(null)}
+          onConfirmar={async (pedido) => { const e = etapando; setEtapando(null); await executar(e.c, e.para, { ...e.lugar, faturamento: pedido }); }} />
+      )}
+      {etapando?.plano.cadastro && !etapando.plano.implantacao && !faturaAgora(etapando.plano) && <JanelaDoCadastro e={etapando} plano={etapando.plano.cadastro} negociacao={etapando.plano.negociacao} onFechar={() => setEtapando(null)}
         onConfirmar={async () => { const e = etapando; setEtapando(null); await executar(e.c, e.para, e.lugar); }} />}
       {marcando && <JanelaResultado codigo={marcando.c.codigo} valor={marcando.c.valor} para={marcando.para} painel={marcando.painel}
         ativacao={marcando.c.ativacao ?? null} porProduto={linhasDoValor(marcando.c.produtos ?? [], marcando.c.valoresDosProdutos, marcando.c.ativacoesDosProdutos)}
@@ -363,13 +374,15 @@ function JanelaDaImplantacao({ e, plano: inicial, onFechar, onConfirmar }: {
   );
 }
 
+/** O que muda (o ✓ verde) e o que fica como está (o tracejado). */
+const iconeDaMudanca = (muda: boolean) => (muda ? <CheckCircle2 size={14} className="text-ok shrink-0 mt-0.5" aria-hidden /> : <CircleDashed size={14} className="text-muted shrink-0 mt-0.5" aria-hidden />);
+
 /** O card que vai para a etapa que liga no cadastro (o Implantado): o que fica ativo na ficha do cliente, desde hoje. */
 function JanelaDoCadastro({ e, plano, negociacao, onFechar, onConfirmar }: {
   e: Etapando; plano: PlanoDoCadastro; negociacao: NegociacaoNoFim | null; onFechar: () => void; onConfirmar: () => Promise<void>;
 }) {
   const [indo, setIndo] = useState(false);
   const confirmar = async () => { setIndo(true); try { await onConfirmar(); } finally { setIndo(false); } };
-  const icone = (muda: boolean) => (muda ? <CheckCircle2 size={14} className="text-ok shrink-0 mt-0.5" aria-hidden /> : <CircleDashed size={14} className="text-muted shrink-0 mt-0.5" aria-hidden />);
   return (
     <Modal open onClose={onFechar} largura="max-w-xl" titulo={`${e.c.codigo} vai para ${e.para.nome}`}
       rodape={<>
@@ -378,6 +391,30 @@ function JanelaDoCadastro({ e, plano, negociacao, onFechar, onConfirmar }: {
           {indo ? <Spinner className="text-white" /> : plano.cliente ? (cadastroMuda(plano) ? 'Mover e ligar no cadastro' : `Mover para ${e.para.nome}`) : 'Mover mesmo assim'}
         </button>
       </>}>
+      <OQueLigaNoCadastro e={e} plano={plano} />
+      {negociacao && (
+        <div className="mt-3 pt-3 border-t border-line">
+          <LinhaDaNegociacao negociacao={negociacao} />
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/** A negociação de onde o card veio, que vai para o Implantado do Comercial. */
+function LinhaDaNegociacao({ negociacao }: { negociacao: NegociacaoNoFim }) {
+  return (
+    <LinhaDoPlano icone={<Handshake size={16} />} titulo="A negociação">
+      <p className="text-[13.5px] flex items-start gap-1.5">{iconeDaMudanca(true)}<span><b className="font-mono">{negociacao.codigo}</b> <span className="text-muted">— vai de {negociacao.de} para <b className="text-ink-2">{negociacao.para}</b>, no Comercial. O Ganho continua à parte, quando começar a faturar.</span></span></p>
+    </LinhaDoPlano>
+  );
+}
+
+/** O que fica ativo na ficha do cliente (os produtos e os módulos), desde hoje. */
+function OQueLigaNoCadastro({ e, plano }: { e: Etapando; plano: PlanoDoCadastro }) {
+  const icone = iconeDaMudanca;
+  return (
+    <>
       {!plano.cliente ? (
         <p className="text-sm text-ink-2">O card não tem cliente: nada liga no cadastro. Ponha o cliente no card antes, para {e.para.nome} ligar os produtos e os módulos na ficha dele.</p>
       ) : (
@@ -408,13 +445,88 @@ function JanelaDoCadastro({ e, plano, negociacao, onFechar, onConfirmar }: {
           </div>
         </>
       )}
-      {negociacao && (
+    </>
+  );
+}
+
+// =====================================================================
+//  O FATURAMENTO (2.4.11): o card que nasce no painel administrativo
+// =====================================================================
+
+/** A etapa abre o card de faturamento agora (o card ainda não abriu o dele). */
+const faturaAgora = (plano: OQueAEtapaFaz) => !!plano.faturamento && !plano.faturamento.jaAberto;
+
+/**
+ * O card que vai para a etapa que abre o faturamento (o Implantado - Concluído, o pedido do Luan: "quero que quando eu arraste
+ * pra concluído seja gerado um card no administrativo de faturamento e tem que ter a opção de eu colocar a descrição lá do card
+ * o email do faturamento o vencimento da fatura e as informações"): o card que nasce, com tudo já preenchido e tudo para mudar
+ * ali; a descrição sai no formato do card que ele escreve à mão. Se a etapa também liga no cadastro, mostra embaixo o que fica
+ * ativo na ficha do cliente (e a negociação que vai para o Implantado do Comercial).
+ */
+function JanelaDoFaturamento({ e, plano, cadastro, negociacao, onFechar, onConfirmar }: {
+  e: Etapando; plano: PlanoDoFaturamento; cadastro: PlanoDoCadastro | null; negociacao: NegociacaoNoFim | null;
+  onFechar: () => void; onConfirmar: (pedido: PedidoDoFaturamento) => Promise<void>;
+}) {
+  const [titulo, setTitulo] = useState(plano.titulo);
+  const [email, setEmail] = useState(plano.email ?? '');
+  const [vencimento, setVencimento] = useState(plano.vencimento ?? '');
+  const [cnpj, setCnpj] = useState(plano.cnpj ?? '');
+  const [informacoes, setInformacoes] = useState(plano.informacoes);
+  const [indo, setIndo] = useState(false);
+  const falta = titulo.trim().length < 3 ? 'O título do card vai de 3 letras para cima.' : null;
+  const pedido: PedidoDoFaturamento = { titulo: titulo.trim(), email: email.trim() || null, vencimento: vencimento || null, cnpj: cnpj.trim() || null, informacoes };
+  const descricao = descricaoDoFaturamento({ cliente: plano.nome, ...pedido });
+  const confirmar = async () => { if (falta) return; setIndo(true); try { await onConfirmar(pedido); } finally { setIndo(false); } };
+  const deOnde = plano.origem.negociacao
+    ? <>As informações vêm da negociação <b className="font-mono">{plano.origem.negociacao}</b>{plano.origem.simulacao ? <> e da simulação principal dela (<b>{plano.origem.simulacao}</b>)</> : ' (ela não tem simulação: os produtos vão sem as licenças)'}. Mude o que precisar.</>
+    : <>O card não veio de uma negociação: escreva as informações do faturamento.</>;
+  const ligaNoCadastro = !!cadastro && (!cadastro.cliente || cadastroMuda(cadastro));
+  return (
+    <Modal open onClose={onFechar} largura="max-w-2xl" titulo={`${e.c.codigo} vai para ${e.para.nome}`}
+      rodape={<>
+        <button className="btn-secondary" onClick={onFechar}>Cancelar</button>
+        <button className="btn-primary" id="mover-abrir-faturamento" disabled={!!falta || indo} onClick={() => void confirmar()}>
+          {indo ? <Spinner className="text-white" /> : 'Mover e abrir o faturamento'}
+        </button>
+      </>}>
+      <p className="text-sm text-ink-2 mb-3">
+        Em <b>{e.para.nome}</b>, o card abre o de faturamento no painel <b>{plano.painel.nome}</b>{plano.etapa ? <>, na etapa {plano.etapa}</> : null}. {deOnde}
+      </p>
+      <LinhaDoPlano icone={<Receipt size={16} />} titulo="O card de faturamento">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="janela-do-faturamento">
+          <Campo label="Título do card" className="sm:col-span-2">
+            <input className="input" id="faturamento-titulo" value={titulo} maxLength={200} onChange={(ev) => setTitulo(ev.target.value)} />
+          </Campo>
+          <Campo label="E-mail para faturamento" className="sm:col-span-2" dica="Pode pôr mais de um, como você escreve (financeiro@…/fulana@…): o primeiro vira o e-mail do contato do card.">
+            <input className="input" id="faturamento-email" value={email} maxLength={300} inputMode="email" autoComplete="off" onChange={(ev) => setEmail(ev.target.value)} />
+          </Campo>
+          <Campo label="Data de vencimento da fatura">
+            <input className="input" id="faturamento-vencimento" type="date" value={vencimento} onChange={(ev) => setVencimento(ev.target.value)} />
+          </Campo>
+          <Campo label="CNPJ do faturamento">
+            <input className="input font-mono" id="faturamento-cnpj" value={cnpj} maxLength={30} onChange={(ev) => setCnpj(ev.target.value)} placeholder="00.000.000/0000-00" />
+          </Campo>
+          <Campo label="Informações" className="sm:col-span-2" dica="A ativação, o que foi combinado e cada produto com a mensalidade e as licenças. Vão na descrição do card, embaixo do CNPJ.">
+            <textarea className="input min-h-[190px] text-[13px] leading-relaxed" id="faturamento-informacoes" value={informacoes} maxLength={20_000} onChange={(ev) => setInformacoes(ev.target.value)} />
+          </Campo>
+        </div>
+        <details className="mt-2.5 text-[12.5px]">
+          <summary className="cursor-pointer text-accent select-none">Ver como fica a descrição do card</summary>
+          <pre className="mt-1.5 rounded-md bg-surface-2 px-3 py-2 whitespace-pre-wrap break-words font-sans text-[12.5px] text-ink-2" id="faturamento-descricao">{descricao}</pre>
+        </details>
+      </LinhaDoPlano>
+      {cadastro && (
         <div className="mt-3 pt-3 border-t border-line">
-          <LinhaDoPlano icone={<Handshake size={16} />} titulo="A negociação">
-            <p className="text-[13.5px] flex items-start gap-1.5">{icone(true)}<span><b className="font-mono">{negociacao.codigo}</b> <span className="text-muted">— vai de {negociacao.de} para <b className="text-ink-2">{negociacao.para}</b>, no Comercial. O Ganho continua à parte, quando começar a faturar.</span></span></p>
-          </LinhaDoPlano>
+          {ligaNoCadastro ? <OQueLigaNoCadastro e={e} plano={cadastro} />
+            : <p className="text-[13px] text-muted flex items-start gap-1.5">{iconeDaMudanca(false)}<span>O cadastro de <b className="text-ink-2">{cadastro.cliente?.nome}</b> já está em dia: nada muda na ficha do cliente.</span></p>}
         </div>
       )}
+      {negociacao && (
+        <div className="mt-3 pt-3 border-t border-line">
+          <LinhaDaNegociacao negociacao={negociacao} />
+        </div>
+      )}
+      {falta && <p role="alert" className="text-bad text-[13px] mt-3">{falta}</p>}
     </Modal>
   );
 }

@@ -214,7 +214,9 @@ export function AvisosQueChegam({ esquerda }: { esquerda: string }) {
   if (!fila.length) return null;
   const esperando = fila.length - NA_TELA;
   return (
-    <div className="so-tela fixed z-[70] top-16 inset-x-3 md:inset-x-auto md:top-auto md:bottom-4 md:left-[var(--esquerda)] md:w-[360px] flex flex-col md:flex-col-reverse gap-2 pointer-events-none"
+    // abaixo das janelas (z-50; 2.4.11, o Luan: "quando eu abrir o chamado pela notificação, quero que o card apareça na frente
+    // das notificações"), acima do cabeçalho
+    <div className="so-tela fixed z-[45] top-16 inset-x-3 md:inset-x-auto md:top-auto md:bottom-4 md:left-[var(--esquerda)] md:w-[360px] flex flex-col md:flex-col-reverse gap-2 pointer-events-none"
       style={{ ['--esquerda' as string]: esquerda }} role="region" aria-label="Avisos que chegaram">
       {fila.slice(0, NA_TELA).map((c) => (
         // o aviso que voltou a chegar (o do observador, com mais mudanças) entra de novo

@@ -59,3 +59,10 @@ O Luan, 16/11, com o print do bloco Prazos da ficha:
   o servidor (`cartaoDaLinha`, o relógio), os relatórios (`derivar`) e a prévia (`prazosDe`) fazem igual.
 - Alterar um assunto sem a chave `prazoSolucao` mantém o prazo (quem não conhece o campo não o apaga); `null` tira o prazo
   próprio.
+
+## Revisto no 2.4.11 (25/11/2026): ou o prazo escrito em cada chamado
+
+O Luan: *"Tem q ter a opção do painel dos prazos serem manuais e serem preenchidos em cada chamado."* Cada painel escolhe, no
+Conta prazo, **o prazo do assunto** (o desta decisão, que continua o padrão) ou **o escrito em cada chamado**: o dia e a hora,
+no Abrir chamado e na ficha, em horas corridas e sem parar esperando o cliente; com ele, o painel conta prazo mesmo sem o
+assunto. Os detalhes estão na **0066** (seção 6).

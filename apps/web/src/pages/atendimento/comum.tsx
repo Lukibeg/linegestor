@@ -9,9 +9,10 @@
 import { useCallback, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, ThumbsDown, TriangleAlert, Trophy, X } from 'lucide-react';
+import { Check, Flag, GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, ThumbsDown, TriangleAlert, Trophy, X } from 'lucide-react';
 import {
   CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, ehPainelDaImplantacao, etiquetasDoPainel, paraBusca, partesNoCartao, reaisInteiros, telefoneLegivel, textoDoPrazo,
+  horasSemAtualizacao, textoSemAtualizacao, type AjustesDoPainel,
   type CartaoChamado, type CorEtiqueta, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type ResultadoDaVenda,
   type TipoEspera, caminhoDoAssunto, emOrdemDeArvore, type Assunto,
 } from '@gestor/shared';
@@ -331,6 +332,27 @@ export function ChipEspera({ e, mostrarDesde = false }: { e: { tipo: TipoEspera;
   );
 }
 
+/**
+ * A marca de atualizar (2.4.11, o Luan: "qualquer chamado com 24 sem atualização tem q ter um flag sinalizando que tem q
+ * atualizar"): no painel que liga a marca nos Ajustes do painel, o chamado em aberto que ninguém mexe há as horas escolhidas
+ * (o aviso automático não conta como mexer). `curta`: "Atualizar · 26 h", para o cartão e a lista.
+ */
+export function ChipSemAtualizacao({ c, ajustes, curta = false }: {
+  c: Pick<CartaoChamado, 'situacao' | 'ultimaAtividadeEm'>; ajustes: Pick<AjustesDoPainel, 'horasSemAtualizacao'> | null | undefined; curta?: boolean;
+}) {
+  const horas = horasSemAtualizacao(c, ajustes);
+  if (horas === null) return null;
+  const texto = textoSemAtualizacao(horas);
+  return (
+    // o Chip não passa adiante o data-*: o invólucro marca (os testes e os prints acham por ele)
+    <span className="inline-flex" data-sem-atualizacao={horas}>
+      <Chip tone="signal" title={`${texto}: atualize o chamado (a última vez que alguém mexeu foi ${dataHoraCurta(c.ultimaAtividadeEm)})`}>
+        <Flag size={12} aria-hidden /> {curta ? `Atualizar · ${texto.replace('Sem atualização há ', '')}` : texto}
+      </Chip>
+    </span>
+  );
+}
+
 /** Como a negociação acabou: Ganho ou Perdido (com o motivo ao passar o mouse) e, se vier, o dia. */
 export function ChipResultado({ r, motivo, em }: { r: ResultadoDaVenda | null; motivo?: string | null; em?: string | null }) {
   if (!r) return null;
@@ -362,7 +384,9 @@ export function SeloPrazo({ c, completo = false }: { c: Pick<CartaoChamado, 'pra
 /** "Vencido", "2 h", "Parado"… — cabe no cartão do quadro. */
 export function textoCurtoDoPrazo(e: EstadoPrazo): string {
   const falta = Math.max(0, e.limite - e.usado);
-  const fmt = (m: number) => (m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${String(Math.round(m % 60)).padStart(2, '0')}` : ''}`);
+  // o prazo corrido (o escrito em cada chamado, 2.4.11), de dois dias para cima, em dias
+  const fmt = (m: number) => (e.conta === 'corridas' && m >= 48 * 60 ? `${Math.floor(m / (24 * 60))} dias`
+    : m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${String(Math.round(m % 60)).padStart(2, '0')}` : ''}`);
   switch (e.situacao) {
     case 'vencido': return `Venceu há ${fmt(e.usado - e.limite)}`;
     case 'pausado': return 'Parado';
@@ -489,7 +513,8 @@ export { telefoneLegivel };
  */
 export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel = false }: { c: CartaoChamado; cor?: CorPainel; mostrarEtapa?: boolean; nomeDaEtapa?: string; arrastavel?: boolean }) {
   const opcoes = useOpcoes();
-  if (ehDeVendas(opcoes.data, c.painelId)) return <CartaoDaNegociacao c={c} cor={cor} mostrarEtapa={mostrarEtapa} nomeDaEtapa={nomeDaEtapa} arrastavel={arrastavel} />;
+  const ajustes = painelDe(opcoes.data, c.painelId)?.ajustes;
+  if (ehDeVendas(opcoes.data, c.painelId)) return <CartaoDaNegociacao c={c} cor={cor} mostrarEtapa={mostrarEtapa} nomeDaEtapa={nomeDaEtapa} arrastavel={arrastavel} ajustes={ajustes} />;
   return (
     <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${c.prazos.solucao.situacao === 'vencido' ? 'border-l-4 border-l-bad' : c.prioridade === 'critica' ? 'border-l-4 border-l-signal' : ''} ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}>
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -508,6 +533,7 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
       {c.assunto && <div className="text-[12px] text-muted truncate" title={c.assunto.caminho}>{c.assunto.caminho}</div>}
       <ProgressoNoCartao c={c} />
       <div className="flex items-center gap-1.5 flex-wrap">
+        <ChipSemAtualizacao c={c} ajustes={ajustes} curta />
         <ChipEspera e={c.espera} />
         {mostrarEtapa && nomeDaEtapa && <Chip tone="neutral">{nomeDaEtapa}</Chip>}
         {c.reaberto > 0 && <Chip tone="signal" title={`Reaberto ${c.reaberto} ${c.reaberto === 1 ? 'vez' : 'vezes'}`}><RotateCcw size={11} /> {c.reaberto}</Chip>}
@@ -601,7 +627,9 @@ function AndamentoDasPartes({ lista }: { lista: ReturnType<typeof partesNoCartao
  * que é o próprio nome da empresa (o título que ficou vazio) não se repete; o contato; o valor em destaque; quem
  * está com ela.
  */
-function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: { c: CartaoChamado; cor?: CorPainel; mostrarEtapa?: boolean; nomeDaEtapa?: string; arrastavel: boolean }) {
+function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel, ajustes }: {
+  c: CartaoChamado; cor?: CorPainel; mostrarEtapa?: boolean; nomeDaEtapa?: string; arrastavel: boolean; ajustes?: Pick<AjustesDoPainel, 'horasSemAtualizacao'>;
+}) {
   const empresa = c.cliente?.nome ?? c.empresa;
   return (
     <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`} data-negociacao>
@@ -624,6 +652,7 @@ function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: {
       </div>
       {c.resultado === 'perdido' && c.motivoPerda && <div className="text-[12px] text-muted truncate" title={`Motivo da perda: ${c.motivoPerda}`}>{c.motivoPerda}</div>}
       <div className="flex items-center gap-1.5 flex-wrap">
+        <ChipSemAtualizacao c={c} ajustes={ajustes} curta />
         <ChipEspera e={c.espera} />
         {mostrarEtapa && nomeDaEtapa && <Chip tone="neutral">{nomeDaEtapa}</Chip>}
         {c.reaberto > 0 && <Chip tone="signal" title={`Reaberta ${c.reaberto} ${c.reaberto === 1 ? 'vez' : 'vezes'}`}><RotateCcw size={11} /> {c.reaberto}</Chip>}

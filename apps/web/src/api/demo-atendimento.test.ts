@@ -1652,3 +1652,140 @@ describe('a caixinha "Checklist na Implantação" na prévia (2.4.8, como o serv
     if (data) expect((await erroDe(api.checklistNaImplantacao(data.id, { ligar: true }))).message).toMatch(/não gera itens/);
   });
 });
+
+describe('o 2.4.11 na prévia (como o servidor)', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const PDF = `data:application/pdf;base64,${btoa('%PDF-1.4\n%%EOF\n')}`;
+
+  it('o Implantado - Concluído abre o card de faturamento no Administrativo, já preenchido com a negociação e a simulação', async () => {
+    const luan = await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const adm = painel(op, 'ADM');
+    const fim = etapa(op, 'IMP', 'Implantado - Concluído');
+    expect(fim).toMatchObject({ abreFaturamento: adm.id, ligaNoCadastro: true });
+    // a Academia Movimento (na Configuração), da negociação com a simulação "Academia Movimento — LineChat, 12 atendentes"
+    const q = await api.quadro({ painel: imp.id });
+    const mov = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados.find((c) => c.cliente?.nome === 'Academia Movimento')!;
+    const plano = (await api.aoMover(mov.id, { etapaId: fim.id })).faturamento!;
+    expect(plano).toMatchObject({
+      painel: { id: adm.id, sigla: 'ADM' }, etapa: adm.etapas.find((e) => e.tipo === 'entrada')!.nome, jaAberto: null,
+      cliente: 'Academia Movimento', nome: 'Academia Movimento', titulo: 'Academia Movimento - Faturamento', vencimento: null,
+      origem: { negociacao: expect.stringMatching(/^COM-/), simulacao: 'Academia Movimento — LineChat, 12 atendentes' },
+    });
+    expect(plano.informacoes).toMatch(/^LineChat/m);
+    // a etapa que não abre o faturamento não traz o plano
+    expect((await api.aoMover(mov.id, { etapaId: etapa(op, 'IMP', 'Testes').id })).faturamento).toBeNull();
+
+    const f = await api.mover(mov.id, { etapaId: fim.id, faturamento: { titulo: 'Academia Movimento - Faturamento', email: 'financeiro@movimento.com.br/ana@movimento.com.br', vencimento: '2026-12-10', cnpj: plano.cnpj, informacoes: plano.informacoes } });
+    const aberto = f.implantacoes.find((x) => x.painelId === adm.id)!;
+    expect(aberto).toMatchObject({ codigo: expect.stringMatching(/^ADM-/), painel: adm.nome, situacao: 'aberto', podeAbrir: true });
+    expect(f.historico.some((ev) => ev.texto === `abriu o card de faturamento ${aberto.codigo} no painel ${adm.nome}`)).toBe(true);
+    const g = await api.chamado(aberto.codigo);
+    expect(g).toMatchObject({ titulo: 'Academia Movimento - Faturamento', origem: 'implantacao', cliente: { nome: 'Academia Movimento' } });
+    expect(g.descricao!.split('\n').slice(0, 3)).toEqual(['Faturamento Academia Movimento', 'E-mail para faturamento: financeiro@movimento.com.br/ana@movimento.com.br', 'Data de vencimento: 10/12/2026']);
+    expect(g.descricao).toContain(plano.informacoes);
+    expect(g.contato?.email).toBe('financeiro@movimento.com.br');
+    expect(g.observadores.map((o) => o.id)).toEqual([luan.id]);
+    expect(g.daNegociacao).toMatchObject({ codigo: mov.codigo, deVendas: false, podeAbrir: true });
+    // um card abre um só
+    await api.mover(mov.id, { etapaId: etapa(op, 'IMP', 'Testes').id });
+    expect((await api.aoMover(mov.id, { etapaId: fim.id })).faturamento!.jaAberto).toEqual({ codigo: aberto.codigo });
+    const deNovo = await api.mover(mov.id, { etapaId: fim.id });
+    expect(deNovo.implantacoes.filter((x) => x.painelId === adm.id)).toHaveLength(1);
+  });
+
+  it('o lucro de cada coluna do quadro de Vendas: a sobra da simulação principal de cada negociação, somada', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const q = await api.quadro({ painel: painel(op, 'COM').id });
+    let comLucro = 0;
+    for (const col of q.colunas) {
+      expect(col.lucro).toBeDefined();
+      let valor = 0; let com = 0;
+      for (const c of col.chamados) {
+        const sims = await demoApi.simulador.daNegociacao(c.id);
+        if (sims.length) { valor += sims[0]!.principal.sobraMensal; com += 1; }
+      }
+      // as colunas fechadas mostram só os mais recentes: a conta é das que aparecem quando cabem todas
+      if (col.escondidos) continue;
+      expect(col.lucro).toEqual({ valor, comSimulacao: com });
+      if (com) comLucro += 1;
+    }
+    expect(comLucro).toBeGreaterThan(0);
+    expect((await api.quadro({ painel: painel(op, 'SUP').id })).colunas.every((c) => c.lucro === undefined)).toBe(true);
+  });
+
+  it('as imagens do relato e da descrição: no abrir e na ficha; só imagem; saem', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Imagens no relato (teste)')), descricao: 'O registro', imagens: [{ campo: 'relato', fileName: 'print.png', conteudo: PNG }, { campo: 'descricao', fileName: 'registro.png', conteudo: PNG }] });
+    let f = await api.chamado(r.id);
+    expect(f.imagensDosTextos.map((i) => [i.campo, i.nome, i.imagem])).toEqual([['relato', 'print.png', true], ['descricao', 'registro.png', true]]);
+    expect(f.historico.some((ev) => ev.texto === 'anexou print.png em Relato do cliente')).toBe(true);
+    f = await api.imagensNoTexto(r.id, 'descricao', { imagens: [{ fileName: 'mais.png', conteudo: PNG }] });
+    expect(f.imagensDosTextos.filter((i) => i.campo === 'descricao')).toHaveLength(2);
+    expect((await erroDe(api.imagensNoTexto(r.id, 'descricao', { imagens: [{ fileName: 'contrato.pdf', conteudo: PDF }] }))).message).toMatch(/não é uma imagem/);
+    const mais = f.imagensDosTextos.find((i) => i.nome === 'mais.png')!;
+    f = await api.tirarAnexoDoCampo(r.id, mais.id);
+    expect(f.imagensDosTextos.some((i) => i.id === mais.id)).toBe(false);
+    // o painel que não usa o relato (a Implantação) não recebe imagem nele
+    const card = (await api.lista({ painel: painel(op, 'IMP').id, situacao: 'todos', pageSize: 100 })).items[0]!;
+    expect((await erroDe(api.imagensNoTexto(card.id, 'relato', { imagens: [{ fileName: 'x.png', conteudo: PNG }] }))).message).toMatch(/não usa o relato/);
+  });
+
+  it('o prazo escrito em cada chamado: o painel escolhe; o abrir e a ficha escrevem; o do assunto recusa', async () => {
+    await entrar('admin');
+    const p = await api.salvarPainel(null, {
+      nome: 'Projetos', sigla: 'PRJ', descricao: null, cor: 'roxo', acesso: 'todos', pessoas: [], ativo: true, tipo: 'gestao',
+      ajustes: { contaPrazo: true, prazoManual: true, camposDesligados: ['assunto', 'alcance'] },
+    });
+    expect(p.ajustes).toMatchObject({ contaPrazo: true, prazoManual: true });
+    const prazo = new Date(Date.now() + 48 * 3_600_000);
+    prazo.setUTCSeconds(0, 0);
+    const r = await api.criar({ painelId: p.id, titulo: 'Migração do PABX (teste)', prazo: prazo.toISOString(), responsavelId: await eu() });
+    let f = await api.chamado(r.id);
+    expect(f.prazoEscrito).toBe(prazo.toISOString());
+    expect(f.prazos.solucao).toMatchObject({ situacao: 'no_prazo', venceEm: prazo.toISOString(), conta: 'corridas' });
+    f = await api.alterar(r.id, { prazo: null });
+    expect(f.prazos.solucao).toMatchObject({ situacao: 'sem', motivo: 'sem_prazo_escrito' });
+    expect(f.historico.some((ev) => ev.tipo === 'campo' && ev.texto.startsWith('mudou Prazo de'))).toBe(true);
+    const op = await api.opcoes();
+    const sup = await api.criar(await baseDoSuporte(op, 'Prazo do assunto (teste)'));
+    expect((await erroDe(api.alterar(sup.id, { prazo: prazo.toISOString() }))).message).toMatch(/vem do assunto/);
+  });
+
+  it('a marca de atualizar fica nos ajustes do painel; o aviso da equipe não entra no histórico', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const sup = painel(op, 'SUP');
+    const base = { nome: sup.nome, sigla: sup.sigla, descricao: sup.descricao, cor: sup.cor, acesso: sup.acesso, pessoas: sup.pessoas, ativo: true };
+    const p = await api.salvarPainel(sup.id, { ...base, ajustes: { ...sup.ajustes, horasSemAtualizacao: 24 } });
+    expect(p.ajustes.horasSemAtualizacao).toBe(24);
+    const { horasSemAtualizacao: _fora, ...semAsHoras } = p.ajustes;
+    expect((await api.salvarPainel(sup.id, { ...base, ajustes: semAsHoras })).ajustes.horasSemAtualizacao).toBe(24);
+    expect((await api.salvarPainel(sup.id, { ...base, ajustes: { ...semAsHoras, horasSemAtualizacao: null } })).ajustes.horasSemAtualizacao).toBeNull();
+    // o "Gestor avisou … pelo WhatsApp" não aparece em nenhum chamado
+    for (const c of (await api.lista({ painel: sup.id, situacao: 'todos', pageSize: 15 })).items) {
+      expect((await api.chamado(c.id)).historico.some((ev) => ev.tipo === 'aviso_equipe')).toBe(false);
+    }
+  });
+
+  it('a caixinha única: uma só, a "Feito" (a mesma ao salvar de novo); marcar guarda quem e quando, e o histórico diz "como feito"', async () => {
+    const luan = await entrar('admin');
+    const op = await api.opcoes();
+    const sup = painel(op, 'SUP');
+    const c = await api.salvarCampo(sup.id, null, { nome: 'Backup conferido', tipo: 'feito', opcoes: [{ nome: 'A' }, { nome: 'B' }] });
+    expect(c.opcoes).toEqual([{ id: expect.any(String), nome: 'Feito', ativa: true }]);
+    expect((await api.salvarCampo(sup.id, c.id, { nome: 'Backup conferido', tipo: 'feito', dica: 'Antes de trocar' })).opcoes).toEqual(c.opcoes);
+    const t = await api.criar({ painelId: sup.id, titulo: 'Trocar o servidor' });
+    let f = await api.alterar(t.id, { campos: { [c.id]: true } });
+    expect(f.campos[c.id]).toEqual([c.opcoes[0]!.id]);
+    expect(f.marcas[c.id]?.[c.opcoes[0]!.id]).toMatchObject({ porId: luan.id });
+    expect(f.historico.map((e) => e.texto)).toContain('marcou Backup conferido como feito');
+    f = await api.alterar(t.id, { campos: { [c.id]: 'não' } });
+    expect(f.campos[c.id]).toBeUndefined();
+    expect(f.historico.map((e) => e.texto)).toContain('desmarcou Backup conferido (não está mais feito)');
+    expect((await erroDe(api.alterar(t.id, { campos: { [c.id]: 'talvez' } }))).message).toBe('Backup conferido: marque como feito (sim) ou desmarque (não)');
+  });
+});

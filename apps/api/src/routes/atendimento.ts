@@ -17,7 +17,7 @@ import {
   AnexosDoCampoSchema, AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, ListaDoCampoSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
   FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, LigarChamadoSchema,
   AoMoverSchema, ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PosicaoNoQuadroSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
-  TempoSchema, TrocarPainelSchema,
+  TempoSchema, TrocarPainelSchema, ImagensDoTextoSchema, TEXTOS_COM_IMAGEM,
 } from '@gestor/shared';
 import { BadRequest } from '../plugins/errors.js';
 import { incluirOpcao } from '../services/atendimento/ajustes.js';
@@ -160,7 +160,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---------- abrir e mexer ----------
 
-  app.post('/chamados', { ...trabalhar, schema: { tags, summary: 'Abrir um chamado (nasce na entrada do painel, com o número seguinte da sigla)', body: ChamadoCriarSchema } },
+  // 2.4.11: com as imagens do relato e da descrição (até 10, que a tela reduz antes): o pedido pode passar do padrão de 30 MB
+  app.post('/chamados', { ...trabalhar, bodyLimit: 45 * 1024 * 1024, schema: { tags, summary: 'Abrir um chamado (nasce na entrada do painel, com o número seguinte da sigla); com as imagens do relato e da descrição', body: ChamadoCriarSchema } },
     async (req, reply) => {
       const r = await svc.criarChamado(app, ator(req), req.body);
       await app.audit(req, {
@@ -239,8 +240,14 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     schema: { tags, summary: 'Anexar num campo do card ou numa caixinha (opcaoId): arquivos de até 30 MB (um por pedido, na tela), até 20 em cada', params: Id.extend({ campoId: z.string().min(1) }), body: AnexosDoCampoSchema },
   }, async (req) => fichaDepois(req, await svc.anexarNoCampo(app, ator(req), req.params.id, req.params.campoId, req.body)));
 
+  // 2.4.11: as imagens do relato e da descrição (a tela manda uma de cada vez, já reduzida)
+  app.post('/chamados/:id/textos/:campo/imagens', {
+    ...trabalhar, bodyLimit: 45 * 1024 * 1024,
+    schema: { tags, summary: 'Pôr imagens no relato ou na descrição (só imagens, até 10 MB cada; até 20 em cada texto)', params: Id.extend({ campo: z.enum(TEXTOS_COM_IMAGEM) }), body: ImagensDoTextoSchema },
+  }, async (req) => fichaDepois(req, await svc.anexarNoTexto(app, ator(req), req.params.id, req.params.campo, req.body)));
+
   app.delete('/chamados/:id/anexos/:anexoId', {
-    ...trabalhar, schema: { tags, summary: 'Tirar o anexo de um campo (o seu, ou qualquer um se você cuida dos chamados)', params: Id.extend({ anexoId: z.string().min(1) }) },
+    ...trabalhar, schema: { tags, summary: 'Tirar o anexo de um campo ou a imagem do relato e da descrição (o seu, ou qualquer um se você cuida dos chamados)', params: Id.extend({ anexoId: z.string().min(1) }) },
   }, async (req) => fichaDepois(req, await svc.tirarAnexoDoCampo(app, ator(req), req.params.id, req.params.anexoId), 'delete'));
 
   app.post('/chamados/:id/ligacoes', { ...trabalhar, schema: { tags, summary: 'Ligar a outro chamado (relacionado, duplicado, repete)', params: Id, body: LigarChamadoSchema } },

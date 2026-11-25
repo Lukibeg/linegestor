@@ -33,9 +33,13 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
   linha mostra onde ele cai; no Mover, **Subir** e **Descer**); o que chega na etapa aparece no alto. No
   painel que conta prazo (o Suporte), o mais urgente vem primeiro. Em cima, numa linha
   só: a seta (volta aos painéis), **Quadro | Lista** (as duas vistas do painel, com os mesmos filtros),
-  **Trocar** (outro painel), **Configurar**, a busca e **Filtros** (as caixas dos filtros aparecem
+  **Trocar** (outro painel; desde o 2.4.11, com o seu painel pessoal e sem os das outras pessoas), **Configurar**, a busca e **Filtros** (as caixas dos filtros aparecem
   quando pedidas; o que está filtrado fica escrito, com o X). O fechado mostra os 30 mais recentes (o
   resto, na lista).
+- **A marca de atualizar** (2.4.11): no painel que liga **Marcar o chamado sem atualização** (Configurar › As regras, com as
+  horas: 24, por exemplo), o chamado em aberto que ninguém mexe há esse tempo ganha a bandeirinha laranja **Sem atualização
+  há 26 h** no cartão, na lista (embaixo do Atualizado) e na ficha, até alguém mexer nele (anotar, mudar um campo, mover). O
+  aviso automático (o WhatsApp, o e-mail) não conta como mexer. Nasce desligada em todos os painéis.
 - **Clicar num chamado** (no quadro, na lista, no Meu dia ou num aviso do sininho) abre a ficha numa
   **janela grande por cima da tela**, que continua embaixo do jeito que estava: fechar (o X, o Esc ou o
   Voltar do navegador) volta para ela. **Página inteira** abre a ficha sozinha — o endereço dela
@@ -56,7 +60,8 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
   Sair também ficam ali — no computador, a barra de cima saiu, para sobrar espaço.
 - O aviso que chega com o Gestor aberto também aparece num **cartão** perto do sininho (no celular,
   embaixo da barra de cima), com **Abrir o chamado**. O cartão **fica até você abrir o chamado ou
-  fechar no X** (fechar não marca como lido: continua no sininho). Aparecem os 3 mais novos; os outros
+  fechar no X** (fechar não marca como lido: continua no sininho). O chamado aberto pelo cartão fica **na frente** dos cartões
+  (2.4.11): eles voltam a aparecer quando a ficha fecha. Aparecem os 3 mais novos; os outros
   esperam a vez, e **Fechar todos** limpa. Embaixo da lista do sininho, em **Além do sininho**: ligar e
   desligar o cartão e a **notificação do navegador** (a do Windows ou do Mac, que aparece mesmo com o
   Gestor em outra aba ou minimizado e também fica até você clicar ou fechar; o navegador pergunta se
@@ -69,7 +74,9 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
 tela**, que fica como estava (o quadro com os filtros, a lista na mesma página). **Dentro de um
 painel** (no quadro ou na lista), o chamado já nasce nele, sem escolher outro; fora (Painéis, Meu
 dia), escolha o painel. Depois: o cliente, o contato (nome, WhatsApp e e-mail), o título, o **relato do
-cliente** — o que ele disse, nas palavras dele — e a **descrição** (o andamento e os dados técnicos).
+cliente** — o que ele disse, nas palavras dele — e a **descrição** (o andamento e os dados técnicos). No relato e na
+descrição vão também **imagens** (2.4.11): cole o print com **Ctrl+V** na caixa, ou use o botão **Imagem** embaixo dela. Elas
+aparecem em miniatura (o X tira) e entram com o chamado: PNG, JPG, WEBP ou GIF, de até 10 MB cada, até 10 de uma vez.
 Aberto, a janela vira a **ficha do chamado novo**; fechar volta para a tela. Com algo escrito, fechar
 a janela (o X, o Esc, o clique fora ou **Cancelar**) pergunta antes de descartar. O Voltar do
 navegador também fecha a janela.
@@ -82,9 +89,10 @@ navegador também fecha a janela.
 - Ao escolher o cliente, aparecem **os contatos dele**: um clique preenche o nome, o WhatsApp e o e-mail. **Novo
   contato** inclui ali mesmo (e já escolhe); o nome escrito à mão que não está na lista mostra
   **Salvar nos contatos**.
-- Aparecem também os chamados recentes dele. **Se é o mesmo problema de antes, use
-  "Reabrir este em vez de abrir outro"**: o cliente que volta à tarde com o mesmo ramal reabre o
-  chamado da manhã.
+- (Até o 2.4.10 apareciam também os chamados recentes do cliente, com "Reabrir este em vez de abrir outro". Saíram no
+  2.4.11, a pedido do Luan; o chamado fechado continua reabrindo pela ficha, em **Reabrir**.)
+- **O prazo** (2.4.11): no painel que conta o **prazo escrito em cada chamado**, o formulário pede o **dia e a hora** do prazo
+  (no horário de Brasília; a hora começa em 18:00). Sem ele, o chamado fica sem prazo até alguém escrever, na ficha.
 - A **gravidade** sugere a **prioridade** (pela tela de Prazos). No painel que usa o **alcance** — ele
   nasce desligado, "por enquanto"; liga em Ajustes › Campos —, os dois juntos, pela matriz. Dá para
   escolher outra que não a sugerida, sem precisar dizer o motivo (2.2).
@@ -137,6 +145,9 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 
 - **Relato do cliente**, **Descrição** (o andamento e os dados técnicos), **Solução** e **Causa**. O
   que a próxima etapa pede e está vazio fica marcado ("falta para ir para Resolvido").
+- **As imagens do relato e da descrição** (2.4.11): o botão **Imagem**, ao lado do Editar, põe na hora (sem esperar o Salvar
+  do texto); escrevendo, o print colado com **Ctrl+V** também vai. Aparecem em miniatura embaixo do texto e abrem grandes com um
+  clique; sai quem pôs ou quem cuida dos chamados (o histórico guarda). Até 20 em cada texto.
 - Um código citado no texto (SUP-12, ou um card antigo do LineChat como IS-4280) vira link.
 - Do lado: a **empresa** e o **contato** (o e-mail, desde o 2.3, com o link para escrever; em **Editar**, o nome, o
   WhatsApp e o e-mail, e os contatos do cliente: um clique troca; o contato escrito à mão ganha **Salvar nos contatos**) com a **conversa no LineChat** — o link e a sessão;
@@ -216,17 +227,21 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   (Configurar › Assuntos); o subtópico sem prazo próprio usa o do assunto de cima. Sem assunto, ou com um assunto sem
   prazo cadastrado, o chamado fica sem prazo e a ficha diz o porquê. A primeira resposta não tem prazo, e a prioridade
   não mexe no prazo (ela ordena o quadro e os relatórios).
+- **Ou o prazo escrito em cada chamado** (2.4.11): no Configurar do painel, em As regras, **Conta prazo** › **Escrito em cada
+  chamado**. Aí o prazo é o dia e a hora escritos no Abrir chamado ou no bloco **Prazo** da ficha (**Escrever o prazo**, **Mudar o
+  prazo**, **Tirar o prazo**; o histórico guarda o de antes). Conta em horas corridas, da abertura até o dia escrito, e **não
+  para esperando o cliente**; o "perto de vencer" e os avisos são os de sempre (Ajustes › Prazos). Vale mesmo no painel sem o
+  assunto.
 - **Esperando o cliente, o prazo para.** Esperando a operadora, o prazo **continua correndo**.
 - O **Resolvido fecha sozinho** depois dos dias úteis do painel. Se o cliente escrever que não
-  resolveu, quem atende reabre: o **Reabrir** da ficha, ou o **Reabrir este em vez de abrir outro** do
-  Abrir chamado. (Desde o 2.0.1 a mensagem do cliente não reabre sozinha.)
+  resolveu, quem atende reabre pelo **Reabrir** da ficha. (Desde o 2.0.1 a mensagem do cliente não reabre sozinha.)
 
 ## 4. Os Ajustes do módulo (Painéis › Ajustes)
 
 | Aba | O que se arruma |
 |---|---|
 | **Painéis e etapas** | Criar e editar os painéis. Tudo de um painel fica numa janela só (**Novo painel** ou **Editar**): o nome, a sigla, a cor e quem vê; **as etapas** (nome, tipo, nível, o que é obrigatório, quem é avisado; arrastar ou as setas mudam a ordem); **os campos** que o chamado do painel usa (2.1.2, a aba **Os campos**: desligue o que não serve, até o cliente e o contato, o relato, a solução e a causa e a prioridade — sem o assunto, o painel não conta prazo, porque o prazo vem dele); e as regras. O painel novo começa com Novo, Em andamento, Resolvido e Fechado, ou com as etapas de outro painel ("Começar com as etapas"). **Salvar** grava tudo junto: se uma etapa que sai tem chamados, a janela pergunta para onde eles vão, e até lá nada muda |
-| **Campos** | Os campos **de cada painel** (escolha o painel em cima). **Os do sistema** — assunto, tipo, gravidade, alcance, produtos, operadoras e, no painel de Gestão (2.1.2), cliente e contato, relato, solução e causa e prioridade — ligam e desligam em cada painel (também na aba Os campos da janela do painel) (o Desenvolvimento, por exemplo, não usa assunto; o **alcance** nasce desligado em todos, por enquanto); as opções do **Tipo** se editam aqui. **O Assunto** abre a árvore do painel (até 3 níveis, com descrição, checklist, de-para e o **prazo de solução**; **nasce em branco**: cole a lista da equipe, um por linha, no formato "Ramal - Configuração - Identidade"). **Novo campo** cria os do painel: texto curto, texto longo, número, data, sim/não ou lista (escolhe uma ou várias opções), com uma dica, e **obrigatório para abrir** ou **para entrar** nas etapas que você marcar. As setas mudam a ordem. Desligar ou desativar **não apaga**: some da tela e das regras, e o que os chamados já têm volta se o campo voltar. O tipo de um campo não muda depois de criado |
+| **Campos** | Os campos **de cada painel** (escolha o painel em cima). **Os do sistema** — assunto, tipo, gravidade, alcance, produtos, operadoras e, no painel de Gestão (2.1.2), cliente e contato, relato, solução e causa e prioridade — ligam e desligam em cada painel (também na aba Os campos da janela do painel) (o Desenvolvimento, por exemplo, não usa assunto; o **alcance** nasce desligado em todos, por enquanto); as opções do **Tipo** se editam aqui. **O Assunto** abre a árvore do painel (até 3 níveis, com descrição, checklist, de-para e o **prazo de solução**; **nasce em branco**: cole a lista da equipe, um por linha, no formato "Ramal - Configuração - Identidade"). **Novo campo** cria os do painel: texto curto, texto longo, número, data, sim/não, lista (escolhe uma ou várias opções), caixinhas, a **caixinha única** (2.4.11: uma caixinha só, para marcar que a atividade foi feita, com quem marcou e quando), o checklist do card, os módulos ou o documento, com uma dica, e **obrigatório para abrir** ou **para entrar** nas etapas que você marcar. As setas mudam a ordem. Desligar ou desativar **não apaga**: some da tela e das regras, e o que os chamados já têm volta se o campo voltar. O tipo de um campo não muda depois de criado |
 | **Etiquetas** | As etiquetas **de cada painel** (escolha o painel em cima, desde o 2.0.3), com a cor e em quantos chamados dele cada uma está: criar uma já com a cor, **Editar** o nome e a cor (valem nos chamados do painel que a têm; o mesmo editar está no lápis da lista de etiquetas) e **tirar das sugestões** a que nenhum chamado do painel usa |
 | **Prazos** | O horário de atendimento e os feriados (que contam as horas úteis), o resumo do **prazo de solução pelo assunto** (quantos assuntos de cada painel têm prazo; o prazo se cadastra no assunto) e a prioridade sugerida: a coluna **Só a gravidade** (o painel sem o alcance) e a matriz gravidade × alcance (o painel que usa o alcance) |
 | **Avisos e WhatsApp** | No primeiro cartão, os dois números (o do cliente, oficial, e o da equipe), a chave e o **Testar**. **A mensagem ao cliente**: pelo **modelo aprovado** (o template do WhatsApp oficial — o único jeito de começar uma conversa) ou em texto livre (só até 24 horas da última mensagem do cliente; depois disso, vai o modelo). **Buscar os modelos no LineChat** traz os aprovados do número oficial; ao escolher um, o Gestor preenche o **id** (templateId) e as **variáveis**, e cada uma recebe um valor do chamado (o nome do contato, o código, o título, a empresa, o responsável, quem manda, **o que o atendente escreveu**) ou um texto fixo. O modelo com imagem, vídeo ou documento no cabeçalho pede o **endereço do arquivo** (https://). A prévia mostra a mensagem com um chamado de exemplo. **Quem fica com a conversa no LineChat**: a equipe (pelo nome) e, ligado, quem manda (pelo e-mail, o mesmo nos dois). Depois, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início), e **a mensagem de cada aviso no WhatsApp** (2.0.2; abaixo). O **WhatsApp de cada pessoa** fica em **Administração › Usuários** (no Editar usuário; o "Receber os avisos dos chamados no WhatsApp" pausa sem apagar o número): aqui aparece quantos recebem |

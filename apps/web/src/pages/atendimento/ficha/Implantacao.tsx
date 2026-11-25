@@ -10,7 +10,7 @@
  *    fica no cabeçalho.
  */
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
-import { Check, ChevronRight, ClipboardList, Rocket } from 'lucide-react';
+import { Check, ChevronRight, ClipboardList, Receipt, Rocket } from 'lucide-react';
 import {
   chaveDoCampo, ehCaixinhas, etapaEhDaParte, gruposNaLateral, larguraDoCampo, paraBusca, partesDoChamado, type BlocoDaParte, type CampoPersonalizado, type ParteDoChamado,
 } from '@gestor/shared';
@@ -219,12 +219,16 @@ function CampoDaParte({ c }: { c: CampoPersonalizado }) {
   return <CampoNaFicha c={c} />;
 }
 
-/** Na negociação: os cards que ela abriu na implantação (com a etapa de cada um). */
+/**
+ * Na negociação: os cards que ela abriu na implantação (com a etapa de cada um). No card da implantação (2.4.11): o card de
+ * faturamento que ele abriu no painel administrativo.
+ */
 export function ImplantacoesDaNegociacao() {
-  const { f, opcoes } = useAberta();
+  const { f, opcoes, painel } = useAberta();
   if (!f.implantacoes.length) return null;
+  const faturamento = painel?.tipo !== 'vendas';
   return (
-    <Secao titulo="Implantação" icone={<Rocket size={16} />}>
+    <Secao titulo={faturamento ? 'Faturamento' : 'Implantação'} icone={faturamento ? <Receipt size={16} /> : <Rocket size={16} />}>
       <ul className="flex flex-col gap-2">
         {f.implantacoes.map((x) => (
           <li key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
@@ -234,7 +238,9 @@ export function ImplantacoesDaNegociacao() {
           </li>
         ))}
       </ul>
-      <p className="text-[12px] text-muted mt-2">Aberto quando a negociação entrou na etapa da implantação. O Ganho continua à parte, quando começar a faturar.</p>
+      <p className="text-[12px] text-muted mt-2">{faturamento
+        ? 'O card de faturamento, aberto quando este card chegou na etapa que abre o faturamento.'
+        : 'Aberto quando a negociação entrou na etapa da implantação. O Ganho continua à parte, quando começar a faturar.'}</p>
     </Secao>
   );
 }

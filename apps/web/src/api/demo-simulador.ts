@@ -31,7 +31,7 @@ import {
 } from '@gestor/shared';
 import type { Api } from './index.js';
 import { ApiError, type TrashItem } from './types.js';
-import { acessoDoCalendarioDemo, fonteDasMargensDemo, type AtorDemo, type EstadoDaPrevia } from './demo-atendimento.js';
+import { acessoDoCalendarioDemo, fonteDasMargensDemo, fonteDoPrincipalDemo, type AtorDemo, type EstadoDaPrevia } from './demo-atendimento.js';
 import { EMAIL_DA_PESSOA, type Pessoa } from './demo-atendimento-exemplos.js';
 
 export type ContextoSimuladorDemo = {
@@ -117,6 +117,13 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       margens.set(r.negociacaoId!, { simulacaoId: r.id, simulacao: r.nome, mensalTotal: k.mensalComDesconto, sobraMensal: k.sobraMensal });
     }
     return { margens, faixas: X.ajustes };
+  });
+  // a simulação principal da negociação, para o card de faturamento (2.4.11; como `principalDaNegociacao` do servidor)
+  fonteDoPrincipalDemo((negociacaoId) => {
+    preparar();
+    const r = [...X.simulacoes].filter((s) => !s.deletedAt && s.negociacaoId === negociacaoId)
+      .sort((p, q) => Number(q.principalDaNegociacao) - Number(p.principalDaNegociacao) || q.alteradoEm.localeCompare(p.alteradoEm))[0];
+    return r ? { nome: r.nome, cenario: cenarioPrincipal(r) } : null;
   });
   /** Os produtos do catálogo (ativos, fora da lixeira), com o código. */
   const produtos = () => [...S.products].filter((p) => p.active && !p.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR'))

@@ -333,6 +333,7 @@ export const realApi: Api = {
     anotar: (id, d) => http('POST', `/atendimento/chamados/${id}/anotacoes`, d),
     anexarNoCampo: (id, campoId, d) => http('POST', `/atendimento/chamados/${id}/campos/${encodeURIComponent(campoId)}/anexos`, d),
     tirarAnexoDoCampo: (id, anexoId) => http('DELETE', `/atendimento/chamados/${id}/anexos/${encodeURIComponent(anexoId)}`),
+    imagensNoTexto: (id, campo, d) => http('POST', `/atendimento/chamados/${id}/textos/${campo}/imagens`, d),
     apagarAnotacao: (id, notaId) => http('DELETE', `/atendimento/chamados/${id}/anotacoes/${notaId}`),
     ligar: (id, d) => http('POST', `/atendimento/chamados/${id}/ligacoes`, d),
     desligar: (id, ligacaoId) => http('DELETE', `/atendimento/chamados/${id}/ligacoes/${ligacaoId}`),

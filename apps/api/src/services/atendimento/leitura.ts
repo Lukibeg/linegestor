@@ -24,7 +24,7 @@ import {
   type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
   type CartaoParaLista, type CasoOperadora, type DadosObrigatorios, type FichaChamado, type FiltrosAtendimento, type Gravidade, type ItemChecklist, type ListasDosCampos,
   type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Prioridade, type QuadroAtendimento, type ResumoDoPainel,
-  type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado, type ValoresDosCampos, type CampoPersonalizado, listasEfetivas,
+  type ReferenciaMostrada, type SituacaoDoChamado, type TextoComImagem, type TipoAviso, type TipoChamado, type TipoLigacaoChamado, type ValoresDosCampos, type CampoPersonalizado, listasEfetivas,
 } from '@gestor/shared';
 import { NotFound } from '../../plugins/errors.js';
 import { etiquetasParaAPessoa } from './etiquetas.js';
@@ -34,6 +34,7 @@ import { situacaoIa } from '../baseIa.js';
 import { lerAjustes as lerAjustesLineChat } from '../linechat.js';
 import { tipoDaImagem } from '../portal.js';
 import { listarContatos } from '../clients.js';
+import { margensDasNegociacoes } from '../simulador.js';
 import {
   camposDoPainel, carregarCartoes, carregarContexto, carregarPaineis, cartoesDe, chamadoVisivel, eventoParaTela, lerAjustesDaNia, lerModeloDaConversa, pessoaCurta, podeCuidar, podeTrabalhar, podeVerPainel,
   quemVeOPainel, type Ator, type Contexto, type LinhaChamado,
@@ -184,9 +185,19 @@ export async function quadro(app: FastifyInstance, ator: Ator, f: FiltrosQuadro)
         ? [...daqui].sort((a, b) => maisRecente(a.fechadoEm ?? a.ultimaAtividadeEm, b.fechadoEm ?? b.ultimaAtividadeEm))
         : [...daqui].sort(compararNoQuadro(painel));
     const mostrados = etapa.tipo === 'fechado' ? ordenados.slice(0, FECHADOS_NO_QUADRO) : ordenados;
-    return { etapa, chamados: mostrados.map(semBusca), total: daqui.length, escondidos: daqui.length - mostrados.length, valor: daqui.reduce((t, c) => t + (c.valor ?? 0), 0) };
+    return { etapa, chamados: mostrados.map(semBusca), total: daqui.length, escondidos: daqui.length - mostrados.length, valor: daqui.reduce((t, c) => t + (c.valor ?? 0), 0), ids: daqui.map((c) => c.id) };
   });
-  return { painelId: painel.id, colunas, foraDoHorario: !dentroDoHorario(ctx.agora, ctx.prazos.calendario), agora: ctx.agora.toISOString() };
+  // o lucro de cada coluna do quadro de Vendas (2.4.11): a sobra por mês da simulação principal de cada negociação
+  const margens = painel.tipo === 'vendas' ? (await margensDasNegociacoes(app.db, colunas.flatMap((c) => c.ids))).margens : null;
+  return {
+    painelId: painel.id,
+    colunas: colunas.map(({ ids, ...c }) => {
+      if (!margens) return c;
+      const com = ids.map((id) => margens.get(id)).filter((m): m is NonNullable<typeof m> => !!m);
+      return { ...c, lucro: { valor: com.reduce((t, m) => t + m.sobraMensal, 0), comSimulacao: com.length } };
+    }),
+    foraDoHorario: !dentroDoHorario(ctx.agora, ctx.prazos.calendario), agora: ctx.agora.toISOString(),
+  };
 }
 
 async function filtrados(app: FastifyInstance, ator: Ator, f: FiltrosAtendimento) {
@@ -389,11 +400,12 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
   const visiveis = new Set(ctx.paineis.filter((p) => podeVerPainel(p, ator)).map((p) => p.id));
 
   const [eventos, notas, anexos, tempo, casos, filhos, todasLigacoes, nos, integracoes, lc, citaveis] = await Promise.all([
-    db.select().from(ticketEvents).where(eq(ticketEvents.ticketId, t.id)).orderBy(asc(ticketEvents.createdAt), asc(ticketEvents.id)),
+    // sem o "o Gestor avisou X pelo WhatsApp" (2.4.11, o Luan: "n precisa desse registro de aviso"): os de antes também saem
+    db.select().from(ticketEvents).where(and(eq(ticketEvents.ticketId, t.id), ne(ticketEvents.kind, 'aviso_equipe'))).orderBy(asc(ticketEvents.createdAt), asc(ticketEvents.id)),
     db.select().from(ticketNotes).where(and(eq(ticketNotes.ticketId, t.id), isNull(ticketNotes.deletedAt))).orderBy(asc(ticketNotes.createdAt), asc(ticketNotes.id)),
     db.select({
       id: ticketAttachments.id, noteId: ticketAttachments.noteId, fileName: ticketAttachments.fileName, mimeType: ticketAttachments.mimeType, sizeBytes: ticketAttachments.sizeBytes,
-      fieldId: ticketAttachments.fieldId, optionId: ticketAttachments.optionId, uploadedById: ticketAttachments.uploadedById, createdAt: ticketAttachments.createdAt,
+      fieldId: ticketAttachments.fieldId, optionId: ticketAttachments.optionId, textField: ticketAttachments.textField, uploadedById: ticketAttachments.uploadedById, createdAt: ticketAttachments.createdAt,
     })
       .from(ticketAttachments).where(and(eq(ticketAttachments.ticketId, t.id), isNull(ticketAttachments.deletedAt))).orderBy(asc(ticketAttachments.createdAt)),
     db.select().from(ticketTimeEntries).where(and(eq(ticketTimeEntries.ticketId, t.id), isNull(ticketTimeEntries.deletedAt)))
@@ -565,7 +577,16 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
       id: a.id, nome: a.fileName, tipo: a.mimeType, tamanho: a.sizeBytes, imagem: IMAGENS_NA_TELA.includes(a.mimeType), url: `atendimento/anexos/${a.id}`,
       campoId: a.fieldId!, opcaoId: a.optionId, por: pessoaCurta(ctx, a.uploadedById), em: a.createdAt.toISOString(), podeTirar: cuida || meu(a.uploadedById),
     })),
-    daNegociacao: daNegociacao[0] ? { id: daNegociacao[0].id, codigo: daNegociacao[0].code, titulo: daNegociacao[0].title, podeAbrir: visiveis.has(daNegociacao[0].panelId) } : null,
+    // as imagens do relato e da descrição (2.4.11): sai quem anexou ou quem cuida
+    imagensDosTextos: anexos.filter((a) => !a.noteId && !a.fieldId && (a.textField === 'relato' || a.textField === 'descricao')).map((a) => ({
+      id: a.id, nome: a.fileName, tipo: a.mimeType, tamanho: a.sizeBytes, imagem: IMAGENS_NA_TELA.includes(a.mimeType), url: `atendimento/anexos/${a.id}`,
+      campo: a.textField as TextoComImagem, por: pessoaCurta(ctx, a.uploadedById), em: a.createdAt.toISOString(), podeTirar: cuida || meu(a.uploadedById),
+    })),
+    // de onde veio (2.3: a negociação do card da implantação; 2.4.11: o card da implantação do de faturamento)
+    daNegociacao: daNegociacao[0] ? {
+      id: daNegociacao[0].id, codigo: daNegociacao[0].code, titulo: daNegociacao[0].title, podeAbrir: visiveis.has(daNegociacao[0].panelId),
+      deVendas: ehNegociacao(daNegociacao[0].panelId), painel: ctx.paineis.find((p) => p.id === daNegociacao[0]!.panelId)?.nome ?? '?',
+    } : null,
     implantacoes: abertas.map((x) => {
       const e = ctx.etapas.get(x.stageId)?.etapa;
       return {

@@ -673,3 +673,14 @@ produção ele não estava. Para não depender de saber disso:
 Em aberto: as conversas de e-mail chegam do robô com a sessão `email:…`, que não é um uuid. O link delas sai do mesmo modelo; se
 o LineChat abrir essas conversas por outro endereço, falta o endereço de uma delas para conferir.
 
+## Revisto no 2.4.11 (25/11/2026): sem os recentes no Abrir chamado, sem o aviso da equipe no histórico
+
+O Luan, com os prints: *"Não precisa disso na hora de abrir o chamado"* (o bloco "Chamados recentes deste cliente — Reabra em
+vez de abrir outro") e *"N precisa desse registro de aviso"* ("O Gestor avisou Eduardo pelo WhatsApp hoje 15:21").
+
+- O **"Reabrir este em vez de abrir outro"** saiu do Abrir chamado (esta decisão o punha ao escolher o cliente). Reabrir continua
+  na ficha.
+- O aviso da equipe pelo WhatsApp **não entra mais no histórico** (esta decisão dizia: "Na ficha e no histórico fica quem foi
+  avisado"). Os de antes ficam guardados e não aparecem.
+- E mais, no mesmo patch: as imagens no relato e na descrição, a marca de atualizar e o prazo escrito em cada chamado. Os
+  detalhes estão na **0066**.

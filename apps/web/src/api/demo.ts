@@ -1154,6 +1154,7 @@ const produtoDoId = (produtoId: string) => S.products.find((p) => p.id === produ
 const cadastroDaPrevia: CadastroDaPrevia = {
   clientePeloCnpj(cnpj) { const c = S.clients.find((x) => x.cnpj === cnpj && !x.deletedAt); return c ? { id: c.id, nome: c.tradeName } : null; },
   clienteNaLixeira(cnpj) { const c = S.clients.find((x) => x.cnpj === cnpj && x.deletedAt); return c ? { nome: c.tradeName } : null; },
+  cnpjDoCliente(clienteId) { return S.clients.find((x) => x.id === clienteId)?.cnpj || null; },
   criarCliente(d) {
     const c: Client = { id: id(), tradeName: d.nomeFantasia, legalName: d.razaoSocial, cnpj: d.cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: d.notas, deletedAt: null, createdAt: now(), updatedAt: now() };
     S.clients.push(c); unidadesDe(c.id);

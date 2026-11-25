@@ -154,6 +154,18 @@ async function conferirNegociacao(db: Db, ator: Ator, id: string): Promise<Negoc
 const cenariosDaLinha = (l: Linha) => (Array.isArray(l.scenarios) ? l.scenarios.map(semOQueSaiu) : []) as CenarioDaSimulacao[];
 const gravarDaLinha = (l: Linha): SimulacaoGravar => ({ nome: l.name, negociacaoId: l.ticketId, cenarios: cenariosDaLinha(l), principal: l.principal });
 
+/**
+ * A simulação principal de uma negociação (2.4.11, as informações do card de faturamento): o nome e o cenário principal dela.
+ * Nula: a negociação não tem simulação (fora da lixeira).
+ */
+export async function principalDaNegociacao(db: Db, negociacaoId: string): Promise<{ nome: string; cenario: CenarioDaSimulacao } | null> {
+  const [l] = await db.select().from(salesSimulations).where(and(eq(salesSimulations.ticketId, negociacaoId), isNull(salesSimulations.deletedAt)))
+    .orderBy(desc(salesSimulations.isMain), desc(salesSimulations.updatedAt)).limit(1);
+  const cenarios = l ? cenariosDaLinha(l) : [];
+  if (!l || !cenarios.length) return null;
+  return { nome: l.name, cenario: cenarioPrincipal({ cenarios, principal: l.principal }) };
+}
+
 async function nomesDasPessoas(db: Db, ids: Array<string | null>): Promise<Map<string, string>> {
   const unicos = [...new Set(ids.filter((x): x is string => !!x))];
   if (!unicos.length) return new Map();

@@ -457,10 +457,14 @@ function Coluna({ col, painel, filtros, arrastando, sobre, linha, arrastado, onP
         )}
         <span className="ml-auto tnum text-[12px] font-semibold text-muted" title={`${total} ${nome(total)}`}>{total}</span>
       </header>
-      {/* na venda, a soma das mensalidades da coluna (o que está em cada etapa do funil, o ganho e o perdido) */}
+      {/* na venda, a soma das mensalidades da coluna (o que está em cada etapa do funil, o ganho e o perdido) e, do lado, o
+          lucro (2.4.11): a soma da sobra por mês da simulação principal de cada negociação */}
       {vendas && (
-        <div className="px-1 -mt-1 text-[12.5px] tnum font-semibold text-ink-2" data-valor-da-coluna title={`A soma das mensalidades das ${total} ${nome(total)} desta etapa (a ativação não soma)`}>
-          {reaisInteiros(col.valor)}<span className="font-normal text-muted">/mês</span>
+        <div className="px-1 -mt-1 text-[12.5px] tnum font-semibold text-ink-2 flex flex-wrap items-baseline gap-x-1.5">
+          <span data-valor-da-coluna title={`A soma das mensalidades das ${total} ${nome(total)} desta etapa (a ativação não soma)`}>
+            {reaisInteiros(col.valor)}<span className="font-normal text-muted">/mês</span>
+          </span>
+          {col.lucro && total > 0 && <LucroDaColuna lucro={col.lucro} total={total} />}
         </div>
       )}
       <ul className="flex flex-col gap-1.5 sm:flex-1 sm:min-h-0 sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
@@ -579,5 +583,24 @@ function MenuMover({ c, etapas, onMover, naColuna }: { c: CartaoChamado; etapas:
         })}
       </ul>
     </Popover>
+  );
+}
+
+/**
+ * O lucro da coluna do quadro de Vendas (2.4.11, o Luan: "não só o valor dos contratos mas tbm o valor do meu lucro, vc tem que
+ * pegar o valor das simulações nesse caso e somar, e colocar do lado do valor dos contratos"): a sobra por mês da simulação
+ * principal de cada negociação da etapa, somada. A negociação sem simulação não entra (o "passar o mouse" diz quantas).
+ */
+function LucroDaColuna({ lucro, total }: { lucro: { valor: number; comSimulacao: number }; total: number }) {
+  const faltam = total - lucro.comSimulacao;
+  const das = lucro.comSimulacao === total ? (total === 1 ? 'da negociação' : `das ${total} negociações`) : `de ${lucro.comSimulacao} das ${total} negociações`;
+  const titulo = lucro.comSimulacao
+    ? `O lucro por mês: a sobra da simulação principal ${das} desta etapa${faltam ? ` (${faltam === 1 ? '1 não tem simulação' : `${faltam} não têm simulação`}: fica de fora)` : ''}`
+    : `Lucro: nenhuma negociação desta etapa tem simulação (o lucro vem da simulação principal de cada uma)`;
+  return (
+    <span className={`inline-flex items-baseline gap-1 ${!lucro.comSimulacao ? 'text-muted font-normal' : lucro.valor < 0 ? 'text-bad' : 'text-ok'}`} title={titulo} data-lucro-da-coluna>
+      <span className="font-normal text-muted" aria-hidden>·</span> lucro {lucro.comSimulacao ? reaisInteiros(Math.round(lucro.valor)) : '—'}
+      {lucro.comSimulacao > 0 && faltam > 0 && <span className="font-normal text-muted text-[11.5px]">({lucro.comSimulacao} de {total})</span>}
+    </span>
   );
 }

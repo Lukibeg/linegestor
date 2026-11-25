@@ -26,7 +26,7 @@ import { ThN, TdN, contarDe } from '../../lib/contagem.js';
 import { Th, type Dir, type Ordenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
 import {
-  Avatar, CabecalhoAtendimento, ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto, painelDe, telefoneLegivel,
+  Avatar, CabecalhoAtendimento, ChipEspera, ChipPrioridade, ChipResultado, ChipSemAtualizacao, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto, painelDe, telefoneLegivel,
   useAbrirChamado, useLerAFichaAntes, useOpcoes,
 } from './comum.js';
 import { cliqueAbreAFicha } from './quadro/cartao.js';
@@ -398,7 +398,11 @@ function Tabela({ itens, total, opcoes, ordem, mostrarPainel, vendas = false, pa
                       : <span className="text-muted italic text-[13px]">sem dono</span>}
                   </td>
                   <td className="whitespace-nowrap tnum text-[13px]" title={dataHoraCurta(c.criadoEm)}>{dataHoraCurta(c.criadoEm)}</td>
-                  <td className="whitespace-nowrap tnum text-[13px] text-ink-2" title={`Última atividade: ${dataHoraCurta(c.ultimaAtividadeEm)}`}>{haQuanto(c.ultimaAtividadeEm)}</td>
+                  <td className="whitespace-nowrap tnum text-[13px] text-ink-2" title={`Última atividade: ${dataHoraCurta(c.ultimaAtividadeEm)}`}>
+                    {haQuanto(c.ultimaAtividadeEm)}
+                    {/* a marca de atualizar (2.4.11), no painel que a liga */}
+                    <div><ChipSemAtualizacao c={c} ajustes={painel?.ajustes} curta /></div>
+                  </td>
                 </tr>
               );
             })}

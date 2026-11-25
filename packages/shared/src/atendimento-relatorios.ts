@@ -176,6 +176,8 @@ export type ChamadoParaRelatorios = {
   repete: string[];
   casos: CasoParaRelatorio[];
   tempos: TempoParaRelatorio[];
+  /** o prazo escrito no chamado (2.4.11, no painel com o prazo manual); nulo, sem prazo escrito */
+  prazoEscrito?: string | null;
 };
 
 export type EtapaParaRelatorio = { id: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; ordem: number; ativa: boolean };
@@ -186,7 +188,7 @@ export type CampoParaRelatorio = { id: string; nome: string; opcoes: Array<{ id:
 export type ClienteParaRelatorio = { nome: string; dids: number; aparelhos: number; produtos: string[] };
 
 export type ContextoDosRelatorios = {
-  painel: { id: string; nome: string; sigla: string; contaPrazo: boolean; usa: { assunto: boolean; tipo: boolean; gravidade: boolean; produtos: boolean; operadoras: boolean; /** sem dizer, usa */ prioridade?: boolean } };
+  painel: { id: string; nome: string; sigla: string; contaPrazo: boolean; /** o prazo escrito em cada chamado (2.4.11) */ prazoManual?: boolean; usa: { assunto: boolean; tipo: boolean; gravidade: boolean; produtos: boolean; operadoras: boolean; /** sem dizer, usa */ prioridade?: boolean } };
   /** todas as etapas do painel, inclusive as que saíram (o chamado que passou por uma delas continua aqui) */
   etapas: EtapaParaRelatorio[];
   assuntos: AssuntoParaRelatorio[];
@@ -619,6 +621,8 @@ function derivar(c: ChamadoParaRelatorios, ctx: ContextoDosRelatorios, etapas: M
     prazos: estadoDosPrazos({
       criadoEm: c.criadoEm, resolvidoEm: c.resolvidoEm, esperas: c.esperas, contaPrazo: ctx.painel.contaPrazo,
       assuntoId: c.assuntoId, prazoSolucao: prazoDoAssunto(c.assuntoId, assuntos)?.minutos ?? null,
+      // 2.4.11: o prazo escrito em cada chamado
+      prazoManual: ctx.painel.prazoManual, prazoEscrito: c.prazoEscrito ?? null,
     }, ctx.prazos, agora),
     caminhoIds,
     caminho: caminhoIds.map((id) => assuntos.get(id)?.nome ?? '?'),
