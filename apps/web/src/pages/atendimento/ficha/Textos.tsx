@@ -7,15 +7,20 @@
  * link (SUP-3 abre a ficha; IS-4280 abre o card antigo no LineChat). O que a próxima etapa pede e
  * está vazio fica destacado, e o aviso em cima diz tudo o que falta. Os campos de texto longo que o
  * painel criou (Ajustes › Campos) entram aqui, depois dos do chamado.
+ *
+ * O relato e a descrição recebem imagens (2.4.11, o Luan: "quero poder colocar uma imagem aqui tbm nos relatos e descrição"):
+ * o botão Imagem, ou o print colado com Ctrl+V na caixa enquanto se escreve; a imagem vai na hora (não espera o Salvar do
+ * texto) e aparece em miniatura embaixo do texto, abrindo grande com um clique.
  */
 import { useRef, useState } from 'react';
 import { CircleAlert, Pencil } from 'lucide-react';
-import { campoAparece, campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
+import { campoAparece, campoLigado, chaveDoCampo, idDaChave, MAX_IMAGENS_DO_TEXTO, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada, type TextoComImagem } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { BolinhaDoQueFalta, ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
 import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
 import { DicaDoCriarChamado, useNiaNoCampo } from './NiaNoCampo.js';
+import { BotaoImagem, imagensColadas, lerImagens } from '../ImagensDoTexto.js';
 
 type CampoTexto = 'relato' | 'descricao' | 'solucao' | 'causa' | 'contorno' | 'validacao';
 type Bloco = { campo: CampoTexto; titulo: string; dica: string; max: number; exemplo: string };
@@ -51,6 +56,8 @@ export const ALVO_DO_CAMPO: Record<string, string> = {
 export function irParaOCampo(campo: string): void {
   // o campo do painel ("campo:<id>") mora em "campo-c-<id>"
   const id = idDaChave(campo);
+  // o campo recolhido (2.4.11: o checklist do card, as caixinhas e os módulos começam fechados) abre antes de a ficha rolar até ele
+  if (id) window.dispatchEvent(new CustomEvent('gestor:abrir-campo', { detail: id }));
   const el = document.getElementById(id ? `campo-c-${id}` : ALVO_DO_CAMPO[campo] ?? '');
   if (!el) {
     // o campo numa aba que não está aberta (2.4.8, as partes em abas): a aba dele abre, e aí a ficha rola até ele
@@ -129,7 +136,8 @@ function BlocoDeTexto({ b }: { b: Bloco }) {
   const { f } = useAberta();
   return (
     <TextoEditavel id={`campo-${b.campo}`} chave={b.campo} titulo={b.titulo} dica={b.dica} max={b.max} exemplo={b.exemplo} valor={f[b.campo] ?? ''}
-      dados={(texto) => ({ [b.campo]: texto.trim() ? texto : null }) as ChamadoAlterarEntrada} />
+      dados={(texto) => ({ [b.campo]: texto.trim() ? texto : null }) as ChamadoAlterarEntrada}
+      comImagem={b.campo === 'relato' || b.campo === 'descricao' ? b.campo : undefined} />
   );
 }
 
@@ -143,10 +151,12 @@ export function BlocoDoCampo({ c }: { c: CampoPersonalizado }) {
   );
 }
 
-function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, campoId }: {
+function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, campoId, comImagem }: {
   id: string;
   /** o campo do painel (2.3): com ele, o Anexar e as miniaturas */
   campoId?: string;
+  /** o relato e a descrição (2.4.11): o botão Imagem, o print colado e as miniaturas */
+  comImagem?: TextoComImagem;
   /** a chave do que falta ("solucao", "campo:<id>") */
   chave: string;
   titulo: string; dica: string; max: number; exemplo: string; valor: string;
@@ -164,6 +174,24 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
   const nia = useNiaNoCampo({ campo: chave, caixa, texto, setTexto, salvo: valor, aoMandar: () => { setEditando(false); acao.limpar(); }, anexos: anexosDoCampo });
   // o card sem relato (o card novo, a ligação): a dica do /nia criar-chamado
   const dicaDaNia = nia.disponivel && nia.temComando('criar-chamado') && chave === 'relato' && !valor.trim();
+
+  // ---------- as imagens do texto (2.4.11): vão na hora, cada lote num pedido ----------
+  const imagens = comImagem ? (f.imagensDosTextos ?? []).filter((i) => i.campo === comImagem) : [];
+  const acaoDaImagem = useAcao();
+  const [avisoDaImagem, setAvisoDaImagem] = useState<string | null>(null);
+  const porImagens = async (arquivos: File[]) => {
+    if (!comImagem || !arquivos.length) return;
+    setAvisoDaImagem(null); acaoDaImagem.limpar();
+    const lidas = await lerImagens(arquivos, MAX_IMAGENS_DO_TEXTO - imagens.length);
+    if (lidas.imagens.length) {
+      await acaoDaImagem.rodar(() => api.atendimento.imagensNoTexto(f.id, comImagem, { imagens: lidas.imagens.map((i) => ({ fileName: i.nome, conteudo: i.conteudo })) }),
+        lidas.imagens.length === 1 ? `${titulo}: imagem posta` : `${titulo}: ${lidas.imagens.length} imagens postas`);
+    }
+    if (lidas.problemas.length) setAvisoDaImagem(lidas.problemas.join(' '));
+  };
+  const botaoDaImagem = comImagem && pode ? (
+    <BotaoImagem rotulo={`Pôr imagem em ${titulo}`} id={`${id}-imagem`} ocupado={acaoDaImagem.ocupado} desativado={imagens.length >= MAX_IMAGENS_DO_TEXTO} onEscolher={(xs) => void porImagens(xs)} />
+  ) : null;
 
   const abrir = () => { setTexto(valor); acao.limpar(); setEditando(true); };
   const desistir = () => { setEditando(false); acao.limpar(); };
@@ -184,6 +212,7 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
         {pode && !editando && (
           <span className="ml-auto flex items-start gap-1">
             {campoId && <BotaoAnexar campoId={campoId} rotulo={`Anexar em ${titulo}`} />}
+            {botaoDaImagem}
             <button type="button" className="btn-ghost btn-sm -my-1" onClick={abrir} aria-label={`${valor ? 'Editar' : 'Escrever'}: ${titulo}`}>
               <Pencil size={13} /> {valor ? 'Editar' : 'Escrever'}
             </button>
@@ -195,6 +224,7 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
           <textarea ref={caixa} className="input text-[14px] leading-relaxed" rows={linhas} autoFocus maxLength={max} value={texto} disabled={nia.lendo}
             placeholder={dicaDaNia ? 'Digite /nia criar-chamado e descreva o que aconteceu' : exemplo || undefined}
             aria-label={titulo} onChange={(e) => setTexto(e.target.value)}
+            onPaste={comImagem ? (e) => { const xs = imagensColadas(e); if (xs.length) void porImagens(xs); } : undefined}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void salvar(); }
               // Esc só desiste quando nada mudou: não se perde um texto escrito por engano
@@ -204,7 +234,8 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
           <div className="flex flex-wrap items-center gap-2 mt-2">
             <button type="button" className="btn-primary btn-sm" disabled={acao.ocupado || nia.lendo} onClick={() => void salvar()}>{acao.ocupado ? <Spinner className="text-white" /> : 'Salvar'}</button>
             <button type="button" className="btn-secondary btn-sm" disabled={nia.lendo} onClick={desistir}>Cancelar</button>
-            <span className="text-[11.5px] text-muted ml-auto">Ctrl+Enter salva · os códigos (SUP-12) viram link{nia.disponivel ? ' · /nia chama a NIA' : ''}</span>
+            {botaoDaImagem}
+            <span className="text-[11.5px] text-muted ml-auto">Ctrl+Enter salva · os códigos (SUP-12) viram link{comImagem ? ' · o print vai com Ctrl+V' : ''}{nia.disponivel ? ' · /nia chama a NIA' : ''}</span>
           </div>
           <ErroPerto erro={acao.erro} />
         </div>
@@ -219,10 +250,13 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, ca
           <span className="block text-[13px] text-muted italic">Ainda não escrito.</span>
           <DicaDoCriarChamado />
         </button>
-      ) : (
+      ) : imagens.length ? null : (
         <p className="text-[13px] text-muted italic">Ainda não escrito.</p>
       )}
       {campoId && <AnexosDoTexto campoId={campoId} />}
+      {imagens.length > 0 && <ListaDeAnexos anexos={imagens} />}
+      {avisoDaImagem && <p className="text-signal text-[12.5px] mt-1.5" role="status">{avisoDaImagem}</p>}
+      <ErroPerto erro={acaoDaImagem.erro} />
       {nia.janelas}
     </div>
   );

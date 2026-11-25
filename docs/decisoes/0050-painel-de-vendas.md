@@ -314,3 +314,10 @@ depois, *"no caso eu quero q todos sejam mais largos, deixe como padrão isso em
 criados no futuro"*. A coluna do 2.1.3 ia de 272 a 340 px conforme sobrava tela: o painel com muitas etapas (o Comercial)
 ficava sempre nos 272, e os outros alargavam. Agora a coluna tem **320 px fixos em todo painel** (de Gestão, de Vendas, o da
 Implantação e os que forem criados — a largura é da tela, não do painel); o quadro com mais colunas rola para o lado.
+
+## Revisto no 2.4.11 (25/11/2026): o lucro ao lado da soma da coluna
+
+O Luan, com o print do alto da coluna: *"não só o valor dos contratos mais tbm o valor do meu lucro, vc tem que pegar o valor
+das simulações nesse caso e somar, e colocar do lado do valor dos contratos"*. Cada coluna do quadro mostra, do lado da soma
+das mensalidades, o **lucro**: a sobra por mês da simulação principal de cada negociação dela (a sem simulação fica de fora, e
+a coluna diz quantas entraram). Ver a **0066** (seção 9).

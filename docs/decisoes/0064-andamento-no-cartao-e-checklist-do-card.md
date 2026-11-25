@@ -123,3 +123,10 @@ O Luan, 13/11, com o print do quadro do Ingline - Implantação:
   (Ramais no telefone, que vem da Lista de ramais da Curadoria, e Ramais no softphone, do LinePBX).
 - Gerar itens dos módulos, das caixinhas, das datas e dos números.
 - Mudar a ordem dos itens e "marcar todos".
+
+## Revisto no 2.4.11 (25/11/2026): recolhido ao abrir
+
+O Luan: *"quero que por padrão quando eu abra um card ele já venha resumido"*. O checklist do card começa **recolhido** cada vez
+que a ficha abre: o nome e a conta ("39 de 39 · feito") ficam à vista, e a setinha no canto direito (ou o nome) mostra os itens.
+O aviso do que falta abre o campo antes de rolar até ele. O mesmo vale para as caixinhas e os módulos (0057). Os detalhes estão
+na **0066** (seção 11), junto do tipo novo, a caixinha única (seção 10).

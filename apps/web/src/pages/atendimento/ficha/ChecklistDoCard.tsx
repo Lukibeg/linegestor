@@ -17,11 +17,13 @@ import { Check, Pencil, Plus, Undo2, X } from 'lucide-react';
 import { linhasDaLista, MAX_LETRAS_DO_ITEM, nomeCompletoDoCampo, type CampoPersonalizado, type ItemChecklist } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
-import { BolinhaDoQueFalta, ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
+import { BolinhaDoQueFalta, BotaoRecolher, ErroPerto, MarcaFalta, useAberta, useAcao, useCampoAberto } from './base.js';
 import { dataCompleta, emQuando } from './Cabecalho.js';
 
 export function ChecklistDoCard({ c }: { c: CampoPersonalizado }) {
   const { f, pode, opcoes } = useAberta();
+  // começa recolhido (2.4.11): o nome e a conta à vista; a setinha (ou o nome) mostra tudo
+  const { aberto: mostra, alternar } = useCampoAberto(c.id);
   const todos = f.listas?.[c.id] ?? [];
   // os tirados pelo × (os que vêm de outro campo) ficam fora da lista e da conta, com o Voltar
   const itens = todos.filter((i) => !i.tirado);
@@ -44,13 +46,17 @@ export function ChecklistDoCard({ c }: { c: CampoPersonalizado }) {
   // também com o card fechado (o Implantado do modelo fecha o card, e a configuração pode ter ficado para trás)
   const aberto = pode;
   return (
-    <div id={`campo-c-${c.id}`} className="min-w-0 scroll-mt-24" data-checklist-do-card>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
+    <div id={`campo-c-${c.id}`} className="min-w-0 scroll-mt-24" data-checklist-do-card data-aberto={mostra ? '' : undefined}>
+      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${mostra ? 'mb-1.5' : ''}`}>
         <BolinhaDoQueFalta campo={`campo:${c.id}`} />
-        <h3 className="font-display font-semibold text-[14.5px]">{c.nome}</h3>
+        <h3 className="font-display font-semibold text-[14.5px] min-w-0">
+          <button type="button" className="text-left hover:underline decoration-dotted underline-offset-2" aria-expanded={mostra} aria-controls={`campo-c-${c.id}-itens`} onClick={alternar}>{c.nome}</button>
+        </h3>
         {itens.length > 0 && <span className={`text-[12px] tnum ${feitos === itens.length ? 'text-ok font-medium' : 'text-muted'}`}>{feitos} de {itens.length}{feitos === itens.length ? ' · feito' : ''}</span>}
         <MarcaFalta campo={`campo:${c.id}`} />
+        <span className="ml-auto"><BotaoRecolher aberto={mostra} alternar={alternar} nome={c.nome} conteudo={`campo-c-${c.id}-itens`} /></span>
       </div>
+      {mostra && <div id={`campo-c-${c.id}-itens`} className="min-w-0">
       {c.dica && <p className="text-[12px] text-muted -mt-0.5 mb-2">{c.dica}</p>}
       {itens.length > 0 ? (
         <div className="flex flex-col gap-2">
@@ -72,6 +78,7 @@ export function ChecklistDoCard({ c }: { c: CampoPersonalizado }) {
       )}
       {tirados.length > 0 && <TiradosDaLista c={c} itens={tirados} />}
       {aberto && <IncluirNaLista c={c} vazia={!itens.length} />}
+      </div>}
     </div>
   );
 }

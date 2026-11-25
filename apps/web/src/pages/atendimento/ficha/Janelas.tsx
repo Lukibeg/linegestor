@@ -15,7 +15,7 @@ import {
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Confirmar, Modal, Spinner } from '../../../components/ui/index.js';
-import { painelDe, useAbrirChamado } from '../comum.js';
+import { painelDe } from '../comum.js';
 import { NovoChamadoNaJanela } from '../Novo.js';
 import { ErroPerto, nomeComNivel, useAberta, useAcao } from './base.js';
 
@@ -73,7 +73,6 @@ export function JanelaEsperar({ tipo, onFechar }: { tipo: TipoEspera; onFechar: 
  */
 export function JanelaAbrirLigado({ tipo, onFechar }: { tipo: 'filho' | 'problema'; onFechar: () => void }) {
   const { f, recarregar } = useAberta();
-  const abrirChamado = useAbrirChamado();
   const [escreveu, setEscreveu] = useState(false);
   const [descartar, setDescartar] = useState(false);
   const fechar = () => (escreveu ? setDescartar(true) : onFechar());
@@ -84,8 +83,7 @@ export function JanelaAbrirLigado({ tipo, onFechar }: { tipo: 'filho' | 'problem
         <div id="janela-abrir-ligado" data-tipo={tipo}>
           <NovoChamadoNaJanela pai={tipo === 'filho' ? f.codigo : undefined} incidente={tipo === 'problema' ? f.codigo : undefined} painelId={f.painelId}
             onEscreveu={setEscreveu} onCancelar={fechar}
-            onAberto={() => { onFechar(); recarregar(); }}
-            onReaberto={(codigo) => { onFechar(); abrirChamado(codigo); }} />
+            onAberto={() => { onFechar(); recarregar(); }} />
         </div>
       </Modal>
       <Confirmar open={descartar} onClose={() => setDescartar(false)} onConfirm={() => { setDescartar(false); onFechar(); }} perigoso botao="Descartar"

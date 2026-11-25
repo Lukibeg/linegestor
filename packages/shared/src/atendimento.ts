@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import { numeroWhatsApp, paraBusca, reais, telefoneLegivel } from './formatos.js';
 import { CondicoesDaNegociacaoSchema, type CondicoesDaNegociacao } from './negociacao.js';
+import { PedidoDoFaturamentoSchema } from './faturamento.js';
 import {
   ALCANCES, ESPERA_PARA_O_PRAZO, GRAVIDADES, NOME_ALCANCE, NOME_ESPERA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_PRAZO, PESO_PRIORIDADE, PRIORIDADES, RegraAgendadoSchema,
   diaLocal, sugestaoPelosCampos,
@@ -61,9 +62,9 @@ export type TipoChamado = (typeof TIPOS_CHAMADO)[number];
 export const NOME_TIPO_CHAMADO: Record<TipoChamado, string> = { chamado: 'Chamado', problema: 'Problema' };
 
 /** `helena`: a negociação trazida do painel de vendas do Helena (2.0.3, decisão 0054) */
-export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api', 'helena', 'comercial'] as const;
+export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api', 'helena', 'comercial', 'implantacao'] as const;
 export type Origem = (typeof ORIGENS)[number];
-export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)', helena: 'Trazida do Helena', comercial: 'Aberta pelo Comercial' };
+export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)', helena: 'Trazida do Helena', comercial: 'Aberta pelo Comercial', implantacao: 'Aberto pela implantação' };
 
 /**
  * O tipo do painel (2.0.1, decisão 0050), como no Helena: **Gestão** (os chamados: prazos, níveis,
@@ -164,6 +165,11 @@ export type EtapaPainel = {
    * implantação dela chega na etapa que liga no cadastro. Uma por painel.
    */
   recebeImplantacao?: boolean;
+  /**
+   * No painel de Gestão (2.4.11, o Implantado - Concluído da implantação): o card que chega aqui abre o card de faturamento
+   * no painel com este id (o administrativo), com o e-mail, o vencimento, o CNPJ e as informações que a janela mostra. Nulo: nada.
+   */
+  abreFaturamento?: string | null;
 };
 
 export type AjustesDoPainel = {
@@ -191,6 +197,18 @@ export type AjustesDoPainel = {
    * Classificação). O campo diz o grupo pelo nome (`parte`); o grupo que só existe nos campos entra no fim, no meio.
    */
   partes: GrupoDeCampos[];
+  /**
+   * O prazo escrito em cada chamado (2.4.11, o Luan: "tem q ter a opção do painel dos prazos serem manuais e serem
+   * preenchidos em cada chamado"): com o prazo ligado, o de cada chamado é o dia e a hora escritos no Abrir chamado e na
+   * ficha (e não o do assunto). Desligado: o prazo vem do assunto (2.4.8).
+   */
+  prazoManual: boolean;
+  /**
+   * Marca o chamado parado (2.4.11, o Luan: "qualquer chamado com 24 sem atualização tem q ter um flag sinalizando que tem
+   * q atualizar, eu quero que tenha uma opção no painel"): depois de tantas horas sem atividade, o cartão, a lista e a ficha
+   * mostram o Atualizar. Nulo: não marca.
+   */
+  horasSemAtualizacao: number | null;
 };
 
 /** Onde o grupo de campos fica na ficha (2.4): no meio (a coluna larga) ou na lateral (abaixo da Classificação). */
@@ -230,8 +248,11 @@ export type Painel = {
  */
 export const AJUSTES_PAINEL_PADRAO: AjustesDoPainel = {
   tipos: TIPOS_PADRAO, contaPrazo: true, fecharSozinhoDias: 3, obrigatoriosAoAbrir: [], paiEsperaFilhos: true, supervisores: [], camposDesligados: ['alcance'],
-  motivosDePerda: [], metaMensal: null, partes: [],
+  motivosDePerda: [], metaMensal: null, partes: [], prazoManual: false, horasSemAtualizacao: null,
 };
+/** As horas sem atualização com que a marca começa, ao ligar (2.4.11: "qualquer chamado com 24 sem atualização"). */
+export const HORAS_SEM_ATUALIZACAO_PADRAO = 24;
+export const MAX_HORAS_SEM_ATUALIZACAO = 720;
 
 /** Os motivos de perda com que o painel de Vendas nasce (a equipe muda nos Ajustes do painel). */
 export const MOTIVOS_DE_PERDA_PADRAO = [
@@ -281,8 +302,14 @@ export const CAMPOS_DO_PAINEL_DE_VENDAS: ReadonlyArray<{ nome: string; tipo: Tip
 /** Os ajustes guardados podem ser de antes de um campo novo: completa com o padrão. */
 export function ajustesDoPainelCompletos(v: Partial<AjustesDoPainel> | null | undefined): AjustesDoPainel {
   const a = { ...AJUSTES_PAINEL_PADRAO, ...(v ?? {}) };
-  // os grupos (2.4): só os bem formados (o guardado antes do 2.4 não tem nenhum)
-  return { ...a, partes: Array.isArray(a.partes) ? a.partes.filter((g) => g && typeof g.nome === 'string' && g.nome.trim()).map((g) => ({ nome: g.nome.trim(), lugar: g.lugar === 'lateral' ? 'lateral' : 'meio' })) : [] };
+  // as horas sem atualização (2.4.11): só um número inteiro de 1 a 720; o resto (o guardado antes do 2.4.11) não marca
+  const horas = typeof a.horasSemAtualizacao === 'number' && Number.isInteger(a.horasSemAtualizacao) && a.horasSemAtualizacao >= 1 && a.horasSemAtualizacao <= MAX_HORAS_SEM_ATUALIZACAO
+    ? a.horasSemAtualizacao : null;
+  return {
+    ...a, prazoManual: a.prazoManual === true, horasSemAtualizacao: horas,
+    // os grupos (2.4): só os bem formados (o guardado antes do 2.4 não tem nenhum)
+    partes: Array.isArray(a.partes) ? a.partes.filter((g) => g && typeof g.nome === 'string' && g.nome.trim()).map((g) => ({ nome: g.nome.trim(), lugar: g.lugar === 'lateral' ? 'lateral' : 'meio' })) : [],
+  };
 }
 
 type EtapaInicial = Omit<EtapaPainel, 'id' | 'avisar' | 'resultado'> & { chave: string };
@@ -410,17 +437,22 @@ export function prioridadeSugeridaDoPainel(
 }
 /**
  * O painel conta prazo? Só com o prazo ligado e o assunto (2.4.8: o prazo vem do assunto; antes, da
- * prioridade — 2.1.2). Sem o campo Assunto no painel, não há prazo.
+ * prioridade — 2.1.2). Sem o campo Assunto no painel, não há prazo — menos no prazo escrito em cada
+ * chamado (2.4.11), que não depende do assunto.
  */
-export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'>) => ajustes.contaPrazo && campoLigado(ajustes, 'assunto');
+export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'> & Partial<Pick<AjustesDoPainel, 'prazoManual'>>) =>
+  ajustes.contaPrazo && (ajustes.prazoManual === true || campoLigado(ajustes, 'assunto'));
+/** O prazo de cada chamado é escrito à mão (2.4.11)? Só com o prazo ligado. */
+export const prazoEscritoNoChamado = (ajustes: Pick<AjustesDoPainel, 'contaPrazo'> & Partial<Pick<AjustesDoPainel, 'prazoManual'>>) =>
+  ajustes.contaPrazo && ajustes.prazoManual === true;
 
 /** Os campos que quem cuida dos chamados cria em cada painel. O tipo não muda depois de criado. */
-export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios', 'caixinhas', 'checklist', 'modulos', 'documento'] as const;
+export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios', 'caixinhas', 'feito', 'checklist', 'modulos', 'documento'] as const;
 export type TipoCampo = (typeof TIPOS_CAMPO)[number];
 export const NOME_TIPO_CAMPO: Record<TipoCampo, string> = {
   texto: 'Texto curto', texto_longo: 'Texto longo', numero: 'Número', data: 'Data', sim_nao: 'Sim ou não',
   lista: 'Lista (escolhe uma opção)', lista_varios: 'Lista (escolhe várias)',
-  caixinhas: 'Caixinhas (o que já foi feito)', checklist: 'Checklist do card', modulos: 'Módulos do produto', documento: 'Documento (arquivo)',
+  caixinhas: 'Caixinhas (o que já foi feito)', feito: 'Caixinha única (feito)', checklist: 'Checklist do card', modulos: 'Módulos do produto', documento: 'Documento (arquivo)',
 };
 export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   texto: 'Uma linha (até 300 letras): um protocolo, uma versão, um número de série.',
@@ -431,6 +463,7 @@ export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   lista: 'Uma das opções que você escrever.',
   lista_varios: 'Uma ou mais das opções que você escrever.',
   caixinhas: 'Uma lista de tarefas: cada opção é uma caixinha, e a ficha mostra quem marcou e quando (a configuração, os testes). As caixinhas são as mesmas em todos os cards do painel.',
+  feito: 'Uma caixinha só, para marcar que a atividade foi feita (o nome do campo é a atividade). A ficha mostra quem marcou e quando; marcada, conta como feito na etapa e na aba.',
   checklist: 'Uma lista de tarefas que cada card monta na ficha, porque muda de cliente para cliente (os ramais a configurar no telefone, os do softphone). Cole várias linhas de uma vez: cada linha vira um item. A ficha mostra quem marcou cada um e quando.',
   modulos: 'Os módulos do produto escolhido abaixo (Administração › Produtos), para marcar os que o cliente vai usar. Na etapa que liga no cadastro, os marcados ficam ativos na ficha do cliente (o checklist, que segue outro campo de módulos, só confere o que foi ativado).',
   documento: 'Um ou mais arquivos anexados (a planilha dos ramais, o desenho da URA): PDF, imagem, Word ou Excel, de até 30 MB. Conta como feito com o primeiro arquivo.',
@@ -445,9 +478,19 @@ export const tipoTroca = (de: TipoCampo, para: TipoCampo) => de === para || (TIP
 export const ehLista = (t: TipoCampo) => t === 'lista' || t === 'lista_varios';
 /**
  * As caixinhas (2.3): cada opção marcada guarda quem marcou e quando (`marcas` do chamado). Os módulos do produto são
- * caixinhas cujas opções vêm do catálogo (Administração › Produtos), não escritas no campo.
+ * caixinhas cujas opções vêm do catálogo (Administração › Produtos), não escritas no campo. A caixinha única (2.4.11) é uma
+ * caixinha só, a "Feito", que o Gestor cria (`opcoesDaCaixinhaUnica`).
  */
-export const ehCaixinhas = (t: TipoCampo) => t === 'caixinhas' || t === 'modulos';
+export const ehCaixinhas = (t: TipoCampo) => t === 'caixinhas' || t === 'modulos' || t === 'feito';
+/**
+ * A caixinha única (2.4.11, o Luan: "checkbox único onde vai ser apenas um check unico identificando que a tividade já foi
+ * feita, isso é diferente do check que já tem hoje"): o campo tem uma opção só, a "Feito", que ninguém escreve; o id fica o
+ * mesmo quando o campo é salvo de novo (as marcas dos cards apontam para ele).
+ */
+export const NOME_DA_CAIXINHA_UNICA = 'Feito';
+export function opcoesDaCaixinhaUnica(existentes: readonly OpcaoDoCampo[], novoId: () => string): OpcaoDoCampo[] {
+  return [{ id: existentes[0]?.id ?? novoId(), nome: NOME_DA_CAIXINHA_UNICA, ativa: true }];
+}
 /** O campo tem opções escritas pela equipe nos Ajustes (as listas e as caixinhas; os módulos vêm do catálogo). */
 export const temOpcoesEscritas = (t: TipoCampo) => ehLista(t) || t === 'caixinhas';
 /** O valor do campo é uma lista de opções marcadas (a lista de várias e as caixinhas). */
@@ -714,6 +757,19 @@ export function normalizarValorDoCampo(campo: Pick<CampoPersonalizado, 'nome' | 
       if (campo.tipo === 'lista' && ids.length > 1) return erro('escolha uma opção só');
       return { ok: true, valor: campo.tipo === 'lista' ? ids[0]! : ids };
     }
+    // a caixinha única (2.4.11): marcada (a lista com a caixinha) ou não; o sim, o "feito", o "x" e o id marcam, o não desmarca
+    case 'feito': {
+      const o = campo.opcoes[0];
+      const x: unknown = Array.isArray(v) ? (v.length === 1 ? v[0] : undefined) : v;
+      const nao = () => erro('marque como feito (sim) ou desmarque (não)');
+      if (!o) return nao();
+      if (typeof x === 'boolean') return { ok: true, valor: x ? [o.id] : null };
+      if (typeof x !== 'string') return nao();
+      const s = paraBusca(x).trim();
+      if (x.trim() === o.id || SIM.has(s) || s === 'x' || s === 'feito' || s === paraBusca(o.nome)) return { ok: true, valor: [o.id] };
+      if (NAO.has(s)) return { ok: true, valor: null };
+      return nao();
+    }
     // o documento (2.4) é o que foi anexado: o Gestor conta os arquivos sozinho
     case 'documento':
       return erro('anexe o arquivo pela ficha (o Anexar do campo)');
@@ -736,6 +792,7 @@ export function textoDoValor(campo: Pick<CampoPersonalizado, 'tipo' | 'opcoes'>,
     case 'lista':
     case 'lista_varios':
     case 'caixinhas':
+    case 'feito':
     case 'modulos': {
       const ids = Array.isArray(v) ? v : [String(v)];
       return ids.map((id) => campo.opcoes.find((o) => o.id === id)?.nome ?? '(opção que saiu)').join(', ');
@@ -1225,6 +1282,8 @@ export const EtapaGravarSchema = z.object({
   ligaNoCadastro: z.boolean().default(false),
   /** no painel de Vendas (2.3): a negociação vem para cá quando a implantação termina (o card chega no Implantado) */
   recebeImplantacao: z.boolean().default(false),
+  /** no painel de Gestão (2.4.11): o card que chega aqui abre o card de faturamento neste painel (de Gestão); nulo, nada */
+  abreFaturamento: z.string().trim().max(60).nullish().transform((v) => v || null),
 });
 /** A meta e o valor: em centavos (R$ 1.234,56 = 123456), até R$ 100 milhões. */
 export const MAX_VALOR_EM_CENTAVOS = 10_000_000_000;
@@ -1320,6 +1379,10 @@ export const AjustesDoPainelSchema = z.object({
   motivosDePerda: z.array(z.string().trim().min(1, 'Dê um nome ao motivo').max(60, 'O motivo vai até 60 letras')).max(30, 'Até 30 motivos').optional(),
   /** no painel de Vendas: a meta do mês, em centavos (nulo = sem meta; sem o campo, fica como está) */
   metaMensal: ValorEmCentavosSchema.nullable().optional(),
+  /** o prazo escrito em cada chamado, e não o do assunto (2.4.11; sem o campo, fica como está) */
+  prazoManual: z.boolean().optional(),
+  /** marca o chamado parado depois de tantas horas sem atualização (2.4.11; nulo, não marca; sem o campo, fica como está) */
+  horasSemAtualizacao: z.number().int('As horas vão inteiras').min(1, 'De 1 hora para cima').max(MAX_HORAS_SEM_ATUALIZACAO, `Até ${MAX_HORAS_SEM_ATUALIZACAO} horas (30 dias)`).nullable().optional(),
 });
 /** Um painel vai até 20 etapas (colunas do quadro). */
 export const MAX_ETAPAS_DO_PAINEL = 20;
@@ -1537,7 +1600,9 @@ export const CampoGravarSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'A lista precisa de pelo menos uma opção' });
   }
   opcoesSemRepetir(c.opcoes, ctx);
-}).transform((c) => (c.tipo === 'documento' ? { ...c, anexos: true, opcoes: [], origens: [] } : c.tipo === 'checklist' ? { ...c, opcoes: [], incluirNaHora: false } : { ...c, origens: [] }));
+}).transform((c) => (c.tipo === 'documento' ? { ...c, anexos: true, opcoes: [], origens: [] } : c.tipo === 'checklist' ? { ...c, opcoes: [], incluirNaHora: false }
+  // a caixinha única (2.4.11): a opção é a do Gestor (opcoesDaCaixinhaUnica), e não a que veio escrita
+  : c.tipo === 'feito' ? { ...c, opcoes: [], origens: [], incluirNaHora: false } : { ...c, origens: [] }));
 /**
  * Só as caixinhas do campo (2.3, o "Editar as caixinhas" do card: criar, renomear, tirar, mudar a ordem e as pastas), sem
  * mexer no resto do campo. Vale para todos os cards do painel. Desde o 2.4 a que sai é excluída de verdade (o Luan: "aqui eu
@@ -1585,6 +1650,32 @@ export const OrdemDosCamposSchema = z.object({ ids: z.array(z.string().min(1).ma
 const ValorEntradaSchema = z.union([z.string().max(MAX_LETRAS_DO_CAMPO.texto_longo + 100), z.number(), z.boolean(), z.array(z.string().max(120)).max(MAX_OPCOES_DO_CAMPO)]);
 const ValoresEntradaSchema = z.record(z.string().trim().min(1).max(60), ValorEntradaSchema.nullable())
   .refine((r) => Object.keys(r).length <= 60, 'Campos demais no pedido');
+
+/** Os textos do chamado que recebem imagem (2.4.11): o relato do cliente e a descrição. */
+export const TEXTOS_COM_IMAGEM = ['relato', 'descricao'] as const;
+export type TextoComImagem = (typeof TEXTOS_COM_IMAGEM)[number];
+export const NOME_TEXTO_COM_IMAGEM: Record<TextoComImagem, string> = { relato: 'Relato do cliente', descricao: 'Descrição' };
+/** Até quantas imagens cabem em cada texto, e de quantas em quantas sobem (o Abrir chamado manda as dos dois juntas). */
+export const MAX_IMAGENS_DO_TEXTO = 20;
+export const MAX_IMAGENS_DE_UMA_VEZ = 10;
+/** Uma imagem que chega para um texto (o nome e o conteúdo em data URL ou base64; até 10 MB, conferida no servidor). */
+export const ImagemDoTextoSchema = z.object({
+  campo: z.enum(TEXTOS_COM_IMAGEM),
+  fileName: z.string().trim().min(1).max(200),
+  conteudo: z.string().min(1).max(15_000_000),
+});
+export type ImagemDoTextoEntrada = z.input<typeof ImagemDoTextoSchema>;
+/** Anexar imagens num texto do chamado, na ficha (o campo vem no endereço). */
+export const ImagensDoTextoSchema = z.object({
+  imagens: z.array(ImagemDoTextoSchema.omit({ campo: true })).min(1, 'Escolha a imagem.').max(MAX_IMAGENS_DE_UMA_VEZ, `Até ${MAX_IMAGENS_DE_UMA_VEZ} imagens de uma vez.`),
+});
+
+/**
+ * O prazo escrito à mão (2.4.11): o instante (com o fuso: a tela manda em UTC, do dia e da hora de Brasília), de 2020 até 5
+ * anos à frente.
+ */
+export const PrazoEscritoSchema = z.string().datetime({ offset: true, message: 'Escreva o prazo com o dia e a hora.' })
+  .refine((v) => { const t = Date.parse(v); return t >= Date.UTC(2020, 0, 1) && t <= Date.now() + 5 * 366 * 86_400_000; }, 'O prazo fica entre 2020 e daqui a 5 anos.');
 
 export const ChamadoCriarSchema = z.object({
   painelId: z.string().min(1),
@@ -1640,6 +1731,10 @@ export const ChamadoCriarSchema = z.object({
   ativacao: ValorEmCentavosSchema.nullish().transform((v) => v ?? null),
   ativacoesDosProdutos: ValoresDosProdutosSchema.optional(),
   empresa: TextoOpcional(120),
+  /** o prazo escrito à mão (2.4.11, no painel com o prazo manual): o dia e a hora; nulo, sem prazo */
+  prazo: PrazoEscritoSchema.nullish().transform((v) => v ?? null),
+  /** as imagens do relato e da descrição (2.4.11), coladas ou anexadas no Abrir chamado: gravadas junto com o chamado */
+  imagens: z.array(ImagemDoTextoSchema).max(MAX_IMAGENS_DE_UMA_VEZ, `Até ${MAX_IMAGENS_DE_UMA_VEZ} imagens ao abrir o chamado.`).default([]),
 });
 export type ChamadoCriar = z.infer<typeof ChamadoCriarSchema>;
 
@@ -1692,6 +1787,8 @@ export const ChamadoAlterarSchema = z.object({
   condicoes: CondicoesDaNegociacaoSchema.nullable().optional(),
   empresa: TextoOpcional(120).optional(),
   motivoPerda: TextoOpcional(200).optional(),
+  /** o prazo escrito à mão (2.4.11, no painel com o prazo manual): o dia e a hora; nulo tira */
+  prazo: PrazoEscritoSchema.nullable().optional(),
 });
 export type ChamadoAlterar = z.infer<typeof ChamadoAlterarSchema>;
 
@@ -1720,6 +1817,11 @@ export const MoverSchema = z.object({
     razaoSocial: TextoOpcional(200),
     cnpj: z.string().trim().max(30).nullish(),
   }).optional(),
+  /**
+   * O card que chega na etapa que abre o faturamento (2.4.11): o título, o e-mail, o vencimento, o CNPJ e as informações da
+   * janela. Sem isto, vai o que o Gestor preencheu (o plano).
+   */
+  faturamento: PedidoDoFaturamentoSchema.optional(),
 });
 /** O que a etapa faz ao chegar (2.3): a etapa e, na implantação, o cliente escolhido ou o CNPJ escrito na janela. */
 export const AoMoverSchema = z.object({
@@ -2225,7 +2327,41 @@ export type CartaoChamado = {
    * só dos campos que o chamado mostra (os do produto que ele tem). Vazio no painel sem partes.
    */
   partes: ProgressoDaParte[];
+  /** o prazo escrito no chamado (2.4.11, no painel com o prazo manual): o dia e a hora; nulo, sem prazo escrito */
+  prazoEscrito?: string | null;
 };
+
+// =====================================================================
+//  O CHAMADO PARADO (2.4.11, o Luan: "qualquer chamado com 24 sem atualização tem q ter um flag sinalizando que tem
+//  q atualizar, eu quero que tenha uma opção no painel sinalizando se eu vou querer ativar essa função ou n")
+// =====================================================================
+
+/**
+ * As horas sem atualização do chamado em aberto, quando passou do que o painel aceita (`horasSemAtualizacao`); nulo quando o
+ * painel não marca, o chamado já está resolvido ou fechado, ou ainda está dentro do limite. A atualização é a última atividade
+ * do chamado (uma anotação, a etapa, um campo, um anexo, o responsável — o que a equipe faz nele); os avisos que o Gestor
+ * manda não contam.
+ */
+export function horasSemAtualizacao(
+  c: Pick<CartaoChamado, 'situacao' | 'ultimaAtividadeEm'>, ajustes: Pick<AjustesDoPainel, 'horasSemAtualizacao'> | null | undefined, agora: Date = new Date(),
+): number | null {
+  const limite = ajustes?.horasSemAtualizacao;
+  if (!limite || c.situacao !== 'aberto') return null;
+  const horas = (agora.getTime() - Date.parse(c.ultimaAtividadeEm)) / 3_600_000;
+  return Number.isFinite(horas) && horas >= limite ? Math.floor(horas) : null;
+}
+/** "Sem atualização há 26 h", "há 3 dias" (a marca do cartão, da lista e da ficha). */
+export function textoSemAtualizacao(horas: number): string {
+  if (horas < 48) return `Sem atualização há ${horas} h`;
+  return `Sem atualização há ${Math.floor(horas / 24)} dias`;
+}
+
+// =====================================================================
+//  AS IMAGENS DO RELATO E DA DESCRIÇÃO (2.4.11, o Luan: "quero poder colocar uma imagem aqui tbm nos relatos e descrição")
+// =====================================================================
+
+/** Uma imagem de um texto, na ficha: abre grande na tela; sai quem anexou ou quem cuida dos chamados (os schemas ficam junto do Abrir chamado). */
+export type ImagemDoTexto = AnexoChamado & { campo: TextoComImagem; por: PessoaCurta | null; em: string; podeTirar: boolean };
 /** Uma parte da ficha e quanto já foi feito: os campos preenchidos e as caixinhas marcadas (os módulos não contam). */
 export type ProgressoDaParte = { parte: string; feitos: number; total: number };
 /** O card da implantação, visto da negociação (2.3): onde ele está. */
@@ -2244,6 +2380,8 @@ export const TIPOS_EVENTO = [
   'anexo',
   // o /nia no card (2.4.2): a pessoa aplicou o que a NIA propôs (a frase é o resumo do que foi gravado)
   'nia',
+  // o card de faturamento (2.4.11): o card da implantação que o abriu; o de faturamento, de onde veio
+  'faturamento',
 ] as const;
 export type TipoEvento = (typeof TIPOS_EVENTO)[number];
 export type EventoChamado = {
@@ -2326,8 +2464,14 @@ export type FichaChamado = CartaoChamado & {
   marcas: MarcasDosCampos;
   /** os anexos dos campos e das caixinhas (2.3), na ordem em que chegaram */
   anexosDosCampos: AnexoDoCampo[];
-  /** a implantação (2.3): no card, a negociação de onde ele veio; na negociação, os cards que ela abriu */
-  daNegociacao: { id: string; codigo: string; titulo: string; podeAbrir: boolean } | null;
+  /** as imagens do relato e da descrição (2.4.11), na ordem em que chegaram */
+  imagensDosTextos: ImagemDoTexto[];
+  /**
+   * De onde o card veio (2.3): no card da implantação, a negociação; no card de faturamento (2.4.11), o card da implantação
+   * (`deVendas` falso). Os cards que este abriu ficam em `implantacoes` (na negociação, o da implantação; no da implantação,
+   * o de faturamento).
+   */
+  daNegociacao: { id: string; codigo: string; titulo: string; podeAbrir: boolean; deVendas?: boolean; painel?: string } | null;
   implantacoes: ImplantacaoDaNegociacao[];
   /** etapa (id) → o que falta para entrar nela */
   faltam: Record<string, Array<Obrigatorio | 'validacao' | 'motivoPerda'>>;
@@ -2389,7 +2533,15 @@ export type OpcoesAtendimento = {
 };
 
 /** Uma coluna do quadro; no painel de Vendas, `valor` é a soma (em centavos) das negociações dela (as escondidas também). */
-export type ColunaQuadro = { etapa: EtapaPainel; chamados: CartaoChamado[]; total: number; escondidos: number; valor: number };
+export type ColunaQuadro = {
+  etapa: EtapaPainel; chamados: CartaoChamado[]; total: number; escondidos: number; valor: number;
+  /**
+   * No quadro de Vendas (2.4.11, o Luan: "não só o valor dos contratos mas tbm o valor do meu lucro, vc tem que pegar o valor das
+   * simulações"): a soma da sobra por mês da simulação principal de cada negociação da coluna (as sem simulação não somam) e
+   * quantas têm simulação. Ausente nos outros painéis.
+   */
+  lucro?: { valor: number; comSimulacao: number };
+};
 export type QuadroAtendimento = { painelId: string; colunas: ColunaQuadro[]; foraDoHorario: boolean; agora: string };
 
 export const TIPOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador', 'lembrete', 'evento_novo'] as const;
@@ -2523,6 +2675,8 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     // texto longo (relato, descrição, solução): o histórico diz só que mudou (o texto está no chamado)
     case 'campo': {
       if (d.longo) return `editou ${d.campo}`;
+      // a caixinha única (2.4.11): o nome do campo é a atividade
+      if (d.unica) return (d.marcou as string[] | undefined)?.length ? `marcou ${d.campo} como feito` : `desmarcou ${d.campo} (não está mais feito)`;
       // as caixinhas (2.3): o que foi marcado e desmarcado, e não a lista inteira de antes e de depois
       if (d.marcou || d.desmarcou) {
         const m = (d.marcou as string[] | undefined) ?? [];
@@ -2578,6 +2732,12 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
       if (d.acao === 'negociacao') return `a negociação ${d.codigo} foi para ${d.etapa ?? '?'}`;
       // no card: "veio da negociação CIG-12"
       return `veio da negociação ${d.codigo}${d.titulo ? ` (${d.titulo})` : ''}`;
+    }
+    // o card de faturamento (2.4.11): no card da implantação, "abriu o card de faturamento GLA-67 no painel Grupo Line - ADM";
+    // no de faturamento, "veio da implantação IMP-6 (Implantação — Clínica SOS)"
+    case 'faturamento': {
+      if (d.acao === 'abriu') return `abriu o card de faturamento ${d.codigo}${d.painel ? ` no painel ${d.painel}` : ''}`;
+      return `veio da implantação ${d.codigo}${d.titulo ? ` (${d.titulo})` : ''}`;
     }
     // "anexou print.png em Configuração do ambiente (LinePBX) › Configuração dos ramais"
     case 'anexo': {

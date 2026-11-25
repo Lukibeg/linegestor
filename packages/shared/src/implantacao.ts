@@ -17,6 +17,7 @@
  * etapa, como em qualquer campo.
  */
 import { cnpjLimpo, paraBusca } from './formatos.js';
+import type { PlanoDoFaturamento } from './faturamento.js';
 import {
   valorPreenchido, MAX_ITENS_DA_LISTA, MAX_LETRAS_DO_ITEM,
   type AjustesDoPainel, type ItemChecklist, type ListasDosCampos, TIPOS_QUE_GERAM_ITENS, type CampoPersonalizado, type CorPainel, type EtapaPainel, type GrupoDeCampos, type LugarDoGrupo, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
@@ -786,7 +787,11 @@ export type NegociacaoNoFim = { id: string; codigo: string; titulo: string; de: 
  * O que a etapa faz ao chegar (a janela de antes de mover): abrir a implantação, ligar no cadastro e levar a negociação
  * para o Implantado do Comercial; ou nada (os três nulos).
  */
-export type OQueAEtapaFaz = { implantacao: PlanoDaImplantacao | null; cadastro: PlanoDoCadastro | null; negociacao: NegociacaoNoFim | null };
+export type OQueAEtapaFaz = {
+  implantacao: PlanoDaImplantacao | null; cadastro: PlanoDoCadastro | null; negociacao: NegociacaoNoFim | null;
+  /** o card de faturamento que a etapa abre (2.4.11); nulo: a etapa não abre (ou o painel dele saiu) */
+  faturamento?: PlanoDoFaturamento | null;
+};
 
 /**
  * Para onde a negociação vai quando o card da implantação dela chega no fim (a etapa que liga no cadastro): a etapa do

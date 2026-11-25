@@ -18,9 +18,12 @@ import {
 } from '@gestor/db';
 import {
   cadastroMuda, codigoDoChamado, diaLocal, etapaDeEntrada, etapaDoFimDaImplantacao, modulosMarcados, modulosSemMarcar, paraBusca, planoDaImplantacao, planoDoCadastro, temDataDeAtivacao,
+  campoLigado, cnpjFormatado, condicoesGuardadas, descricaoDoFaturamento, emailValido, informacoesDoFaturamento, pedidoDoPlano, produtosDoFaturamento, tituloDoFaturamento,
   type AssinaturaNoCadastro, type EtapaPainel, type NegociacaoNoFim, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosCampos,
+  type PedidoDoFaturamento, type PlanoDoFaturamento,
 } from '@gestor/shared';
 import { camposDoPainel, pessoaDoAtor, registrarEvento, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
+import { principalDaNegociacao } from '../simulador.js';
 
 type Banco = Db;
 /** A transação do mover (o tipo da transação do Drizzle). */
@@ -119,12 +122,49 @@ export async function negociacaoNoFim(db: Banco, ctx: Contexto, t: LinhaChamado,
   return { linha, painel: dela, de, para: alvo, mostra: { id: linha.id, codigo: linha.code, titulo: linha.title, de: de.nome, para: alvo.nome } };
 }
 
-/** O que a janela mostra antes de mover para a etapa (as três coisas que uma etapa pode fazer). */
+/**
+ * O card de faturamento (2.4.11, decisão 0066) que o card que vai para `para` abre (nulo: a etapa não abre o faturamento, ou o
+ * painel dele saiu): para onde vai, se já foi aberto e o que a janela mostra preenchido — o título com o cliente, o e-mail do
+ * contato, o CNPJ do cadastro e as informações (a negociação de onde o card veio: a mensalidade, a ativação, as Condições
+ * especiais e os produtos com os itens da simulação principal).
+ */
+export async function planoDoFaturamentoDoChamado(db: Banco, ctx: Contexto, t: LinhaChamado, painel: Painel, para: EtapaPainel): Promise<PlanoDoFaturamento | null> {
+  if (painel.tipo !== 'gestao' || !para.abreFaturamento) return null;
+  const destino = ctx.paineis.find((p) => p.id === para.abreFaturamento && p.tipo === 'gestao');
+  if (!destino) return null;
+  const [ja] = await db.select({ code: tickets.code }).from(tickets).where(and(eq(tickets.sourceTicketId, t.id), isNull(tickets.deletedAt))).limit(1);
+  const [cliente] = t.clientId ? await db.select({ nome: clients.tradeName, cnpj: clients.cnpj }).from(clients).where(eq(clients.id, t.clientId)).limit(1) : [];
+  // a negociação de onde o card veio (a implantação aberta pelo Comercial) e a simulação principal dela
+  const [negociacao] = t.sourceTicketId
+    ? await db.select().from(tickets).where(and(eq(tickets.id, t.sourceTicketId), isNull(tickets.deletedAt))).limit(1)
+    : [];
+  const daNegociacao = negociacao && ctx.paineis.find((p) => p.id === negociacao.panelId)?.tipo === 'vendas' ? negociacao : null;
+  const simulacao = daNegociacao ? await principalDaNegociacao(db, daNegociacao.id) : null;
+  const ids = daNegociacao?.productIds.length ? daNegociacao.productIds : t.productIds;
+  const produtos = ids.map((id) => ({ id, codigo: ctx.produtos.get(id)?.codigo ?? null, nome: ctx.produtos.get(id)?.nome ?? '?' }));
+  const informacoes = informacoesDoFaturamento({
+    mensalidade: daNegociacao?.valueCents ?? null, ativacao: daNegociacao?.setupCents ?? null,
+    condicoes: daNegociacao ? condicoesGuardadas(daNegociacao.negotiationTerms) : null,
+    produtos: produtosDoFaturamento({ produtos, valores: daNegociacao?.productValues ?? null, cenario: simulacao?.cenario ?? null }),
+  });
+  const nome = cliente?.nome ?? t.title;
+  return {
+    painel: { id: destino.id, nome: destino.nome, sigla: destino.sigla }, etapa: etapaDeEntrada(destino.etapas)?.nome ?? null,
+    jaAberto: ja ? { codigo: ja.code } : null,
+    cliente: cliente?.nome ?? null, nome, titulo: tituloDoFaturamento(nome),
+    email: t.contactEmail ?? daNegociacao?.contactEmail ?? null, vencimento: null,
+    cnpj: cliente?.cnpj ? cnpjFormatado(cliente.cnpj) : null,
+    informacoes, origem: { negociacao: daNegociacao?.code ?? null, simulacao: simulacao?.nome ?? null },
+  };
+}
+
+/** O que a janela mostra antes de mover para a etapa (as coisas que uma etapa pode fazer). */
 export async function aoMover(db: Banco, ctx: Contexto, t: LinhaChamado, painel: Painel, para: EtapaPainel, pedido?: PedidoDoCliente): Promise<AoMover> {
   return {
     implantacao: await planoDaImplantacaoDaNegociacao(db, ctx, t, painel, para, pedido),
     cadastro: await planoDoCadastroDoChamado(db, ctx, t, painel, para),
     negociacao: (await negociacaoNoFim(db, ctx, t, painel, para))?.mostra ?? null,
+    faturamento: await planoDoFaturamentoDoChamado(db, ctx, t, painel, para),
   };
 }
 
@@ -217,6 +257,52 @@ export async function abrirAImplantacao(
     summary: `Abriu ${codigo} "${titulo}" no painel ${destino.nome}, pela negociação ${t.code}`,
   });
   return { id, codigo, titulo, clienteNovo, cliente, produtosNovos, auditoria };
+}
+
+/** O card de faturamento que foi aberto (para a frase do mover, o aviso e a auditoria). */
+export type FaturamentoAberto = { id: string; codigo: string; titulo: string; painel: string; avisar: string[]; etapa: string; auditoria: AuditoriaExtra[] };
+
+/** O primeiro e-mail que serve de contato (o Luan escreve dois juntos: "financeiro@…/barbara@…"). */
+const primeiroEmail = (v: string | null) => (v ?? '').split(/[\s,;\/]+/).map((x) => x.trim().toLowerCase()).find((x) => x && emailValido(x)) ?? null;
+
+/**
+ * Abre o card de faturamento, dentro da transação do mover (2.4.11): na entrada do painel administrativo, com o título, a
+ * descrição no formato do Luan (o e-mail, o vencimento, o CNPJ e as informações da janela), o cliente e o contato do card (o
+ * e-mail do faturamento como e-mail do contato), os produtos e quem moveu como observador. Fica ligado ao card que o abriu
+ * (`source_ticket_id`): um card abre um só. O histórico dos dois diz de onde veio e para onde foi.
+ */
+export async function abrirOFaturamento(
+  tx: Tx, e: { ctx: Contexto; t: LinhaChamado; agora: Date; quando: () => Date }, ator: Ator, plano: PlanoDoFaturamento, pedido?: PedidoDoFaturamento,
+): Promise<FaturamentoAberto | null> {
+  if (plano.jaAberto) return null;
+  const { ctx, t, agora } = e;
+  const destino = ctx.paineis.find((p) => p.id === plano.painel.id);
+  const entrada = destino ? etapaDeEntrada(destino.etapas) : null;
+  if (!destino || !entrada) return null;
+  const p = pedido ?? pedidoDoPlano(plano);
+  const usa = (c: Parameters<typeof campoLigado>[1]) => campoLigado(destino.ajustes, c);
+  const pessoa = pessoaDoAtor(ator);
+  const [n] = await tx.update(ticketPanels).set({ nextNumber: sql`${ticketPanels.nextNumber} + 1` })
+    .where(eq(ticketPanels.id, destino.id)).returning({ numero: sql<number>`${ticketPanels.nextNumber} - 1` });
+  const numero = Number(n!.numero);
+  const codigo = codigoDoChamado(destino.sigla, numero);
+  const id = newId();
+  const descricao = descricaoDoFaturamento({ cliente: plano.nome, email: p.email, vencimento: p.vencimento, cnpj: p.cnpj, informacoes: p.informacoes });
+  const comCliente = usa('cliente');
+  await tx.insert(tickets).values({
+    id, panelId: destino.id, stageId: entrada.id, number: numero, code: codigo, kind: 'chamado', title: p.titulo, description: descricao,
+    clientId: comCliente ? t.clientId : null, contactName: comCliente ? t.contactName : null, contactPhone: comCliente ? t.contactPhone : null,
+    contactEmail: comCliente ? primeiroEmail(p.email) ?? t.contactEmail : null,
+    origin: 'implantacao', productIds: usa('produtos') ? [...t.productIds] : [], watcherIds: pessoa ? [pessoa] : [], sourceTicketId: t.id,
+    lastActivityAt: agora, createdById: pessoa, createdAt: agora, updatedAt: agora,
+  });
+  await registrarEvento(tx, id, 'criado', ator, { origem: 'implantacao', etapa: entrada.nome, etapaId: entrada.id, painel: destino.nome }, e.quando());
+  await registrarEvento(tx, id, 'faturamento', ator, { acao: 'veio', codigo: t.code, titulo: t.title }, e.quando());
+  await registrarEvento(tx, t.id, 'faturamento', ator, { acao: 'abriu', codigo, painel: destino.nome }, e.quando());
+  return {
+    id, codigo, titulo: p.titulo, painel: destino.nome, avisar: entrada.avisar, etapa: entrada.nome,
+    auditoria: [{ action: 'create', entityType: 'ticket', entityId: id, summary: `Abriu ${codigo} "${p.titulo}" no painel ${destino.nome}, pelo ${t.code} (o faturamento)`, after: { descricao } }],
+  };
 }
 
 /** O que o Implantado ligou no cadastro (para a frase do mover e a auditoria). */

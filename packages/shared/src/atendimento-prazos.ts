@@ -328,12 +328,14 @@ export const NOME_SITUACAO_PRAZO: Record<SituacaoPrazo, string> = {
  * Por que o chamado está sem prazo (2.4.8): o painel não conta prazo, o chamado ainda não tem assunto,
  * ou o assunto (e os de cima dele) não tem prazo cadastrado. A primeira resposta não tem prazo.
  */
-export type MotivoSemPrazo = 'painel' | 'sem_assunto' | 'assunto_sem_prazo' | 'sem_prazo_de_resposta';
+export type MotivoSemPrazo = 'painel' | 'sem_assunto' | 'assunto_sem_prazo' | 'sem_prazo_de_resposta' | 'sem_prazo_escrito';
 export const TEXTO_SEM_PRAZO: Record<MotivoSemPrazo, string> = {
   painel: 'Sem prazo: este painel não conta prazo',
   sem_assunto: 'Sem prazo: o chamado ainda não tem assunto',
   assunto_sem_prazo: 'Sem prazo: o assunto selecionado não tem prazo cadastrado',
   sem_prazo_de_resposta: 'Sem prazo',
+  // 2.4.11: no painel com o prazo escrito em cada chamado
+  sem_prazo_escrito: 'Sem prazo: o prazo deste chamado ainda não foi escrito',
 };
 
 export type EstadoPrazo = {
@@ -364,6 +366,10 @@ export type BaseDoPrazo = {
   assuntoId: string | null;
   /** o prazo de solução do assunto, em minutos úteis (`prazoDoAssunto`: o dele ou o herdado); nulo: sem prazo cadastrado */
   prazoSolucao: number | null;
+  /** o painel escreve o prazo em cada chamado (2.4.11): vale o `prazoEscrito`, e não o do assunto */
+  prazoManual?: boolean;
+  /** o prazo escrito no chamado (2.4.11): o dia e a hora; nulo, ainda sem prazo */
+  prazoEscrito?: string | null;
 };
 
 const SEM: Omit<EstadoPrazo, 'conta'> = { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null };
@@ -398,9 +404,36 @@ export function estadoDosPrazos(c: BaseDoPrazo, a: AjustesPrazos, agora: Date = 
   const resposta: EstadoPrazo = { ...SEM, conta: 'uteis', motivo: 'sem_prazo_de_resposta' };
   const sem = (motivo: MotivoSemPrazo): EstadoPrazo => ({ ...SEM, conta: 'uteis', motivo });
   if (!c.contaPrazo) return { resposta, solucao: sem('painel') };
+  // 2.4.11: o prazo escrito no chamado (o dia e a hora), no painel que escolheu assim
+  if (c.prazoManual) return { resposta, solucao: c.prazoEscrito ? prazoNoDia(c, c.prazoEscrito, a, agora) : sem('sem_prazo_escrito') };
   if (!c.assuntoId) return { resposta, solucao: sem('sem_assunto') };
   if (!c.prazoSolucao || c.prazoSolucao < 1) return { resposta, solucao: sem('assunto_sem_prazo') };
   return { resposta, solucao: umPrazo(c, c.prazoSolucao, 'uteis', c.resolvidoEm, a, agora) };
+}
+
+/**
+ * O prazo escrito no chamado (2.4.11): um dia e uma hora marcados. A conta é em horas corridas, da abertura até o prazo, e
+ * não para esperando o cliente (o dia foi escrito por quem combinou: mudar é escrever outro). O "perto" segue o percentual
+ * dos Ajustes › Prazos, como o do assunto. O prazo escrito antes da abertura vale como já vencido na abertura.
+ */
+function prazoNoDia(c: BaseDoPrazo, quando: string, a: AjustesPrazos, agora: Date): EstadoPrazo {
+  const fim = ms(quando);
+  const inicio = ms(c.criadoEm);
+  const limite = Math.max(1, Math.round((fim - inicio) / MIN));
+  if (c.resolvidoEm) {
+    const usado = Math.max(0, Math.round((ms(c.resolvidoEm) - inicio) / MIN));
+    return { situacao: ms(c.resolvidoEm) <= fim ? 'cumprido' : 'estourou', limite, usado, percentual: Math.round((usado / limite) * 100), venceEm: null, cumpridoEm: c.resolvidoEm, conta: 'corridas' };
+  }
+  const usado = Math.max(0, Math.round((agora.getTime() - inicio) / MIN));
+  const percentual = Math.round((usado / limite) * 100);
+  if (agora.getTime() >= fim) return { situacao: 'vencido', limite, usado, percentual, venceEm: null, cumpridoEm: null, conta: 'corridas' };
+  return { situacao: percentual >= a.alertaPercentual ? 'perto' : 'no_prazo', limite, usado, percentual, venceEm: new Date(fim).toISOString(), cumpridoEm: null, conta: 'corridas' };
+}
+
+/** O prazo escrito, como se lê (2.4.11): "27/11/2026 às 18:00", no horário de Brasília. */
+export function prazoEscritoLegivel(t: Date | string): string {
+  const d = diaLocal(t);
+  return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)} às ${horaLocal(t)}`;
 }
 
 /** "15 min", "2 h", "3 h 20". */
@@ -411,22 +444,35 @@ export function duracaoDoPrazo(minutos: number): string {
   return r ? `${h} h ${String(r).padStart(2, '0')}` : `${h} h`;
 }
 
+/**
+ * A duração na conta do prazo: em horas úteis, "3 h 20"; no prazo corrido (o escrito em cada chamado, 2.4.11), de dois dias
+ * para cima, os dias ("17 dias e 6 h", e não "414 h 55").
+ */
+export function duracaoNaConta(minutos: number, conta: ContaPrazo): string {
+  const m = Math.max(0, Math.round(minutos));
+  if (conta !== 'corridas' || m < 48 * 60) return duracaoDoPrazo(m);
+  const dias = Math.floor(m / (24 * 60));
+  const horas = Math.floor((m % (24 * 60)) / 60);
+  return horas ? `${dias} dias e ${horas} h` : `${dias} dias`;
+}
+
 /** O prazo em palavras, para o quadro e a ficha. */
 export function textoDoPrazo(e: EstadoPrazo, agora: Date = new Date()): string {
   const falta = Math.max(0, e.limite - e.usado);
   const unidade = e.conta === 'uteis' ? ' úteis' : '';
+  const d = (m: number) => duracaoNaConta(m, e.conta);
   switch (e.situacao) {
     case 'sem': return e.motivo ? TEXTO_SEM_PRAZO[e.motivo] : 'Sem prazo';
     case 'cumprido': return 'Cumprido no prazo';
-    case 'estourou': return `Cumprido ${duracaoDoPrazo(e.usado - e.limite)}${unidade} depois do prazo`;
-    case 'pausado': return `Parado: faltam ${duracaoDoPrazo(falta)}${unidade}`;
-    case 'vencido': return `Vencido há ${duracaoDoPrazo(e.usado - e.limite)}${unidade}`;
+    case 'estourou': return `Cumprido ${d(e.usado - e.limite)}${unidade} depois do prazo`;
+    case 'pausado': return `Parado: faltam ${d(falta)}${unidade}`;
+    case 'vencido': return `Vencido há ${d(e.usado - e.limite)}${unidade}`;
     default: {
-      if (!e.venceEm) return `Faltam ${duracaoDoPrazo(falta)}${unidade}`;
+      if (!e.venceEm) return `Faltam ${d(falta)}${unidade}`;
       const quando = new Date(e.venceEm);
       const hoje = diaLocal(agora) === diaLocal(quando);
       const dataCurta = hoje ? `às ${horaLocal(quando)}` : `em ${diaLocal(quando).slice(8, 10)}/${diaLocal(quando).slice(5, 7)} às ${horaLocal(quando)}`;
-      return `Faltam ${duracaoDoPrazo(falta)}${unidade} (vence ${dataCurta})`;
+      return `Faltam ${d(falta)}${unidade} (vence ${dataCurta})`;
     }
   }
 }

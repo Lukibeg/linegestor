@@ -26,9 +26,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, HandCoins, Pencil, Plus, Rocket, ThumbsDown, Ticket, Trash2, Trophy, Undo2, UserPlus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, HandCoins, Pencil, Plus, Receipt, Rocket, ThumbsDown, Ticket, Trash2, Trophy, Undo2, UserPlus, X } from 'lucide-react';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CORES_PAINEL, DICA_CAMPO_DO_SISTEMA, camposDoSistemaDoTipo, painelContaPrazo, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema,
+  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CORES_PAINEL, DICA_CAMPO_DO_SISTEMA, camposDoSistemaDoTipo, painelContaPrazo, HORAS_SEM_ATUALIZACAO_PADRAO, MAX_HORAS_SEM_ATUALIZACAO, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema,
   MAX_ETAPAS_DO_PAINEL, MODELO_DA_IMPLANTACAO, MOTIVOS_DE_PERDA_PADRAO, NIVEIS, NOME_CAMPO_DO_SISTEMA, NOME_RESULTADO_DA_VENDA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, etiquetasUnicas, idDaChave,
   limparObrigatorios, nomeDoObrigatorio, obrigatoriosDoPainel, paraBusca, problemaNasEtapasDoTipo, reaisInteiros, rotuloDoNivel,
   type AjustesDoPainel, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Obrigatorio,
@@ -174,9 +174,11 @@ function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: Pe
     a.metaMensal ? `Meta do mês: ${reaisInteiros(a.metaMensal)}` : 'Sem meta do mês',
     paraAbrir.length ? `Para criar: ${paraAbrir.join(', ')}` : 'Cria sem exigir nenhum campo',
     a.supervisores.length ? `Supervisão: ${listaDeNomes(a.supervisores.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Sem supervisores',
+    ...(a.horasSemAtualizacao ? [`Marca o que fica ${a.horasSemAtualizacao} h sem atualização`] : []),
   ] : [
     usados.length ? `Campos: ${usados.join(', ')}` : 'Sem campos além dos do chamado',
-    painelContaPrazo(a) ? 'Conta prazo' : a.contaPrazo ? 'Não conta prazo (sem o assunto)' : 'Não conta prazo',
+    painelContaPrazo(a) ? (a.prazoManual ? 'Conta prazo: o escrito em cada chamado' : 'Conta prazo') : a.contaPrazo ? 'Não conta prazo (sem o assunto)' : 'Não conta prazo',
+    ...(a.horasSemAtualizacao ? [`Marca o que fica ${a.horasSemAtualizacao} h sem atualização`] : []),
     a.fecharSozinhoDias ? `O Resolvido fecha sozinho em ${a.fecharSozinhoDias} ${a.fecharSozinhoDias === 1 ? 'dia útil' : 'dias úteis'}` : 'O Resolvido não fecha sozinho',
     paraAbrir.length ? `Para abrir: ${paraAbrir.join(', ')}` : 'Abre sem exigir nenhum campo',
     a.paiEsperaFilhos ? 'O pai espera os filhos fecharem' : 'O pai fecha sem esperar os filhos',
@@ -226,6 +228,10 @@ type FormPainel = {
   nome: string; sigla: string; descricao: string; cor: CorPainel; acesso: 'todos' | 'escolhidos'; pessoas: string[]; ativo: boolean;
   tipos: string[]; contaPrazo: boolean; fecharSozinho: boolean; fecharSozinhoDias: string; obrigatoriosAoAbrir: Obrigatorio[];
   paiEsperaFilhos: boolean; supervisores: string[];
+  /** o prazo escrito em cada chamado (2.4.11), no lugar do prazo do assunto */
+  prazoManual: boolean;
+  /** a marca do que fica sem atualização (2.4.11): ligada, e depois de quantas horas */
+  marcarSemAtualizacao: boolean; horasSemAtualizacao: string;
   /** os campos do sistema que o painel não usa (2.1.2: escolhidos na própria janela, a aba Os campos) */
   desligados: CampoDoSistema[];
   /** Gestão ou Vendas (só ao criar); no de Vendas, os motivos de perda e a meta do mês (centavos) */
@@ -239,6 +245,7 @@ function formDoPainel(p: Painel | null, tipo: TipoDePainel = p?.tipo ?? 'gestao'
     ativo: p?.ativo ?? true, tipos: [...a.tipos], contaPrazo: a.contaPrazo, fecharSozinho: a.fecharSozinhoDias !== null,
     fecharSozinhoDias: String(a.fecharSozinhoDias ?? AJUSTES_PAINEL_PADRAO.fecharSozinhoDias ?? 3), obrigatoriosAoAbrir: [...a.obrigatoriosAoAbrir],
     paiEsperaFilhos: a.paiEsperaFilhos, supervisores: [...a.supervisores], desligados: [...a.camposDesligados],
+    prazoManual: !!a.prazoManual, marcarSemAtualizacao: a.horasSemAtualizacao != null, horasSemAtualizacao: String(a.horasSemAtualizacao ?? HORAS_SEM_ATUALIZACAO_PADRAO),
     tipo, motivosDePerda: [...(a.motivosDePerda.length || p ? a.motivosDePerda : tipo === 'vendas' ? MOTIVOS_DE_PERDA_PADRAO : [])], meta: a.metaMensal ?? null, metaValida: true,
   };
 }
@@ -252,6 +259,8 @@ type EtapaRascunho = EtapaGravarEntrada & {
   ligaNoCadastro: boolean;
   /** e a de Vendas que recebe a negociação quando a implantação termina (o Implantado do Comercial) */
   recebeImplantacao: boolean;
+  /** o faturamento (2.4.11): a etapa de Gestão que abre o card de faturamento no painel escolhido (o administrativo) */
+  abreFaturamento: string | null;
 };
 type Saindo = { etapa: EtapaRascunho; posicao: number };
 type EtapaComChamados = { id: string; nome: string; chamados: number };
@@ -259,13 +268,13 @@ type EtapaComChamados = { id: string; nome: string; chamados: number };
 let sequencia = 0;
 const daEtapa = (e: EtapaPainel): EtapaRascunho => ({
   chave: e.id, id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar], resultado: e.resultado ?? null,
-  abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: !!e.recebeImplantacao,
+  abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: !!e.recebeImplantacao, abreFaturamento: e.abreFaturamento ?? null,
 });
 /** Uma etapa que ainda não existe (sem id): a do painel novo, a copiada de outro painel ou a incluída agora. */
-const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean }): EtapaRascunho =>
+const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean; abreFaturamento?: string | null }): EtapaRascunho =>
   ({
     chave: `nova-${++sequencia}`, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...(e.avisar ?? [])], resultado: e.resultado ?? null,
-    abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: !!e.recebeImplantacao,
+    abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: !!e.recebeImplantacao, abreFaturamento: e.abreFaturamento ?? null,
   });
 const paraGravar = ({ chave: _chave, ...e }: EtapaRascunho): EtapaGravarEntrada => ({ ...e, nome: e.nome.trim() });
 const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
@@ -274,7 +283,7 @@ const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
  * ou as básicas. Os campos do painel de origem não vão junto nas regras: são daquele painel.
  */
 function etapasDoModelo(modelo: Painel | undefined, tipo: TipoDePainel = 'gestao'): EtapaRascunho[] {
-  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean }> = modelo
+  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean; abreFaturamento?: string | null }> = modelo
     ? modelo.etapas : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO;
   return fonte.map((e) => etapaNova({ ...e, obrigatorios: e.obrigatorios.filter((k) => !idDaChave(k)) }));
 }
@@ -290,6 +299,7 @@ function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[], campos: CampoPe
     e.abreImplantacao ? `abre a implantação em ${paineis.find((p) => p.id === e.abreImplantacao)?.nome ?? 'um painel que saiu'}` : '',
     e.ligaNoCadastro ? 'liga no cadastro do cliente' : '',
     e.recebeImplantacao ? 'recebe a negociação quando a implantação termina' : '',
+    e.abreFaturamento ? `abre o card de faturamento em ${paineis.find((p) => p.id === e.abreFaturamento)?.nome ?? 'um painel que saiu'}` : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -378,6 +388,8 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   const siglaSugerida = paraBusca(f.nome).replace(/[^a-z]/g, '').slice(0, 3).toUpperCase();
   const dias = Number(f.fecharSozinhoDias);
   const diasOk = Number.isInteger(dias) && dias >= 1 && dias <= 60;
+  const horas = Number(f.horasSemAtualizacao);
+  const horasOk = Number.isInteger(horas) && horas >= 1 && horas <= MAX_HORAS_SEM_ATUALIZACAO;
 
   const mexer = (fn: (xs: EtapaRascunho[]) => EtapaRascunho[]) => { setRascunho(fn); setErro(''); };
   const usarModelo = (id: string) => {
@@ -433,6 +445,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
     const doTipo = problemaNasEtapasDoTipo(f.tipo, rascunho);
     if (doTipo) { setErro(doTipo); irPara('painel-etapas'); return; }
     if (!vendas && f.fecharSozinho && !diasOk) { setErro('O "fecha sozinho" vai de 1 a 60 dias úteis.'); document.getElementById('painel-dias')?.focus(); return; }
+    if (f.marcarSemAtualizacao && !horasOk) { setErro(`A marca de atualizar vai de 1 a ${MAX_HORAS_SEM_ATUALIZACAO} horas.`); document.getElementById('painel-horas-sem-atualizacao')?.focus(); return; }
     const motivos = etiquetasUnicas(f.motivosDePerda);
     if (vendas && !motivos.length) { setErro('O painel de Vendas precisa de pelo menos um motivo de perda.'); irPara('painel-regras'); return; }
     if (vendas && !f.metaValida) { setErro('Escreva a meta do mês como 40.000,00 (ou deixe vazia).'); document.getElementById('painel-meta')?.focus(); return; }
@@ -444,6 +457,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
       tipo: f.tipo,
       ajustes: {
         tipos: f.tipos, contaPrazo: vendas ? false : f.contaPrazo, fecharSozinhoDias: !vendas && f.fecharSozinho ? dias : null,
+        prazoManual: vendas ? false : f.prazoManual, horasSemAtualizacao: f.marcarSemAtualizacao ? horas : null,
         camposDesligados: f.desligados.filter((c) => camposDoSistemaDoTipo(f.tipo).includes(c) || (vendas ? AJUSTES_DO_PAINEL_DE_VENDAS : AJUSTES_PAINEL_PADRAO).camposDesligados.includes(c)),
         obrigatoriosAoAbrir: validos.abrir.filter((c) => f.obrigatoriosAoAbrir.includes(c)), paiEsperaFilhos: vendas ? false : f.paiEsperaFilhos, supervisores: f.supervisores,
         ...(vendas ? { motivosDePerda: motivos, metaMensal: f.meta } : {}),
@@ -662,11 +676,23 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
             </>
           )}
 
-          {!vendas && <label className={`flex items-start gap-2.5 text-sm ${semAssunto ? 'opacity-60' : 'cursor-pointer'}`}>
-            <Toggle checked={f.contaPrazo && !semAssunto} disabled={semAssunto} onChange={(v) => mudar({ contaPrazo: v })} />
-            {/* 13/10, o Luan: "essa parte do conta prazo, não entendi para que serve" — a dica diz o que muda */}
-            <span>Conta prazo <span className="block text-[12.5px] text-muted">Ligado, cada chamado deste painel tem um prazo de solução, o do assunto escolhido (cada assunto tem o seu, cadastrado na árvore de assuntos, em horas úteis). O cartão mostra quanto falta, e o Gestor avisa quando o prazo está perto de vencer e quando vence. Desligado, o painel não tem prazo, como o Desenvolvimento.{semAssunto && <b className="block text-ink-2 font-medium">Sem o assunto (em Os campos), o painel não conta prazo.</b>}</span></span>
-          </label>}
+          {!vendas && <div className="flex flex-col gap-2" id="painel-prazo">
+            <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+              <Toggle checked={f.contaPrazo} onChange={(v) => mudar({ contaPrazo: v })} />
+              {/* 13/10, o Luan: "essa parte do conta prazo, não entendi para que serve" — a dica diz o que muda */}
+              <span>Conta prazo <span className="block text-[12.5px] text-muted">Ligado, cada chamado deste painel tem um prazo de solução. O cartão mostra quanto falta, e o Gestor avisa quando o prazo está perto de vencer e quando vence. Desligado, o painel não tem prazo, como o Desenvolvimento.</span></span>
+            </label>
+            {/* 2.4.11, o Luan: "tem q ter a opção do painel dos prazos serem manuais e serem preenchidos em cada chamado" */}
+            {f.contaPrazo && (
+              <div className="pl-12 flex flex-col gap-1.5" role="radiogroup" aria-label="De onde vem o prazo" id="painel-prazo-de-onde">
+                <Opcao ativo={!f.prazoManual} onClick={() => mudar({ prazoManual: false })} titulo="O prazo do assunto"
+                  texto="Cada assunto tem o seu, cadastrado na árvore de assuntos, em horas úteis; o relógio para enquanto espera o cliente." />
+                <Opcao ativo={f.prazoManual} onClick={() => mudar({ prazoManual: true })} titulo="Escrito em cada chamado"
+                  texto="Quem abre (ou quem cuida, na ficha) escreve o dia e a hora do prazo. Conta em horas corridas e não para esperando o cliente: mudar o prazo é escrever outro." />
+                {semAssunto && !f.prazoManual && <p className="text-[12.5px] text-ink-2 font-medium">Sem o assunto (em Os campos), o prazo do assunto não vale: o painel não conta prazo. Escolha o escrito em cada chamado, ou ligue o assunto.</p>}
+              </div>
+            )}
+          </div>}
 
           {!vendas && <div className="flex flex-col gap-1.5">
             <label className="flex items-start gap-2.5 text-sm cursor-pointer">
@@ -694,6 +720,24 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
             <Toggle checked={f.paiEsperaFilhos} onChange={(v) => mudar({ paiEsperaFilhos: v })} />
             <span>O pai só resolve e fecha com os filhos fechados <span className="block text-[12.5px] text-muted">E diz quais faltam, mesmo os filhos em outro painel.</span></span>
           </label>}
+
+          {/* 2.4.11, o Luan: "qualquer chamado com 24 sem atualização tem q ter um flag sinalizando que tem q atualizar, eu quero que
+              tenha uma opção no painel sinalizando se eu vou querer ativar essa função ou n" */}
+          <div className="flex flex-col gap-1.5" id="painel-sem-atualizacao">
+            <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+              <Toggle checked={f.marcarSemAtualizacao} onChange={(v) => mudar({ marcarSemAtualizacao: v })} />
+              <span>Marcar {vendas ? 'a negociação' : 'o chamado'} sem atualização <span className="block text-[12.5px] text-muted">{vendas ? 'A negociação em aberto' : 'O chamado em aberto'} que fica as horas escolhidas sem ninguém mexer ganha a marca laranja "Sem atualização há 26 h" no cartão, na lista e na ficha, até alguém mexer. O aviso automático (o WhatsApp, o e-mail) não conta como mexer.</span></span>
+            </label>
+            {f.marcarSemAtualizacao && (
+              <div className="flex flex-wrap items-center gap-2 text-sm pl-12">
+                depois de
+                <input className="input w-20 tnum" id="painel-horas-sem-atualizacao" type="number" min={1} max={MAX_HORAS_SEM_ATUALIZACAO} value={f.horasSemAtualizacao}
+                  onChange={(e) => mudar({ horasSemAtualizacao: e.target.value })} aria-label="Horas sem atualização até a marca" />
+                {horas === 1 ? 'hora' : 'horas'} sem ninguém mexer
+                {!horasOk && <span className="text-bad text-[12.5px] basis-full">De 1 a {MAX_HORAS_SEM_ATUALIZACAO} horas.</span>}
+              </div>
+            )}
+          </div>
 
           <CampoRotulo rotulo="Supervisores" id="painel-supervisores" grupo dica={vendas ? 'Recebem o aviso do que fica sem dono.' : 'Recebem o aviso do que vence, do que fica sem dono e do que chega Crítico.'}>
             <EscolherPessoas id="painel-supervisores" rotulo="Supervisores" valor={f.supervisores} pessoas={pessoas} todasAsPessoas={todasAsPessoas}
@@ -811,6 +855,7 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
                       {e.abreImplantacao && <Chip tone="accent" title="A negociação que chega aqui abre o card da implantação"><Rocket size={11} aria-hidden /> abre a implantação</Chip>}
                       {e.ligaNoCadastro && <Chip tone="ok" title="O card que chega aqui liga os produtos e os módulos no cadastro do cliente">liga no cadastro</Chip>}
                       {e.recebeImplantacao && <Chip tone="ok" title="A negociação vem para cá sozinha quando o card da implantação chega no fim">fim da implantação</Chip>}
+                      {e.abreFaturamento && <Chip tone="accent" title="O card que chega aqui abre o card de faturamento no painel escolhido"><Receipt size={11} aria-hidden /> abre o faturamento</Chip>}
                       {existe && !e.id && <Chip tone="ok">nova</Chip>}
                     </span>
                   </button>
@@ -944,6 +989,19 @@ function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar
             <span className="block text-[12.5px] text-muted">Os produtos do chamado ganham a data de ativação (o dia) e os módulos marcados (o campo Módulos do produto) ficam ligados na ficha do cliente. A janela mostra antes o que muda. É o Implantado da implantação.</span>
           </span>
         </label>
+      )}
+      {/* o faturamento (2.4.11, o Luan: "quero que quando eu arraste pra concluído seja gerado um card no administrativo de faturamento") */}
+      {!vendas && (
+        <CampoRotulo rotulo="Ao chegar aqui, abre o card de faturamento" id={`${base}-faturamento`} className="sm:col-span-2"
+          dica={e.abreFaturamento
+            ? 'Antes de mover, a janela mostra o card que nasce na entrada do painel escolhido, já preenchido: o título, o e-mail do faturamento, o vencimento, o CNPJ e as informações (a ativação e cada produto com as licenças da simulação). Tudo se muda ali. Um card abre um só.'
+            : 'Escolha o painel administrativo para o card que chega aqui abrir o card de faturamento (com a descrição no formato do Grupo Line - ADM).'}>
+          <select className="input" id={`${base}-faturamento`} value={e.abreFaturamento ?? ''} onChange={(ev) => onMudar({ abreFaturamento: ev.target.value || null })}>
+            <option value="">Não abre</option>
+            {paineisDeGestao.filter((p) => !p.donoId).map((p) => <option key={p.id} value={p.id}>No painel {p.nome} ({p.sigla})</option>)}
+            {e.abreFaturamento && !paineisDeGestao.some((p) => p.id === e.abreFaturamento && !p.donoId) && <option value={e.abreFaturamento}>(um painel que saiu)</option>}
+          </select>
+        </CampoRotulo>
       )}
     </div>
   );

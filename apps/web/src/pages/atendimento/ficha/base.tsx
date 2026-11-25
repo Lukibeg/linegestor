@@ -173,6 +173,36 @@ export function BolinhaDoQueFalta({ campo }: { campo: string }) {
 }
 
 // =====================================================================
+//  O CAMPO QUE RECOLHE COMO PASTA
+// =====================================================================
+
+/**
+ * Recolher como pasta (2.4.11, o Luan: "a opção de colapsar que vai exibir tudo ou fica fechado como uma pasta, e quero que por
+ * padrão quando eu abra um card ele já venha resumido"): o checklist do card, as caixinhas e os módulos começam fechados cada
+ * vez que a ficha abre — o nome e a conta ficam à vista — e um clique abre ou fecha. O aviso do que falta leva até o campo e o
+ * abre (`irParaOCampo` manda o "gestor:abrir-campo" com o id do campo).
+ */
+export function useCampoAberto(campoId: string): { aberto: boolean; alternar: () => void } {
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => {
+    const abrir = (e: Event) => { if ((e as CustomEvent<string>).detail === campoId) setAberto(true); };
+    window.addEventListener('gestor:abrir-campo', abrir);
+    return () => window.removeEventListener('gestor:abrir-campo', abrir);
+  }, [campoId]);
+  return { aberto, alternar: useCallback(() => setAberto((v) => !v), []) };
+}
+
+/** A setinha no canto direito do cabeçalho do campo que recolhe (2.4.11). */
+export function BotaoRecolher({ aberto, alternar, nome, conteudo }: { aberto: boolean; alternar: () => void; nome: string; conteudo: string }) {
+  return (
+    <button type="button" className="btn-ghost btn-sm -my-1 !px-1.5 text-muted" aria-expanded={aberto} aria-controls={conteudo}
+      title={aberto ? 'Recolher' : 'Mostrar tudo'} aria-label={aberto ? `Recolher ${nome}` : `Mostrar tudo de ${nome}`} onClick={alternar} data-recolher>
+      <ChevronDown size={16} className={`transition-transform ${aberto ? 'rotate-180' : ''}`} aria-hidden />
+    </button>
+  );
+}
+
+// =====================================================================
 //  O MENU QUE ABRE EMBAIXO DE UM BOTÃO
 // =====================================================================
 

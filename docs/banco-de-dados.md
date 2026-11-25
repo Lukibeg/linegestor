@@ -1106,6 +1106,7 @@ Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela signif
 | `opens_panel_id` | texto | No painel de Vendas (2.3): a negociação que chega aqui abre a implantação no painel com este id — cria o cliente (se ainda não é), põe os produtos no cadastro e abre o card. Nulo: nada. | — |
 | `activates_products` | sim/não | No painel de Gestão (2.3, o Implantado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto". | obrigatório · padrão: false |
 | `receives_implementation` | sim/não | No painel de Vendas (2.3): a negociação vem para esta etapa sozinha quando o card da implantação chega na etapa que liga no cadastro (o Implantado). Uma por painel. | obrigatório · padrão: false |
+| `opens_billing_panel_id` | texto | No painel de Gestão (2.4.11, o Luan: "quando eu arraste pra concluído seja gerado um card no administrativo de faturamento"): o card que chega aqui abre o card de faturamento no painel com este id — com o título, o e-mail do faturamento, o vencimento, o CNPJ e as informações que a janela do mover mostra preenchidos. Nulo: nada. | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 
@@ -1202,6 +1203,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `closed_at` | data e hora | — | — |
 | `reopen_count` | número inteiro | Quantas vezes foi reaberto | obrigatório · padrão: 0 |
 | `last_activity_at` | data e hora | A última coisa que aconteceu (anotação, etapa, campo) — para achar o parado | obrigatório |
+| `due_at` | data e hora | O prazo escrito à mão (2.4.11, o Luan: "tem q ter a opção do painel dos prazos serem manuais e serem preenchidos em cada chamado"): no painel com o prazo manual, é o prazo de solução do chamado (o dia e a hora). Nulo: sem prazo. No painel com o prazo pelo assunto, fica guardado sem uso. | — |
 | `schedule_id` | texto | O agendado que criou este chamado | — |
 | `value_cents` | bigint | A negociação (painel de Vendas, 2.0.1): o valor — a MENSALIDADE —, em centavos (até R$ 100 milhões: não cabe num integer). É o que conta no quadro, no relatório e na meta. | — |
 | `product_values` | JSON | A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma | obrigatório · padrão: {} |
@@ -1260,6 +1262,7 @@ Um ANEXO de anotação (print, PDF, planilha, áudio), no próprio banco como os
 | `note_id` | texto | — | liga com **ticketNotes** |
 | `field_id` | texto | o campo do card a que o anexo pertence (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs"); nulo: o da anotação | liga com **ticketFields** |
 | `option_id` | texto | a caixinha do campo (o id da opção, que vive no campo); nulo: o campo todo | — |
+| `text_field` | texto | O texto do chamado a que a imagem pertence (2.4.11, o Luan: "quero poder colocar uma imagem aqui tbm nos relatos e descrição"): relato ou descricao. Nulo: o anexo é de uma anotação ou de um campo do painel. | — |
 | `file_name` | texto | — | obrigatório |
 | `mime_type` | texto | — | obrigatório |
 | `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |

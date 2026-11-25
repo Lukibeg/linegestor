@@ -38,7 +38,8 @@ import {
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO, MAX_BYTES_ANEXO_DO_CAMPO,
   type CampoPersonalizado, condicoesGuardadas, mesmasCondicoes, semCondicoes, textoDasCondicoes, NOME_CONDICOES,
-  listaDepois, itensDoChecklist, type AcaoNaLista, type ListasDosCampos,
+  listaDepois, itensDoChecklist, type AcaoNaLista, type ListasDosCampos, type PedidoDoFaturamento,
+  prazoEscritoNoChamado, prazoEscritoLegivel, TEXTOS_COM_IMAGEM, NOME_TEXTO_COM_IMAGEM, MAX_IMAGENS_DO_TEXTO, type TextoComImagem,
 } from '@gestor/shared';
 import type { Tx } from './ajustes.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
@@ -53,7 +54,7 @@ import {
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
-import { abrirAImplantacao, aoMover, ligarNoCadastro, negociacaoNoFim, type AoMover, type AuditoriaExtra, type FimNaNegociacao } from './implantacao.js';
+import { abrirAImplantacao, abrirOFaturamento, aoMover, ligarNoCadastro, negociacaoNoFim, type AoMover, type AuditoriaExtra, type FimNaNegociacao } from './implantacao.js';
 import { mandarWhatsApp } from './whatsapp.js';
 
 export { fichaDoChamado } from './leitura.js';
@@ -389,6 +390,10 @@ export async function criarChamado(
 
   const pessoa = pessoaDoAtor(ator);
   const motivoPrioridade = prioridade && sugerida && prioridade !== sugerida ? d.motivoPrioridade ?? null : null;
+  // o prazo escrito à mão (2.4.11): só no painel que escreve o prazo em cada chamado
+  const prazoEscrito = prazoEscritoNoChamado(painel.ajustes) && d.prazo ? new Date(d.prazo) : null;
+  // as imagens do relato e da descrição (2.4.11): só imagem; a do relato, só no painel que usa o relato
+  const imagens = (d.imagens ?? []).filter((i) => i.campo === 'descricao' || usa('relato')).map((i) => ({ campo: i.campo, ...imagemParaGuardar(i) }));
 
   // 6 a 10: o número, o chamado e o histórico, juntos
   const criado = await db.transaction(async (tx) => {
@@ -412,8 +417,20 @@ export async function criarChamado(
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       firstResponseAt: ator.tipo === 'pessoa' && naTela ? agora : null,
       lastActivityAt: agora, scheduleId: opts.agendadoId ?? null, createdById: pessoa, createdAt: agora, updatedAt: agora,
+      dueAt: prazoEscrito,
     });
     await registrarEvento(tx, id, 'criado', ator, { origem, etapa: etapa.nome, etapaId: etapa.id, painel: painel.nome, ...(vendas ? { venda: true } : {}) }, quando());
+    // as imagens do relato e da descrição (2.4.11), na ordem em que foram escolhidas
+    if (imagens.length) {
+      await tx.insert(ticketAttachments).values(imagens.map((a, i) => ({
+        id: newId(), ticketId: id, noteId: null, fieldId: null, optionId: null, textField: a.campo, fileName: a.fileName, mimeType: a.mimeType, sizeBytes: a.sizeBytes,
+        dataBase64: a.dataBase64, uploadedById: pessoa, createdAt: new Date(agora.getTime() + i),
+      })));
+      for (const campo of TEXTOS_COM_IMAGEM) {
+        const desta = imagens.filter((a) => a.campo === campo);
+        if (desta.length) await registrarEvento(tx, id, 'anexo', ator, { acao: 'anexou', campo: NOME_TEXTO_COM_IMAGEM[campo], opcao: null, arquivos: desta.map((a) => a.fileName) }, quando());
+      }
+    }
     if (pai) {
       await registrarEvento(tx, id, 'pai', ator, { acao: 'ligou', pai: pai.code }, quando());
       await registrarEvento(tx, pai.id, 'filho', ator, { acao: 'ligou', filho: codigo, painel: painel.nome }, quando());
@@ -720,7 +737,8 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
         marcas = r.marcas;
         mexeuNasMarcas = true;
         const nomes = (ids: string[]) => ids.map((id) => c.opcoes.find((o) => o.id === id)?.nome ?? '(opção que saiu)');
-        eventos.push(['campo', { campo: nome, marcou: nomes(r.marcou), desmarcou: nomes(r.desmarcou) }]);
+        // a caixinha única (2.4.11): "marcou Backup conferido como feito"
+        eventos.push(['campo', { campo: nome, ...(c.tipo === 'feito' ? { unica: true } : {}), marcou: nomes(r.marcou), desmarcou: nomes(r.desmarcou) }]);
         mudou(chaveDoCampo(c.id), nome, antes);
       } else campo(chaveDoCampo(c.id), nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
     }
@@ -752,6 +770,21 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
       set.watcherIds = novos;
       observadoresNovos = novos.filter((x) => !t.watcherIds.includes(x));
       campo('observadores', NOME_OBSERVADORES, nomesPessoas(ctx, t.watcherIds), nomesPessoas(ctx, novos), t.watcherIds);
+    }
+  }
+
+  // o prazo escrito à mão (2.4.11): só no painel que escreve o prazo em cada chamado. Os alertas do prazo de antes saem: o
+  // prazo novo avisa de novo quando chegar perto e quando vencer
+  if (d.prazo !== undefined) {
+    if (!prazoEscritoNoChamado(painel.ajustes)) throw new BadRequest(`O prazo do ${painel.nome} vem do assunto: o prazo escrito em cada chamado se liga no Configurar do painel.`);
+    const novo = d.prazo ? new Date(d.prazo) : null;
+    const velho = t.dueAt ?? null;
+    if ((novo?.getTime() ?? null) !== (velho?.getTime() ?? null)) {
+      set.dueAt = novo;
+      const alertas = { ...((t.alertsSent as Record<string, string> | null) ?? {}) };
+      delete alertas.solucao_perto; delete alertas.solucao_vencida;
+      set.alertsSent = alertas;
+      campo('prazo', NOME_PRAZO_ESCRITO, velho ? prazoEscritoLegivel(velho) : null, novo ? prazoEscritoLegivel(novo) : null, velho?.toISOString() ?? null);
     }
   }
 
@@ -960,6 +993,8 @@ export async function mover(
   d: {
     etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null;
     implantacao?: { clienteId?: string | null; nomeFantasia?: string | null; razaoSocial?: string | null; cnpj?: string | null };
+    /** o card de faturamento (2.4.11): o que a janela mandou (sem isto, o que o Gestor preencheu) */
+    faturamento?: PedidoDoFaturamento;
   },
 ): Promise<Feito> {
   exigirTrabalhar(ator);
@@ -986,21 +1021,35 @@ export async function mover(
     const implantacao = vai.implantacao ? await abrirAImplantacao(tx, e, ator, vai.implantacao) : null;
     const cadastro = vai.cadastro ? await ligarNoCadastro(tx, e, ator, vai.cadastro) : null;
     const naNegociacao = fim ? await levarANegociacao(tx, e, ator, fim) : null;
-    return { feito, implantacao, cadastro, naNegociacao };
+    // o card de faturamento (2.4.11): no painel administrativo, com o que a janela mandou
+    const faturamento = vai.faturamento ? await abrirOFaturamento(tx, e, ator, vai.faturamento, d.faturamento) : null;
+    return { feito, implantacao, cadastro, naNegociacao, faturamento };
   });
   const m = r.feito;
   await depoisDoMovimento(app, ator, e.t, m);
   if (r.implantacao) emitir(app, 'chamado.criado', r.implantacao.id);
+  if (r.faturamento) {
+    // quem a etapa de entrada do painel administrativo avisa fica sabendo do card novo (quem moveu, não)
+    const f = r.faturamento;
+    if (f.avisar.length) {
+      await avisarEquipe(app, {
+        evento: 'etapa', para: f.avisar, chamado: { id: f.id, codigo: f.codigo, titulo: f.titulo }, menos: pessoaDoAtor(ator), quem: ator.nome,
+        texto: `Chegou o card de faturamento ${f.codigo} (do ${e.t.code}) em ${f.etapa}`,
+      });
+    }
+    emitir(app, 'chamado.criado', f.id);
+  }
   if (fim && r.naNegociacao) await depoisDoMovimento(app, ator, fim.linha, r.naNegociacao);
   const extra = [
     r.implantacao ? `; abriu a implantação ${r.implantacao.codigo}${r.implantacao.clienteNovo ? ` e criou o cliente ${r.implantacao.clienteNovo.nome}` : ''}` : '',
     r.cadastro && (r.cadastro.produtos.length || r.cadastro.modulos.length) ? `; ligou no cadastro ${[...r.cadastro.produtos, ...r.cadastro.modulos].join(', ')}` : '',
     fim ? `; a negociação ${fim.linha.code} foi para ${fim.para.nome}` : '',
+    r.faturamento ? `; abriu o card de faturamento ${r.faturamento.codigo} em ${r.faturamento.painel}` : '',
   ].join('');
   return {
     ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) + extra,
     auditoriaExtra: [
-      ...(r.implantacao?.auditoria ?? []), ...(r.cadastro?.auditoria ?? []),
+      ...(r.implantacao?.auditoria ?? []), ...(r.cadastro?.auditoria ?? []), ...(r.faturamento?.auditoria ?? []),
       ...(fim ? [{ action: 'update' as const, entityType: 'ticket', entityId: fim.linha.id, summary: `Moveu ${fim.linha.code} de ${fim.de.nome} para ${fim.para.nome}: a implantação ${e.t.code} terminou` }] : []),
     ],
   };
@@ -1264,6 +1313,19 @@ export async function trocarPainel(app: FastifyInstance, ator: Ator, ref: string
 //  ANOTAÇÕES
 // =====================================================================
 
+/** O nome do prazo escrito no histórico (2.4.11). */
+const NOME_PRAZO_ESCRITO = 'Prazo';
+
+/**
+ * A imagem do relato ou da descrição (2.4.11) como fica guardada: só imagem de verdade (PNG, JPG, WEBP ou GIF, conferida pelos
+ * bytes), até 10 MB (a tela reduz o print antes de mandar).
+ */
+function imagemParaGuardar(a: { fileName: string; conteudo: string }) {
+  const g = anexoParaGuardar(a);
+  if (!IMAGENS_NA_TELA.includes(g.mimeType)) throw new BadRequest(`${g.fileName} não é uma imagem: no relato e na descrição vão só imagens (PNG, JPG, WEBP ou GIF).`);
+  return g;
+}
+
 /** O anexo como fica guardado: o tipo de verdade da imagem (pelos bytes); a imagem que não é imagem baixa como arquivo. */
 function anexoParaGuardar(a: { fileName: string; conteudo: string }, limite?: number) {
   const { mimeType, dataBase64 } = lerConteudo(a.conteudo, limite);
@@ -1427,19 +1489,61 @@ export async function anexarNoCampo(app: FastifyInstance, ator: Ator, ref: strin
   };
 }
 
+// =====================================================================
+//  AS IMAGENS DO RELATO E DA DESCRIÇÃO (2.4.11)
+// =====================================================================
+
+/**
+ * Anexar imagens no relato ou na descrição (2.4.11, o Luan: "quero poder colocar uma imagem aqui tbm nos relatos e
+ * descrição"): só imagens, até 10 de uma vez e até 20 em cada texto. O histórico conta, como o anexo de um campo.
+ */
+export async function anexarNoTexto(app: FastifyInstance, ator: Ator, ref: string, campo: TextoComImagem, d: { imagens: Array<{ fileName: string; conteudo: string }> }): Promise<Feito> {
+  exigirTrabalhar(ator);
+  if (!d.imagens.length) throw new BadRequest('Escolha a imagem.');
+  const guardar = d.imagens.map((a) => imagemParaGuardar(a));
+  const e = await carregar(app, ator, ref);
+  const { t, agora } = e;
+  if (campo === 'relato' && !campoLigado(e.painel.ajustes, 'relato')) throw new BadRequest(`O painel ${e.painel.nome} não usa o relato do cliente.`);
+  const nome = NOME_TEXTO_COM_IMAGEM[campo];
+  const pessoa = pessoaDoAtor(ator);
+  await app.db.transaction(async (tx) => {
+    // a linha do chamado fica travada: dois envios ao mesmo tempo não passam do limite juntos
+    await tx.select({ id: tickets.id }).from(tickets).where(eq(tickets.id, t.id)).for('update');
+    const [ja] = await tx.select({ n: count() }).from(ticketAttachments)
+      .where(and(eq(ticketAttachments.ticketId, t.id), eq(ticketAttachments.textField, campo), isNull(ticketAttachments.deletedAt)));
+    const n = Number(ja?.n ?? 0);
+    if (n + guardar.length > MAX_IMAGENS_DO_TEXTO) {
+      throw new BadRequest(`${nome === 'Descrição' ? 'A descrição' : 'O relato do cliente'} já tem ${plural(n, 'imagem', 'imagens')}: cabem até ${MAX_IMAGENS_DO_TEXTO}. Tire uma antes de pôr outra.`);
+    }
+    await tx.insert(ticketAttachments).values(guardar.map((a, i) => ({
+      id: newId(), ticketId: t.id, noteId: null, fieldId: null, optionId: null, textField: campo, ...a, uploadedById: pessoa, createdAt: new Date(agora.getTime() + i),
+    })));
+    await registrarEvento(tx, t.id, 'anexo', ator, { acao: 'anexou', campo: nome, opcao: null, arquivos: guardar.map((a) => a.fileName) }, e.quando());
+    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+  });
+  await camposAosObservadores(app, ator, t, [nome]);
+  return {
+    ...nada(t),
+    resumo: `Pôs ${guardar.length === 1 ? `a imagem ${guardar[0]!.fileName}` : plural(guardar.length, 'imagem', 'imagens')} em ${nome} (${t.code})`,
+    depois: { campo: nome, imagens: guardar.map((a) => a.fileName) },
+  };
+}
+
 /** Tirar o anexo de um campo: o seu, ou qualquer um se cuida dos chamados (a auditoria guarda o nome do arquivo e quem anexou). */
 export async function tirarAnexoDoCampo(app: FastifyInstance, ator: Ator, ref: string, anexoId: string): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
   const { t, agora } = e;
-  const [a] = await app.db.select({ id: ticketAttachments.id, fileName: ticketAttachments.fileName, fieldId: ticketAttachments.fieldId, optionId: ticketAttachments.optionId, uploadedById: ticketAttachments.uploadedById, createdAt: ticketAttachments.createdAt })
+  const [a] = await app.db.select({ id: ticketAttachments.id, fileName: ticketAttachments.fileName, fieldId: ticketAttachments.fieldId, optionId: ticketAttachments.optionId, textField: ticketAttachments.textField, uploadedById: ticketAttachments.uploadedById, createdAt: ticketAttachments.createdAt })
     .from(ticketAttachments)
-    .where(and(eq(ticketAttachments.id, anexoId), eq(ticketAttachments.ticketId, t.id), isNotNull(ticketAttachments.fieldId), isNull(ticketAttachments.deletedAt))).limit(1);
+    // o anexo de um campo ou (2.4.11) a imagem do relato e da descrição; o da anotação sai com a anotação
+    .where(and(eq(ticketAttachments.id, anexoId), eq(ticketAttachments.ticketId, t.id), or(isNotNull(ticketAttachments.fieldId), isNotNull(ticketAttachments.textField)), isNull(ticketAttachments.deletedAt))).limit(1);
   if (!a) throw new NotFound('Anexo');
   const meu = ator.tipo === 'pessoa' && a.uploadedById === ator.id;
   if (!meu && !podeCuidar(ator)) throw new Forbidden('Só quem anexou (ou quem cuida dos chamados) pode tirar este anexo.');
-  const c = camposDoPainel(e.ctx, e.painel.id).find((x) => x.id === a.fieldId);
-  const nome = c ? nomeCompletoDoCampo(c, e.ctx.produtos) : 'um campo';
+  const c = a.fieldId ? camposDoPainel(e.ctx, e.painel.id).find((x) => x.id === a.fieldId) : undefined;
+  const doTexto = a.textField === 'relato' || a.textField === 'descricao' ? NOME_TEXTO_COM_IMAGEM[a.textField] : null;
+  const nome = doTexto ?? (c ? nomeCompletoDoCampo(c, e.ctx.produtos) : 'um campo');
   const opcao = c && a.optionId ? c.opcoes.find((o) => o.id === a.optionId)?.nome ?? null : null;
   await app.db.transaction(async (tx) => {
     await tx.update(ticketAttachments).set({ deletedAt: agora }).where(eq(ticketAttachments.id, a.id));

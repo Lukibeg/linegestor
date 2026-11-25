@@ -82,18 +82,21 @@ export function BotaoAnexar({ campoId, opcaoId = null, rotulo, soIcone = false, 
   );
 }
 
-/** As miniaturas e os arquivos de um campo (ou de uma caixinha); nada quando não tem anexo. */
-export function ListaDeAnexos({ anexos, pequeno = false }: { anexos: AnexoDoCampo[]; pequeno?: boolean }) {
+/** O que a lista mostra de cada anexo: o de um campo, o de uma caixinha ou (2.4.11) a imagem do relato e da descrição. */
+type AnexoNaLista = Pick<AnexoDoCampo, 'id' | 'nome' | 'tipo' | 'tamanho' | 'imagem' | 'url' | 'por' | 'em' | 'podeTirar'>;
+
+/** As miniaturas e os arquivos de um campo (ou de uma caixinha, ou de um texto); nada quando não tem anexo. */
+export function ListaDeAnexos({ anexos, pequeno = false }: { anexos: AnexoNaLista[]; pequeno?: boolean }) {
   const { f, pode } = useAberta();
   const acao = useAcao();
-  const [grande, setGrande] = useState<AnexoDoCampo | null>(null);
-  const [pdf, setPdf] = useState<AnexoDoCampo | null>(null);
-  const [tirar, setTirar] = useState<AnexoDoCampo | null>(null);
+  const [grande, setGrande] = useState<AnexoNaLista | null>(null);
+  const [pdf, setPdf] = useState<AnexoNaLista | null>(null);
+  const [tirar, setTirar] = useState<AnexoNaLista | null>(null);
   if (!anexos.length) return null;
   const imagens = anexos.filter((a) => a.imagem);
   const arquivos = anexos.filter((a) => !a.imagem);
-  const quem = (a: AnexoDoCampo) => `${a.por?.nome ?? 'alguém'} · ${dataHoraCurta(a.em)}`;
-  const BotaoTirar = ({ a }: { a: AnexoDoCampo }) => (pode && a.podeTirar ? (
+  const quem = (a: AnexoNaLista) => `${a.por?.nome ?? 'alguém'} · ${dataHoraCurta(a.em)}`;
+  const BotaoTirar = ({ a }: { a: AnexoNaLista }) => (pode && a.podeTirar ? (
     <button type="button" onClick={() => setTirar(a)} aria-label={`Tirar ${a.nome}`} title={`Tirar ${a.nome}`}
       className="absolute -top-1.5 -right-1.5 grid place-items-center w-5 h-5 rounded-full bg-surface border border-line text-muted hover:text-bad shadow-sm sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100">
       <X size={12} />

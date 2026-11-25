@@ -149,8 +149,8 @@ export function ativacaoAPagar(ativacao: number | null, a: AtivacaoCombinada | n
   return { valor, desconto, aPagar, parcela, primeira: aPagar - parcela * (vezes - 1), vezes };
 }
 
-/** O texto da ativação combinada: "com R$ 500,00 de desconto, em 6 vezes, a partir de mar/2027". */
-function textoDaAtivacao(a: AtivacaoCombinada): string {
+/** O texto da ativação combinada: "com R$ 500,00 de desconto, em 6 vezes, a partir de mar/2027" (2.4.11: também no card de faturamento). */
+export function textoDaAtivacao(a: AtivacaoCombinada): string {
   const partes = [
     ...(a.desconto ? [`com ${reais(a.desconto)} de desconto`] : []),
     ...(a.vezes > 1 ? [`em ${vezesEscritas(a.vezes)}`] : []),

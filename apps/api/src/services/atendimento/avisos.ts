@@ -14,7 +14,6 @@ import {
   type EventoAviso, type Prioridade, type TipoAviso, type ValoresDoAviso,
 } from '@gestor/shared';
 import { enderecoPublico } from '../envio.js';
-import { registrarEvento } from './contexto.js';
 import { lerAvisos, mandarWhatsApp, whatsAppPronto } from './whatsapp.js';
 
 const pendentes = new Set<Promise<unknown>>();
@@ -116,7 +115,9 @@ export async function avisarEquipe(
     const texto = await mensagemDoAvisoDoChamado(app, v.modelos, a.evento, a.chamado.id, a.texto, a);
     for (const { u, numero } of numeros) {
       const r = await mandarWhatsApp(app.db, app.vault, { de: 'equipe', para: numero, texto });
-      await registrarEvento(app.db, a.chamado.id, 'aviso_equipe', null, { para: u.name, ok: r.ok, ...(r.ok ? {} : { erro: r.mensagem }) });
+      // 2.4.11 (o Luan, com o print do "O Gestor avisou Eduardo pelo WhatsApp": "n precisa desse registro de aviso"): o aviso
+      // não vai mais para o histórico do chamado; o que não foi fica no registro do servidor, como o do calendário
+      if (!r.ok) app.log.warn({ chamado: a.chamado.codigo, para: u.name, erro: r.mensagem }, 'aviso da equipe: o WhatsApp não foi');
     }
   });
 }

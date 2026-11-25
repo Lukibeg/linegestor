@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, ChartColumn, ChevronsUpDown, Kanban, List, Settings2 } from 'lucide-react';
 import type { Painel } from '@gestor/shared';
 import { Popover } from '../../components/ui/index.js';
+import { useAuth } from '../../lib/auth.js';
 import { usePodeConfigurar } from './comum.js';
 import { JanelaConfigurarPainel } from './ajustes/Paineis.js';
 import { PontoDoPainel, useFiltrosNoEndereco } from './quadro/filtros.js';
@@ -43,6 +44,15 @@ export function enderecoDoQuadro(painelId: string, filtros: FiltrosDoPainel) {
   return `/atendimento/quadro?${n}`;
 }
 
+/**
+ * Os painéis do Trocar: os da equipe e o seu painel pessoal (2.4.11, o Luan: "o de cada eu quero que tenha, n quero que
+ * apareça os dos outros"). O desativado e o pessoal de outra pessoa só aparecem se forem o aberto (um link antigo, ou quem
+ * administra abrindo o painel de alguém pelo link).
+ */
+export function paineisDoTrocar<P extends { id: string; ativo: boolean; donoId: string | null }>(paineis: readonly P[], atualId: string, euId: string | undefined): P[] {
+  return paineis.filter((p) => (p.ativo && (!p.donoId || p.donoId === euId)) || p.id === atualId);
+}
+
 export function CabecalhoDoPainel({ paineis, atual, vista, outraVista, className = '' }: {
   paineis: Painel[]; atual: Painel; vista: Vista;
   /** o endereço da outra vista (o quadro ou a lista), com os filtros que valem nas duas (no relatório, não vale) */
@@ -52,9 +62,9 @@ export function CabecalhoDoPainel({ paineis, atual, vista, outraVista, className
   const podeConfigurar = usePodeConfigurar();
   const [configurando, setConfigurando] = useState(false);
   const { sp } = useFiltrosNoEndereco();
+  const { user } = useAuth();
   const vendas = atual.tipo === 'vendas';
-  // o desativado só aparece se for o aberto (um link antigo)
-  const outros = paineis.filter((p) => p.ativo || p.id === atual.id);
+  const outros = paineisDoTrocar(paineis, atual.id, user?.id);
   const para = (p: Painel) => {
     // o relatório do outro painel, com o mesmo período (os filtros e as escolhas são de cada painel)
     if (vista === 'relatorio') return enderecoDoRelatorio(p.id, { de: sp.get('de'), ate: sp.get('ate'), aba: p.tipo === atual.tipo ? sp.get('aba') : null });

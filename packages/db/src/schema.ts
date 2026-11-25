@@ -1598,6 +1598,12 @@ export const ticketStages = pgTable(
      * liga no cadastro (o Implantado). Uma por painel.
      */
     receivesImplementation: boolean('receives_implementation').notNull().default(false),
+    /**
+     * No painel de Gestão (2.4.11, o Luan: "quando eu arraste pra concluído seja gerado um card no administrativo de
+     * faturamento"): o card que chega aqui abre o card de faturamento no painel com este id — com o título, o e-mail do
+     * faturamento, o vencimento, o CNPJ e as informações que a janela do mover mostra preenchidos. Nulo: nada.
+     */
+    opensBillingPanelId: text('opens_billing_panel_id').references((): AnyPgColumn => ticketPanels.id),
     createdAt: createdAt(),
     deletedAt: deletedAt(),
   },
@@ -1780,6 +1786,12 @@ export const tickets = pgTable(
     reopenCount: integer('reopen_count').notNull().default(0),
     /** A última coisa que aconteceu (anotação, etapa, campo) — para achar o parado */
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * O prazo escrito à mão (2.4.11, o Luan: "tem q ter a opção do painel dos prazos serem manuais e serem preenchidos em cada
+     * chamado"): no painel com o prazo manual, é o prazo de solução do chamado (o dia e a hora). Nulo: sem prazo. No painel com
+     * o prazo pelo assunto, fica guardado sem uso.
+     */
+    dueAt: timestamp('due_at', { withTimezone: true }),
     /** O agendado que criou este chamado */
     scheduleId: text('schedule_id'),
     /**
@@ -1902,6 +1914,11 @@ export const ticketAttachments = pgTable(
     fieldId: text('field_id').references(() => ticketFields.id, { onDelete: 'cascade' }),
     /** a caixinha do campo (o id da opção, que vive no campo); nulo: o campo todo */
     optionId: text('option_id'),
+    /**
+     * O texto do chamado a que a imagem pertence (2.4.11, o Luan: "quero poder colocar uma imagem aqui tbm nos relatos e
+     * descrição"): relato ou descricao. Nulo: o anexo é de uma anotação ou de um campo do painel.
+     */
+    textField: text('text_field'),
     fileName: text('file_name').notNull(),
     mimeType: text('mime_type').notNull(),
     sizeBytes: integer('size_bytes').notNull().default(0),

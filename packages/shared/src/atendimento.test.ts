@@ -228,8 +228,8 @@ describe('as etapas', () => {
     expect(ETAPAS_DO_PAINEL_NOVO.map((e) => e.nome)).toEqual(['Novo', 'Em andamento', 'Resolvido', 'Fechado']);
     const ok = PainelGravarSchema.parse({ ...painel, etapas: [{ nome: ' Pedido ', tipo: 'entrada' }, { nome: 'Encerrado', tipo: 'fechado' }] });
     expect(ok.etapas).toEqual([
-      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], resultado: null, avisar: [], abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false },
-      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: null, avisar: [], abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false },
+      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], resultado: null, avisar: [], abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false, abreFaturamento: null },
+      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: null, avisar: [], abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false, abreFaturamento: null },
     ]);
     expect(mensagem(PainelGravarSchema.safeParse({ ...painel, etapas: [{ nome: 'Pedido', tipo: 'entrada' }, { nome: 'Fazendo', tipo: 'andamento' }] })))
       .toBe('Pelo menos uma etapa precisa fechar o chamado');

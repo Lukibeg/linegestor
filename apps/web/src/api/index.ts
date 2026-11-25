@@ -356,8 +356,10 @@ export type Api = {
     anotar(id: string, d: { texto: string; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<T.FichaChamado>;
     /** anexar num campo do card ou numa caixinha (2.3): até 5 arquivos de 10 MB por vez */
     anexarNoCampo(id: string, campoId: string, d: { opcaoId?: string | null; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<T.FichaChamado>;
-    /** tirar o anexo de um campo (o seu, ou qualquer um se cuida dos chamados) */
+    /** tirar o anexo de um campo (o seu, ou qualquer um se cuida dos chamados) — e, desde o 2.4.11, a imagem do relato e da descrição */
     tirarAnexoDoCampo(id: string, anexoId: string): Promise<T.FichaChamado>;
+    /** pôr imagens no relato ou na descrição (2.4.11): só imagens (a tela reduz o print antes), até 20 em cada texto */
+    imagensNoTexto(id: string, campo: T.TextoComImagem, d: { imagens: Array<{ fileName: string; conteudo: string }> }): Promise<T.FichaChamado>;
     apagarAnotacao(id: string, notaId: string): Promise<T.FichaChamado>;
     ligar(id: string, d: { para: string; tipo: T.TipoLigacaoChamado }): Promise<T.FichaChamado>;
     desligar(id: string, ligacaoId: string): Promise<T.FichaChamado>;

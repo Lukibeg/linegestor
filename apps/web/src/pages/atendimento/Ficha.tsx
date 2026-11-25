@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Maximize2, RotateCcw } from 'lucide-react';
-import { campoLigado, lerCodigo } from '@gestor/shared';
+import { campoLigado, lerCodigo, prazoEscritoNoChamado } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { Carregando, Modal, Vazio, mensagemErro } from '../../components/ui/index.js';
@@ -185,8 +185,9 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
             {/* os grupos de campos da lateral (2.4) */}
             <GruposDaLateral />
             <Responsavel />
-            {/* sem o assunto no painel, não há prazo (2.4.8: o prazo vem do assunto): o bloco sai */}
-            {aberta.painel?.tipo !== 'vendas' && (!aberta.painel || campoLigado(aberta.painel.ajustes, 'assunto')) && <Prazos />}
+            {/* sem o assunto no painel, não há prazo (2.4.8: o prazo vem do assunto): o bloco sai — a não ser no painel com o prazo
+                escrito em cada chamado (2.4.11), que conta sem o assunto */}
+            {aberta.painel?.tipo !== 'vendas' && (!aberta.painel || campoLigado(aberta.painel.ajustes, 'assunto') || prazoEscritoNoChamado(aberta.painel.ajustes)) && <Prazos />}
             <NaAgenda />
             <Operadora />
             {/* o tempo gasto: o painel pode desligar (2.3, a Implantação não usa) */}

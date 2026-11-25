@@ -22,6 +22,9 @@ produtos e os módulos ficam ativos na ficha do cliente, com a data.
 3. **Os módulos.** Os Módulos a ativar de cada produto são os do catálogo: Administração › Produtos. O que entrar ou sair
    ali aparece no card sozinho. (No catálogo de hoje, faltam para o LinePBX: Callback, WebRTC, NPS - WhatsApp e Filas -
    Dashboard.)
+4. **O faturamento (2.4.11).** No Configurar do painel da implantação, abra a última etapa (o **Implantado - Concluído**) ›
+   **Ao chegar aqui, abre o card de faturamento** › **No painel Grupo Line - ADM** (o administrativo) › Salvar. Daí em diante,
+   o card que chega nela abre o card de faturamento lá (seção 4).
 
 O atalho: **Suporte › Painel da Implantação**, no menu, abre o quadro do painel (o painel de Gestão que a etapa do
 Comercial abre).
@@ -60,6 +63,13 @@ Voltar a negociação e mover de novo não abre outro card.
   **cole a lista** (cada linha vira um item; o botão diz **Incluir 3**). Marque conforme faz (cada item mostra quem marcou e
   quando); o lápis corrige o texto e o × tira. A lista vazia conta como uma coisa por fazer na parte; cada item conta como
   um. Pedido numa etapa, o campo só está feito com itens, todos marcados.
+- **Recolhidos ao abrir (2.4.11).** O checklist do card, as caixinhas e os módulos começam **recolhidos** cada vez que você
+  abre um card: aparecem o nome e a conta (*Lista de ramais (implantação) 39 de 39 · feito*). A **setinha no canto direito**
+  (ou um clique no nome) mostra tudo; outro clique recolhe. Quando o aviso do que falta leva até um campo recolhido, ele abre
+  sozinho.
+- **A caixinha única (2.4.11).** Para uma atividade que é só feita ou não (*Backup conferido*, *Lista de ramais conferida*),
+  crie um campo do tipo **Caixinha única (feito)**: na ficha, uma linha com a caixinha e o nome do campo; marcada, mostra
+  *feito*, quem marcou e quando, e conta como uma coisa feita na aba e no que a etapa pede.
 - **O checklist na Implantação, com um clique.** Em Configurar › Campos, marque **Checklist na Implantação** ao lado de um
   campo (a Lista de ramais, por exemplo): o Gestor cria sozinho, na aba Implantação, o **Lista de ramais (implantação)**, com
   um item por linha. Desmarcar manda esse checklist para os Excluídos; marcar de novo traz de volta, com as marcas.
@@ -105,6 +115,29 @@ implantação aparece como **em implantação**; depois do Implantado, **ativo d
 E a negociação vai sozinha, no Comercial, de **Em processo de Implantação** para **Implantado**. O Ganho você marca
 quando começar a faturar.
 
+### O card de faturamento (2.4.11)
+
+Na etapa que abre o faturamento (o **Implantado - Concluído**, montada no passo 4 da seção 1), a mesma janela mostra antes
+o **card de faturamento** que nasce no administrativo, **já preenchido**, e tudo se muda ali:
+
+- o **título**: *Clínica EVAB - Faturamento*;
+- o **e-mail para faturamento**: o do contato do card (dá para pôr mais de um, como você escreve: *financeiro@…/barbara@…*;
+  o primeiro vira o e-mail do contato do card de faturamento);
+- a **data de vencimento** da fatura;
+- o **CNPJ do faturamento**: o do cadastro do cliente;
+- as **informações**: a ativação com o que foi combinado nas Condições especiais da negociação (em quantas vezes, a partir de
+  quando, o desconto, a OBS) e cada produto com a mensalidade e as licenças da **simulação principal** (*LinePBX: R$ 954,00 ·
+  15 Licenças ramais corporativos · 06 Licenças usuários de callcenter*). A janela diz de qual negociação e de qual simulação
+  vieram; **Ver como fica a descrição do card** mostra o texto inteiro.
+
+**Mover e abrir o faturamento.** O card de faturamento nasce na primeira etapa do administrativo, com a descrição no
+formato do card que você escrevia à mão (*Faturamento Clínica EVAB · E-mail para faturamento · Data de vencimento · CNPJ do
+faturamento*, uma linha em branco e as informações), o cliente, o contato, os produtos e você como observador. Quem a
+primeira etapa do administrativo avisa recebe *"Chegou o card de faturamento GLA-68 (do IMP-7) em …"*. Na ficha da
+implantação, o bloco **Faturamento** mostra o card aberto (e onde ele está); na do card de faturamento, *"do card IMP-7"*.
+
+Um card de implantação abre **um só**: voltar e chegar de novo no Implantado - Concluído não abre outro.
+
 ## 5. Os campos (Painéis › Ajustes › Campos)
 
 Desde o 2.4, os campos ficam em **grupos** (o cartão **Os grupos de campos**: Novo grupo, Editar — o nome e se fica no meio
@@ -125,9 +158,12 @@ módulos, **Os módulos que aparecem** › **Só os marcados em …** faz dele o
 produto. E, desde o 2.4, o tipo **Documento**: o arquivo anexado (conta como feito com o primeiro); o texto curto e o longo
 viram documento sem perder o que foi escrito. Desde o 2.4.8, o **Checklist do card**: a lista de tarefas que cada card monta
 (as caixinhas são as mesmas em todos os cards do painel; o checklist do card, não). Ele não pode ser pedido para abrir o
-chamado (a lista nasce depois), só para entrar nas etapas.
+chamado (a lista nasce depois), só para entrar nas etapas. Desde o 2.4.11, a **Caixinha única (feito)**: uma caixinha só, sem
+opções para escrever (o nome do campo é a atividade); marcada, guarda quem marcou e quando. É diferente do **Sim ou não**,
+que guarda uma resposta e não conta como tarefa.
 
-E a opção **Recebe anexos**: com ela, o campo ganha o Anexar na ficha (nas caixinhas, o clipe de cada uma). No modelo
+E a opção **Recebe anexos**: com ela, o campo ganha o Anexar na ficha (nas caixinhas, o clipe de cada uma; na caixinha única,
+o clipe ao lado dela). No modelo
 Implantação, vem ligada nos campos da Curadoria.
 
 E, desde o 2.4.7, a **Largura na ficha** (num grupo do meio da ficha): **Metade** (lado a lado com o campo vizinho de metade,

@@ -726,7 +726,8 @@ describe('os avisos (o WhatsApp dos chamados)', () => {
     expect(novos).toHaveLength(1);
     expect(novos[0]!.corpo).toMatchObject({ from: '5571999990000', to: '5571988887777' });
     expect(novos[0]!.corpo.body.text).toContain(`Você recebeu o chamado ${um.json().codigo}`);
-    expect(eventos(await ficha(um.json().codigo), 'aviso_equipe').at(-1).dados).toMatchObject({ para: 'Marina Costa', ok: true });
+    // 2.4.11 (o Luan: "n precisa desse registro de aviso"): o aviso não vai mais para o histórico do chamado
+    expect(eventos(await ficha(um.json().codigo), 'aviso_equipe')).toEqual([]);
 
     // pausada: o aviso fica só na tela (o sininho), e nada sai pelo WhatsApp
     await s.patch(`/admin/users/${marinaId}`, { whatsappAvisos: false });
